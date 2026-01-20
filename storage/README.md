@@ -10,7 +10,7 @@ The refactored storage API provides a simple, flexible, and customizable interfa
 import (
     "context"
     "bytes"
-    "github.com/bronystylecrazy/flexinfra/src/storage"
+    "github.com/bronystylecrazy/ultrastructure/src/storage"
 )
 
 // Initialize storage

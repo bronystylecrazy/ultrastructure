@@ -1,10 +1,10 @@
-package flexinfra
+package us
 
 import (
-	"github.com/bronystylecrazy/flexinfra/logging"
-	"github.com/bronystylecrazy/flexinfra/realtime"
-	"github.com/bronystylecrazy/flexinfra/storage"
-	"github.com/bronystylecrazy/flexinfra/web"
+	"github.com/bronystylecrazy/ultrastructure/core/logging"
+	"github.com/bronystylecrazy/ultrastructure/realtime"
+	"github.com/bronystylecrazy/ultrastructure/storage"
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"go.uber.org/fx"
 )
 
@@ -19,7 +19,7 @@ var DefaultWires = fx.Options(
 	),
 	fx.Provide(
 		// deps
-		web.NewFiberApp,
+		web.NewApp,
 		web.NewAuthorizer,
 		web.NewValidator,
 		// handlers

@@ -6,8 +6,8 @@ import (
 	"mime/multipart"
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/lifecycle"
-	"github.com/bronystylecrazy/flexinfra/logging"
+	"github.com/bronystylecrazy/ultrastructure/core/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/core/logging"
 	"go.uber.org/fx"
 )
 

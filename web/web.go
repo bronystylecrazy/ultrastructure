@@ -1,8 +1,8 @@
 package web
 
 import (
-	"github.com/bronystylecrazy/flexinfra/lifecycle"
-	"github.com/bronystylecrazy/flexinfra/logging"
+	"github.com/bronystylecrazy/ultrastructure/core/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/core/logging"
 	"github.com/gofiber/fiber/v2"
 )
 

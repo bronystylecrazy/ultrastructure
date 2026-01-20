@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/arsmn/fiber-swagger/example/docs"
-	"github.com/bronystylecrazy/flexinfra/build"
+	"github.com/bronystylecrazy/ultrastructure/build"
 	fiberSwagger "github.com/swaggo/fiber-swagger"
 )
 
@@ -25,7 +25,7 @@ func NewSwaggerHandler(config Config) (SwaggerHandler, error) {
 func (h *swaggerHandler) Handle(app App) {
 	docs.SwaggerInfo.Title = h.config.Name
 	docs.SwaggerInfo.Description = h.config.Description
-	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%v", h.config.Port)
+	docs.SwaggerInfo.Host = fmt.Sprintf("%s:%s", h.config.Host, h.config.Port)
 	docs.SwaggerInfo.BasePath = "/"
 	docs.SwaggerInfo.Version = build.Version
 	app.Get("/swagger/*", fiberSwagger.WrapHandler)

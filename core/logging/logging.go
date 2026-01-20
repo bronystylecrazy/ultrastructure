@@ -1,34 +1,12 @@
 package logging
 
 import (
-	"github.com/bronystylecrazy/flexinfra/build"
-	"github.com/bronystylecrazy/flexinfra/config"
+	"github.com/bronystylecrazy/ultrastructure/build"
+	"github.com/bronystylecrazy/ultrastructure/config"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-type Logger interface {
-	SetLogger(logger *zap.Logger)
-	L() *zap.Logger
-}
-
-var _ Logger = &Log{}
-
-type Log struct {
-	logger *zap.Logger
-}
-
-func (l *Log) SetLogger(logger *zap.Logger) {
-	l.logger = logger
-}
-
-func (l *Log) L() *zap.Logger {
-	if l.logger == nil {
-		return NewDefaultLogger()
-	}
-	return l.logger
-}
 
 func NewZapLogger(appConfig config.AppConfig) (*zap.Logger, error) {
 
@@ -60,15 +38,15 @@ func NewZapLogger(appConfig config.AppConfig) (*zap.Logger, error) {
 	return zap.NewProduction()
 }
 
-func NewDefaultLogger() *zap.Logger {
+func NewDefaultLogger() (*zap.Logger, error) {
 	cfg := zap.NewDevelopmentConfig()
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	logger, err := cfg.Build()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return logger
+	return logger, nil
 }
 
 func NewEventLogger(log *zap.Logger) fxevent.Logger {

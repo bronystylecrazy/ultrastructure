@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-var Name = "Flexinfra"
+var Name = "ultrastructure"
 var Version = "v0.0.0-production"
 var BuildDate = time.Now().Format("2006-01-02 15:04:05")
 var Commit = "unknown"
 var Mode = ModeProduction
 var EnableDebug = false
-var ProjectDir string = ".connectedtech/flexinfra"
+var ProjectDir string = ".connectedtech/ultrastructure"
 var Env = "production"
 
 func GetProjectDir() (string, error) {

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/logging"
+	"github.com/bronystylecrazy/ultrastructure/core/logging"
 	minio "github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )

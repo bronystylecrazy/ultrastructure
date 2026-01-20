@@ -6,23 +6,22 @@ import (
 	"log"
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/build"
-	"github.com/bronystylecrazy/flexinfra/logging"
-	"github.com/bronystylecrazy/flexinfra/realtime"
+	"github.com/bronystylecrazy/ultrastructure/build"
+	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
-type FiberApp struct {
-	*logging.Log
+type fiberApp struct {
 	*fiber.App
 
 	rs     realtime.Server
+	logger *zap.Logger
 	config Config
 }
 
-func NewFiberApp(config Config) App {
-	return &FiberApp{
+func NewApp(config Config) App {
+	return &fiberApp{
 		App: fiber.New(fiber.Config{
 			AppName:      build.Name,
 			ReadTimeout:  5 * time.Second,
@@ -31,10 +30,15 @@ func NewFiberApp(config Config) App {
 			Network:      "tcp",
 		}),
 		config: config,
+		logger: zap.NewNop(),
 	}
 }
 
-func (f *FiberApp) Start(ctx context.Context) error {
+func (f *fiberApp) SetLogger(logger *zap.Logger) {
+	f.logger = logger
+}
+
+func (f *fiberApp) Start(ctx context.Context) error {
 	if f.rs != nil {
 		if err := f.rs.Start(ctx); err != nil {
 			return err
@@ -50,7 +54,7 @@ func (f *FiberApp) Start(ctx context.Context) error {
 	return nil
 }
 
-func (f *FiberApp) Stop(ctx context.Context) error {
+func (f *fiberApp) Stop(ctx context.Context) error {
 	if f.rs != nil {
 		if err := f.rs.Stop(ctx); err != nil {
 			return err

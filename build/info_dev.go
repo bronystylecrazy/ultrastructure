@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var Name = "Flexinfra"
+var Name = "ultrastructure"
 var Version = "v0.0.0-development"
 var BuildDate = time.Now().Format("2006-01-02 15:04:05")
 var Commit = "unknown"

@@ -1,7 +1,7 @@
 package realtime
 
 import (
-	"github.com/bronystylecrazy/flexinfra/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/core/lifecycle"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"go.uber.org/fx"

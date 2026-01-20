@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/config"
+	"github.com/bronystylecrazy/ultrastructure/config"
 	jwtware "github.com/gofiber/contrib/jwt"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"

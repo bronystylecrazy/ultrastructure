@@ -3,7 +3,7 @@ package web
 import (
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/build"
+	"github.com/bronystylecrazy/ultrastructure/build"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
