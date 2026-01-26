@@ -99,6 +99,19 @@ app := di.App(
 ).Build()
 ```
 
+### ReplaceBefore / ReplaceAfter
+
+Apply replacements only to nodes declared before or after the replacement.
+
+```go
+app := di.App(
+	di.Provide(NewProdLogger, di.Name("prod")),
+	di.ReplaceBefore(NewNopLogger),
+	di.Provide(NewDevLogger, di.Name("dev")),
+	di.ReplaceAfter(NewJSONLogger, di.Name("dev")),
+).Build()
+```
+
 ## Config (Viper)
 
 ### Load a TOML file
