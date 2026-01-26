@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bronystylecrazy/ultrastructure/us/di"
+	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/zap"
 )
 

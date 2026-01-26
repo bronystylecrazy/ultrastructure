@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/bronystylecrazy/ultrastructure/us/di"
+	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/fx"
 )
 

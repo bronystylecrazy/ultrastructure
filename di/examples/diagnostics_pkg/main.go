@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/bronystylecrazy/ultrastructure/us/di"
-	"github.com/bronystylecrazy/ultrastructure/us/di/examples/diagnostics_pkg/helper"
+	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/di/examples/diagnostics_pkg/helper"
 	"go.uber.org/fx"
 )
 
