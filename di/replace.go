@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/us"
 	"go.uber.org/fx"
 )
 
@@ -206,28 +205,14 @@ func (n replaceNode) Build() (fx.Option, error) {
 	if cfg.pendingName != "" || cfg.pendingGroup != "" {
 		return nil, fmt.Errorf("replace does not support named or grouped exports")
 	}
-	var provideOpts []us.ProvideOption
-	if cfg.includeSelf {
-		provideOpts = append(provideOpts, us.AsSelf())
+	anns, err := buildReplaceAnnotations(cfg)
+	if err != nil {
+		return nil, err
 	}
-	for _, exp := range cfg.exports {
-		if exp.grouped {
-			return nil, fmt.Errorf("replace does not support groups")
-		}
-		if exp.named {
-			return nil, fmt.Errorf("replace does not support named exports")
-		}
-		provideOpts = append(provideOpts, us.AsTypeOf(exp.typ))
+	if len(anns) == 0 {
+		return fx.Replace(n.value), nil
 	}
-	if len(provideOpts) == 0 {
-		return us.Replace(n.value), nil
-	}
-	args := make([]any, 0, 1+len(provideOpts))
-	args = append(args, n.value)
-	for _, opt := range provideOpts {
-		args = append(args, opt)
-	}
-	return us.Replace(args...), nil
+	return fx.Replace(fx.Annotate(n.value, anns...)), nil
 }
 
 func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
@@ -243,13 +228,13 @@ func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
 		node    Node
 	)
 	if isFunc(n.value) {
-		_, tagSets, err = buildProvideOptions(cfg, n.value, nil)
+		_, tagSets, err = buildProvideSpec(cfg, n.value, nil)
 		if err != nil {
 			return replaceSpec{}, err
 		}
 		node = provideNode{constructor: n.value, opts: n.opts}
 	} else {
-		_, tagSets, err = buildProvideOptions(cfg, nil, n.value)
+		_, tagSets, err = buildProvideSpec(cfg, nil, n.value)
 		if err != nil {
 			return replaceSpec{}, err
 		}
@@ -274,13 +259,13 @@ func buildDefaultSpec(n defaultNode, pos int) (replaceSpec, error) {
 		node    Node
 	)
 	if isFunc(n.value) {
-		_, tagSets, err = buildProvideOptions(cfg, n.value, nil)
+		_, tagSets, err = buildProvideSpec(cfg, n.value, nil)
 		if err != nil {
 			return replaceSpec{}, err
 		}
 		node = provideNode{constructor: n.value, opts: n.opts}
 	} else {
-		_, tagSets, err = buildProvideOptions(cfg, nil, n.value)
+		_, tagSets, err = buildProvideSpec(cfg, nil, n.value)
 		if err != nil {
 			return replaceSpec{}, err
 		}
@@ -306,7 +291,7 @@ func collectScopeProvides(nodes []Node) ([]provideItem, error) {
 			if err != nil {
 				return nil, err
 			}
-			_, tagSets, err := buildProvideOptions(cfg, v.constructor, nil)
+			_, tagSets, err := buildProvideSpec(cfg, v.constructor, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -316,7 +301,7 @@ func collectScopeProvides(nodes []Node) ([]provideItem, error) {
 			if err != nil {
 				return nil, err
 			}
-			_, tagSets, err := buildProvideOptions(cfg, nil, v.value)
+			_, tagSets, err := buildProvideSpec(cfg, nil, v.value)
 			if err != nil {
 				return nil, err
 			}
@@ -636,7 +621,7 @@ func replacementNodeWithTags(spec replaceSpec, provideTags []tagSet) (Node, []ta
 		if err != nil {
 			return nil, nil, err
 		}
-		_, tagSets, err := buildProvideOptions(cfg, n.constructor, nil)
+		_, tagSets, err := buildProvideSpec(cfg, n.constructor, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -649,7 +634,7 @@ func replacementNodeWithTags(spec replaceSpec, provideTags []tagSet) (Node, []ta
 		if err != nil {
 			return nil, nil, err
 		}
-		_, tagSets, err := buildProvideOptions(cfg, nil, n.value)
+		_, tagSets, err := buildProvideSpec(cfg, nil, n.value)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -833,6 +818,26 @@ func typesMatch(a, b reflect.Type) bool {
 		return false
 	}
 	return a == b
+}
+
+func buildReplaceAnnotations(cfg bindConfig) ([]fx.Annotation, error) {
+	var anns []fx.Annotation
+	if cfg.includeSelf {
+		anns = append(anns, fx.As(fx.Self()))
+	}
+	for _, exp := range cfg.exports {
+		if exp.grouped {
+			return nil, fmt.Errorf("replace does not support groups")
+		}
+		if exp.named {
+			return nil, fmt.Errorf("replace does not support named exports")
+		}
+		if exp.typ.Kind() != reflect.Interface {
+			return nil, fmt.Errorf("replace AsType requires an interface type, got %v", exp.typ)
+		}
+		anns = append(anns, fx.As(reflect.New(exp.typ).Interface()))
+	}
+	return anns, nil
 }
 
 func isFunc(v any) bool {

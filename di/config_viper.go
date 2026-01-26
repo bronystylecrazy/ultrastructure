@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/us"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
@@ -57,7 +56,7 @@ func (n configNode[T]) provideTagSets() ([]tagSet, error) {
 		var out T
 		return out
 	}
-	_, tagSets, err := buildProvideOptions(bindCfg, dummy, nil)
+	_, tagSets, err := buildProvideSpec(bindCfg, dummy, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -93,11 +92,14 @@ func (n configNode[T]) Build() (fx.Option, error) {
 		}
 		return out, nil
 	}
-	provideOpts, _, err := buildProvideOptions(bindCfg, constructor, nil)
+	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt := us.Provide(constructor, provideOpts...)
+	provideOpt, err := buildProvideConstructorOption(spec, constructor)
+	if err != nil {
+		return nil, err
+	}
 	var out []fx.Option
 	out = append(out, provideOpt)
 	if watchCfg.enabled {
@@ -135,11 +137,14 @@ func (n configFileNode) Build() (fx.Option, error) {
 		}
 		return &configStore{v: v}, nil
 	}
-	provideOpts, _, err := buildProvideOptions(bindCfg, constructor, nil)
+	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt := us.Provide(constructor, provideOpts...)
+	provideOpt, err := buildProvideConstructorOption(spec, constructor)
+	if err != nil {
+		return nil, err
+	}
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
@@ -178,11 +183,14 @@ func (n configBindNode[T]) Build() (fx.Option, error) {
 		}
 		return out, decodeConfig(v, n.key, &out)
 	}
-	provideOpts, _, err := buildProvideOptions(bindCfg, constructor, nil)
+	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt := us.Provide(constructor, provideOpts...)
+	provideOpt, err := buildProvideConstructorOption(spec, constructor)
+	if err != nil {
+		return nil, err
+	}
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
@@ -201,7 +209,7 @@ func (n configBindNode[T]) provideTagSets() ([]tagSet, error) {
 		var out T
 		return out
 	}
-	_, tagSets, err := buildProvideOptions(bindCfg, dummy, nil)
+	_, tagSets, err := buildProvideSpec(bindCfg, dummy, nil)
 	if err != nil {
 		return nil, err
 	}

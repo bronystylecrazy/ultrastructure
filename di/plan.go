@@ -135,7 +135,7 @@ func describeProvide(n provideNode) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, tagSets, err := buildProvideOptions(cfg, n.constructor, nil)
+	_, tagSets, err := buildProvideSpec(cfg, n.constructor, nil)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +151,7 @@ func describeSupply(n supplyNode) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, tagSets, err := buildProvideOptions(cfg, nil, n.value)
+	_, tagSets, err := buildProvideSpec(cfg, nil, n.value)
 	if err != nil {
 		return "", err
 	}

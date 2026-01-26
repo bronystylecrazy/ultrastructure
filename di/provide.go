@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/bronystylecrazy/ultrastructure/us"
 	"go.uber.org/fx"
 )
 
@@ -36,20 +35,20 @@ func constructorResultType(constructor any) (reflect.Type, error) {
 	return fn.Out(0), nil
 }
 
-func buildProvideOptions(cfg bindConfig, constructor any, value any) ([]us.ProvideOption, []tagSet, error) {
-	var provideOpts []us.ProvideOption
-	var tagSets []tagSet
+type provideSpec struct {
+	exports      []exportSpec
+	includeSelf  bool
+	privateSet   bool
+	privateValue bool
+}
 
-	if cfg.includeSelf {
-		provideOpts = append(provideOpts, us.AsSelf())
+func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, []tagSet, error) {
+	spec := provideSpec{
+		includeSelf:  cfg.includeSelf,
+		privateSet:   cfg.privateSet,
+		privateValue: cfg.privateValue,
 	}
-	if cfg.privateSet {
-		if cfg.privateValue {
-			provideOpts = append(provideOpts, us.Private())
-		} else {
-			provideOpts = append(provideOpts, us.Public())
-		}
-	}
+	var tagSets []tagSet
 
 	var baseType reflect.Type
 	getBaseType := func() (reflect.Type, error) {
@@ -75,17 +74,25 @@ func buildProvideOptions(cfg bindConfig, constructor any, value any) ([]us.Provi
 	}
 	if cfg.pendingName != "" || cfg.pendingGroup != "" {
 		if len(cfg.exports) > 0 {
-			return nil, nil, fmt.Errorf("name/group must apply to a single As, not mixed")
+			return provideSpec{}, nil, fmt.Errorf("name/group must apply to a single As, not mixed")
 		}
 		if _, err := getBaseType(); err != nil {
-			return nil, nil, err
+			return provideSpec{}, nil, err
 		}
 		if cfg.pendingName != "" {
-			provideOpts = append(provideOpts, us.AsTypeOf(baseType, cfg.pendingName))
+			spec.exports = append(spec.exports, exportSpec{
+				typ:   baseType,
+				name:  cfg.pendingName,
+				named: true,
+			})
 			tagSets = append(tagSets, tagSet{name: cfg.pendingName, typ: baseType})
 		}
 		if cfg.pendingGroup != "" {
-			provideOpts = append(provideOpts, us.AsGroupOf(baseType, cfg.pendingGroup))
+			spec.exports = append(spec.exports, exportSpec{
+				typ:     baseType,
+				group:   cfg.pendingGroup,
+				grouped: true,
+			})
 			tagSets = append(tagSets, tagSet{group: cfg.pendingGroup, typ: baseType})
 		}
 	}
@@ -93,39 +100,35 @@ func buildProvideOptions(cfg bindConfig, constructor any, value any) ([]us.Provi
 	hasUntagged := false
 	for _, exp := range cfg.exports {
 		if exp.grouped && exp.named {
-			return nil, nil, fmt.Errorf("export cannot be both grouped and named")
+			return provideSpec{}, nil, fmt.Errorf("export cannot be both grouped and named")
 		}
 		if exp.grouped {
-			provideOpts = append(provideOpts, us.AsGroupOf(exp.typ, exp.group))
 			tagSets = append(tagSets, tagSet{group: exp.group, typ: exp.typ})
-			continue
-		}
-		if exp.named {
-			provideOpts = append(provideOpts, us.AsTypeOf(exp.typ, exp.name))
+		} else if exp.named {
 			tagSets = append(tagSets, tagSet{name: exp.name, typ: exp.typ})
-			continue
+		} else {
+			tagSets = append(tagSets, tagSet{typ: exp.typ})
+			hasUntagged = true
 		}
-		provideOpts = append(provideOpts, us.AsTypeOf(exp.typ))
-		tagSets = append(tagSets, tagSet{typ: exp.typ})
-		hasUntagged = true
+		spec.exports = append(spec.exports, exp)
 	}
 
 	if cfg.includeSelf && !hasUntagged {
 		if _, err := getBaseType(); err != nil {
-			return nil, nil, err
+			return provideSpec{}, nil, err
 		}
 		tagSets = append(tagSets, tagSet{typ: baseType})
 	}
 	if len(tagSets) == 0 {
 		if _, err := getBaseType(); err != nil {
-			return nil, nil, err
+			return provideSpec{}, nil, err
 		}
 		tagSets = append(tagSets, tagSet{typ: baseType})
 	}
 
 	if len(cfg.autoGroups) > 0 && !cfg.ignoreAuto {
 		if _, err := getBaseType(); err != nil {
-			return nil, nil, err
+			return provideSpec{}, nil, err
 		}
 		for _, rule := range cfg.autoGroups {
 			if rule.iface == nil {
@@ -137,26 +140,29 @@ func buildProvideOptions(cfg bindConfig, constructor any, value any) ([]us.Provi
 			if !implementsInterface(baseType, rule.iface) {
 				continue
 			}
-			exists := false
-			for _, ts := range tagSets {
-				if ts.group == rule.group && typesMatch(ts.typ, rule.iface) {
-					exists = true
-					break
-				}
-			}
-			if exists {
+			if hasExport(spec.exports, rule.iface, rule.group) {
 				continue
 			}
-			provideOpts = append(provideOpts, us.AsGroupOf(rule.iface, rule.group))
+			spec.exports = append(spec.exports, exportSpec{
+				typ:     rule.iface,
+				group:   rule.group,
+				grouped: true,
+			})
 			tagSets = append(tagSets, tagSet{group: rule.group, typ: rule.iface})
 			if rule.asSelf {
-				provideOpts = append(provideOpts, us.AsSelf())
-				tagSets = append(tagSets, tagSet{typ: baseType})
+				spec.includeSelf = true
 			}
 		}
 	}
 
-	return provideOpts, tagSets, nil
+	if spec.includeSelf && !hasUntagged && !tagSetHasType(tagSets, baseType) {
+		if _, err := getBaseType(); err != nil {
+			return provideSpec{}, nil, err
+		}
+		tagSets = append(tagSets, tagSet{typ: baseType})
+	}
+
+	return spec, tagSets, nil
 }
 
 func implementsInterface(base reflect.Type, iface reflect.Type) bool {
@@ -174,6 +180,33 @@ func implementsInterface(base reflect.Type, iface reflect.Type) bool {
 	return false
 }
 
+func hasExport(exports []exportSpec, typ reflect.Type, group string) bool {
+	for _, exp := range exports {
+		if !exp.grouped {
+			continue
+		}
+		if exp.group != group {
+			continue
+		}
+		if typesMatch(exp.typ, typ) {
+			return true
+		}
+	}
+	return false
+}
+
+func tagSetHasType(tagSets []tagSet, typ reflect.Type) bool {
+	if typ == nil {
+		return false
+	}
+	for _, ts := range tagSets {
+		if ts.group == "" && ts.name == "" && typesMatch(ts.typ, typ) {
+			return true
+		}
+	}
+	return false
+}
+
 type provideNode struct {
 	constructor any
 	opts        []any
@@ -184,11 +217,14 @@ func (n provideNode) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	provideOpts, _, err := buildProvideOptions(cfg, n.constructor, nil)
+	spec, _, err := buildProvideSpec(cfg, n.constructor, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt := us.Provide(n.constructor, provideOpts...)
+	provideOpt, err := buildProvideConstructorOption(spec, n.constructor)
+	if err != nil {
+		return nil, err
+	}
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
@@ -208,16 +244,14 @@ func (n supplyNode) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	provideOpts, _, err := buildProvideOptions(cfg, nil, n.value)
+	spec, _, err := buildProvideSpec(cfg, nil, n.value)
 	if err != nil {
 		return nil, err
 	}
-	args := make([]any, 0, 1+len(provideOpts))
-	args = append(args, n.value)
-	for _, opt := range provideOpts {
-		args = append(args, opt)
+	provideOpt, err := buildProvideSupplyOption(spec, n.value)
+	if err != nil {
+		return nil, err
 	}
-	provideOpt := us.Supply(args...)
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)

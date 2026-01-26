@@ -23,7 +23,7 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			_, tagSets, err := buildProvideOptions(cfg, v.constructor, nil)
+			_, tagSets, err := buildProvideSpec(cfg, v.constructor, nil)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -43,7 +43,7 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			_, tagSets, err := buildProvideOptions(cfg, nil, v.value)
+			_, tagSets, err := buildProvideSpec(cfg, nil, v.value)
 			if err != nil {
 				return nil, nil, err
 			}
