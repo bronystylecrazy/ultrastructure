@@ -1,0 +1,3 @@
+[app]
+name = "watch-demo"
+port = 7000

@@ -1,0 +1,10 @@
+{
+  "app": {
+    "name": "demo-json",
+    "port": 8081
+  },
+  "db": {
+    "host": "localhost",
+    "port": 5433
+  }
+}

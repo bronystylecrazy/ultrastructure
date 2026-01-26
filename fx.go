@@ -1,5 +1,11 @@
 package us
 
-import "github.com/bronystylecrazy/ultrastructure/web"
+import "go.uber.org/fx"
 
-var AsHandler = web.AsHandler
+type Ultra struct {
+	Options []fx.Option
+}
+
+func New(options ...fx.Option) *fx.App {
+	return fx.New(options...)
+}
