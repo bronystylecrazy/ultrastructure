@@ -163,10 +163,10 @@ func (n supplyNode) withAutoGroups(rules []autoGroupRule) Node {
 
 func (n configNode[T]) withAutoGroups(rules []autoGroupRule) Node {
 	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
-	return configNode[T]{pathOrKey: n.pathOrKey, opts: opts}
+	return configNode[T]{pathOrKey: n.pathOrKey, opts: opts, scope: n.scope}
 }
 
 func (n configBindNode[T]) withAutoGroups(rules []autoGroupRule) Node {
 	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
-	return configBindNode[T]{key: n.key, opts: opts}
+	return configBindNode[T]{key: n.key, opts: opts, scope: n.scope}
 }

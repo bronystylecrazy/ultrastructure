@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/gofiber/fiber/v2/middleware/etag"
+	"github.com/gofiber/fiber/v3"
 )
 
 type EtagHandler interface {
@@ -17,6 +18,6 @@ func NewEtagHandler() EtagHandler {
 	return &etagHandler{}
 }
 
-func (h *etagHandler) Handle(app App) {
-	app.Use(etag.New())
+func (h *etagHandler) Handle(r fiber.Router) {
+	r.Use(etag.New())
 }

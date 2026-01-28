@@ -24,6 +24,8 @@ type bindConfig struct {
 	pendingGroup string
 	autoGroups   []autoGroupRule
 	ignoreAuto   bool
+	autoInjectFields bool
+	ignoreAutoInjectFields bool
 	err          error
 }
 
@@ -211,6 +213,13 @@ func Public() Option {
 func AutoGroupIgnore() Option {
 	return bindOptionFunc(func(cfg *bindConfig) {
 		cfg.ignoreAuto = true
+	})
+}
+
+// AutoInjectIgnore disables auto field injection for this provider.
+func AutoInjectIgnore() Option {
+	return bindOptionFunc(func(cfg *bindConfig) {
+		cfg.ignoreAutoInjectFields = true
 	})
 }
 

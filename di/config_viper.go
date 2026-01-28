@@ -37,6 +37,16 @@ func ConfigBind[T any](key string, opts ...any) Node {
 type configNode[T any] struct {
 	pathOrKey string
 	opts      []any
+	scope     string
+}
+
+type configScoper interface {
+	withConfigScope(string) Node
+}
+
+func (n configNode[T]) withConfigScope(scope string) Node {
+	n.scope = scope
+	return n
 }
 
 func (n configNode[T]) withConfigWatch(cfg configWatchConfig) Node {
@@ -69,14 +79,11 @@ func (n configNode[T]) Build() (fx.Option, error) {
 		return nil, err
 	}
 	path, key := resolveConfigTarget(n.pathOrKey)
-	constructor := func(in struct {
-		fx.In
-		Store *configStore `optional:"true"`
-	}) (T, error) {
+	constructor := func(store *configStore) (T, error) {
 		var out T
 		var v *viper.Viper
-		if in.Store != nil && in.Store.v != nil {
-			v = in.Store.v
+		if store != nil && store.v != nil {
+			v = store.v
 		} else {
 			if path == "" && !hasConfigSource(cfg) {
 				return out, fmt.Errorf("config source not provided; add di.ConfigFile or Config* options")
@@ -92,11 +99,12 @@ func (n configNode[T]) Build() (fx.Option, error) {
 		}
 		return out, nil
 	}
-	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
+	wrapped := wrapConfigStoreParam(constructor, n.scope)
+	spec, _, err := buildProvideSpec(bindCfg, wrapped, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, constructor)
+	provideOpt, err := buildProvideConstructorOption(spec, wrapped)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +131,12 @@ type configStore struct {
 type configFileNode struct {
 	path string
 	opts []any
+	scope string
+}
+
+func (n configFileNode) withConfigScope(scope string) Node {
+	n.scope = scope
+	return n
 }
 
 func (n configFileNode) Build() (fx.Option, error) {
@@ -137,14 +151,11 @@ func (n configFileNode) Build() (fx.Option, error) {
 		}
 		return &configStore{v: v}, nil
 	}
-	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
-	if err != nil {
-		return nil, err
+	provideOpt := fx.Provide(constructor)
+	if n.scope != "" {
+		provideOpt = fx.Provide(fx.Annotate(constructor, fx.ResultTags(`name:"`+n.scope+`"`)))
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, constructor)
-	if err != nil {
-		return nil, err
-	}
+	_ = bindCfg
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
@@ -157,6 +168,12 @@ func (n configFileNode) Build() (fx.Option, error) {
 type configBindNode[T any] struct {
 	key  string
 	opts []any
+	scope string
+}
+
+func (n configBindNode[T]) withConfigScope(scope string) Node {
+	n.scope = scope
+	return n
 }
 
 func (n configBindNode[T]) Build() (fx.Option, error) {
@@ -183,11 +200,12 @@ func (n configBindNode[T]) Build() (fx.Option, error) {
 		}
 		return out, decodeConfig(v, n.key, &out)
 	}
-	spec, _, err := buildProvideSpec(bindCfg, constructor, nil)
+	wrapped := wrapConfigStoreParam(constructor, n.scope)
+	spec, _, err := buildProvideSpec(bindCfg, wrapped, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, constructor)
+	provideOpt, err := buildProvideConstructorOption(spec, wrapped)
 	if err != nil {
 		return nil, err
 	}
@@ -469,6 +487,17 @@ func parseConfigOptions(opts []any) (configConfig, bindConfig, []fx.Option, erro
 			continue
 		case configOption:
 			o.applyConfig(&cfg)
+		case Node:
+			configOpts, _, err := extractConfigOptionsFromNode(o)
+			if err != nil {
+				return cfg, bindConfig{}, nil, err
+			}
+			for _, co := range configOpts {
+				co.applyConfig(&cfg)
+				if cfg.err != nil {
+					return cfg, bindConfig{}, nil, cfg.err
+				}
+			}
 		default:
 			bindOpts = append(bindOpts, opt)
 		}
@@ -494,6 +523,20 @@ func parseConfigOptionsWithWatch(opts []any) (configConfig, configWatchConfig, b
 			o.applyConfig(&cfg)
 		case ConfigWatchOption:
 			o.applyWatch(&watchCfg)
+		case Node:
+			configOpts, watchOpts, err := extractConfigOptionsFromNode(o)
+			if err != nil {
+				return cfg, watchCfg, bindConfig{}, nil, err
+			}
+			for _, co := range configOpts {
+				co.applyConfig(&cfg)
+				if cfg.err != nil {
+					return cfg, watchCfg, bindConfig{}, nil, cfg.err
+				}
+			}
+			for _, wo := range watchOpts {
+				wo.applyWatch(&watchCfg)
+			}
 		default:
 			bindOpts = append(bindOpts, opt)
 		}
@@ -515,6 +558,134 @@ func configHasWatchOption(opts []any) bool {
 		}
 	}
 	return false
+}
+
+type configOptionNode struct {
+	opt   configOption
+	watch ConfigWatchOption
+}
+
+func (n configOptionNode) Build() (fx.Option, error) {
+	return nil, fmt.Errorf("config option used outside Config")
+}
+
+func wrapConfigStoreParam(fn any, scope string) any {
+	fnVal := reflect.ValueOf(fn)
+	fnType := fnVal.Type()
+	if fnType.Kind() != reflect.Func || fnType.NumIn() != 1 {
+		return fn
+	}
+
+	tag := `optional:"true"`
+	if scope != "" {
+		tag = tag + ` name:"` + scope + `"`
+	}
+
+	inType := reflect.StructOf([]reflect.StructField{
+		{
+			Name:      "In",
+			Type:      reflect.TypeOf(fx.In{}),
+			Anonymous: true,
+		},
+		{
+			Name: "Store",
+			Type: reflect.TypeOf((*configStore)(nil)),
+			Tag:  reflect.StructTag(tag),
+		},
+	})
+
+	outTypes := []reflect.Type{fnType.Out(0)}
+	if fnType.NumOut() == 2 {
+		outTypes = append(outTypes, fnType.Out(1))
+	}
+
+	wrapperType := reflect.FuncOf([]reflect.Type{inType}, outTypes, false)
+	wrapper := reflect.MakeFunc(wrapperType, func(args []reflect.Value) []reflect.Value {
+		store := args[0].Field(1)
+		return fnVal.Call([]reflect.Value{store})
+	})
+
+	return wrapper.Interface()
+}
+
+func extractConfigOptionsFromNode(n Node) ([]configOption, []ConfigWatchOption, error) {
+	if n == nil {
+		return nil, nil, nil
+	}
+	switch v := n.(type) {
+	case moduleNode:
+		return extractConfigOptionsFromNodes(v.nodes)
+	case optionsNode:
+		return extractConfigOptionsFromNodes(v.nodes)
+	case conditionalNode:
+		ok, err := v.eval()
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			return nil, nil, nil
+		}
+		return extractConfigOptionsFromNodes(v.nodes)
+	case switchNode:
+		selected, err := v.selectNodes()
+		if err != nil {
+			return nil, nil, err
+		}
+		return extractConfigOptionsFromNodes(selected)
+	case provideNode:
+		if opt, ok := v.constructor.(configOption); ok {
+			return []configOption{opt}, nil, nil
+		}
+		if opt, ok := v.constructor.(ConfigWatchOption); ok {
+			return nil, []ConfigWatchOption{opt}, nil
+		}
+		return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", v)
+	case supplyNode:
+		if opt, ok := v.value.(configOption); ok {
+			return []configOption{opt}, nil, nil
+		}
+		if opt, ok := v.value.(ConfigWatchOption); ok {
+			return nil, []ConfigWatchOption{opt}, nil
+		}
+		return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", v)
+	case configOptionNode:
+		if v.opt != nil {
+			return []configOption{v.opt}, nil, nil
+		}
+		if v.watch != nil {
+			return nil, []ConfigWatchOption{v.watch}, nil
+		}
+		return nil, nil, nil
+	case errorNode:
+		return nil, nil, v.err
+	default:
+		// Allow raw configOption / ConfigWatchOption nodes in Switch/If branches.
+		if opt, ok := n.(configOption); ok {
+			return []configOption{opt}, nil, nil
+		}
+		if opt, ok := n.(ConfigWatchOption); ok {
+			return nil, []ConfigWatchOption{opt}, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", n)
+}
+
+func extractConfigOptionsFromNodes(nodes []Node) ([]configOption, []ConfigWatchOption, error) {
+	var configOpts []configOption
+	var watchOpts []ConfigWatchOption
+	for _, node := range nodes {
+		opts, watches, err := extractConfigOptionsFromNode(node)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(opts) > 0 {
+			configOpts = append(configOpts, opts...)
+		}
+		if len(watches) > 0 {
+			watchOpts = append(watchOpts, watches...)
+		}
+	}
+	return configOpts, watchOpts, nil
 }
 
 func loadViper(cfg configConfig, path string) (*viper.Viper, error) {

@@ -147,7 +147,17 @@ func applyReplacements(
 				final = append(final, node)
 			}
 		case provideNode:
-			final = append(final, n)
+			active := applicableSpecsAtIndex(specs, i)
+			activeTags := buildActiveTagMap(provides, active)
+			node, changed, err := rewriteProvideWithTags(v, activeTags)
+			if err != nil {
+				return nil, err
+			}
+			if changed {
+				final = append(final, node)
+			} else {
+				final = append(final, n)
+			}
 		case supplyNode:
 			final = append(final, n)
 		case invokeNode:
@@ -651,7 +661,7 @@ func replacementNodeWithTagSet(spec replaceSpec, target tagSet) (Node, error) {
 	switch n := spec.node.(type) {
 	case provideNode:
 		opts := overrideNameGroupOpts(n.opts, target)
-		return provideNode{constructor: n.constructor, opts: opts}, nil
+		return provideNode{constructor: n.constructor, opts: opts, paramTagsOverride: n.paramTagsOverride}, nil
 	case supplyNode:
 		opts := overrideNameGroupOpts(n.opts, target)
 		return supplyNode{value: n.value, opts: opts}, nil
@@ -728,6 +738,47 @@ func rewriteInvokeWithTags(node invokeNode, activeTags map[string]tagSet) (invok
 		opts:              node.opts,
 		paramTagsOverride: tags,
 	}, true, nil
+}
+
+func rewriteProvideWithTags(node provideNode, activeTags map[string]tagSet) (provideNode, bool, error) {
+	if len(activeTags) == 0 {
+		return node, false, nil
+	}
+	fnType := reflect.TypeOf(node.constructor)
+	if fnType == nil || fnType.Kind() != reflect.Func {
+		return node, false, nil
+	}
+	numIn := fnType.NumIn()
+	if numIn == 0 {
+		return node, false, nil
+	}
+	tags := make([]string, numIn)
+	if node.paramTagsOverride != nil {
+		for i := 0; i < numIn && i < len(node.paramTagsOverride); i++ {
+			tags[i] = node.paramTagsOverride[i]
+		}
+	}
+	changed := false
+	for i := 0; i < numIn; i++ {
+		paramType := fnType.In(i)
+		tag := tags[i]
+		name, group := parseTagNameGroup(tag)
+		key := fullTagKey(tagSet{typ: paramType, name: name, group: group})
+		scoped, ok := activeTags[key]
+		if !ok {
+			continue
+		}
+		newTag := rewriteParamTag(tag, scoped)
+		if newTag != tag {
+			tags[i] = newTag
+			changed = true
+		}
+	}
+	if !changed {
+		return node, false, nil
+	}
+	node.paramTagsOverride = tags
+	return node, true, nil
 }
 
 func parseTagNameGroup(tag string) (string, string) {

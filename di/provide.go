@@ -98,6 +98,7 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 	}
 
 	hasUntagged := false
+	noExplicitExports := len(cfg.exports) == 0 && cfg.pendingName == "" && cfg.pendingGroup == "" && !cfg.includeSelf
 	for _, exp := range cfg.exports {
 		if exp.grouped && exp.named {
 			return provideSpec{}, nil, fmt.Errorf("export cannot be both grouped and named")
@@ -142,6 +143,9 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 			}
 			if hasExport(spec.exports, rule.iface, rule.group) {
 				continue
+			}
+			if noExplicitExports {
+				spec.includeSelf = true
 			}
 			spec.exports = append(spec.exports, exportSpec{
 				typ:     rule.iface,
@@ -210,6 +214,8 @@ func tagSetHasType(tagSets []tagSet, typ reflect.Type) bool {
 type provideNode struct {
 	constructor any
 	opts        []any
+	// paramTagsOverride rewrites constructor params to target replacement values.
+	paramTagsOverride []string
 }
 
 func (n provideNode) Build() (fx.Option, error) {
@@ -217,13 +223,36 @@ func (n provideNode) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec, _, err := buildProvideSpec(cfg, n.constructor, nil)
+	constructor := n.constructor
+	if cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
+		wrapped, ok, err := wrapAutoInjectConstructor(constructor)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			constructor = wrapped
+		}
+	}
+	spec, _, err := buildProvideSpec(cfg, constructor, nil)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, n.constructor)
-	if err != nil {
-		return nil, err
+	finalConstructor := constructor
+	if len(spec.exports) > 0 || spec.includeSelf {
+		wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
+		if err != nil {
+			return nil, err
+		}
+		finalConstructor = wrapped
+	}
+	if n.paramTagsOverride != nil {
+		finalConstructor = fx.Annotate(finalConstructor, fx.ParamTags(n.paramTagsOverride...))
+	}
+	var provideOpt fx.Option
+	if cfg.privateSet && cfg.privateValue {
+		provideOpt = fx.Provide(finalConstructor, fx.Private)
+	} else {
+		provideOpt = fx.Provide(finalConstructor)
 	}
 	var out []fx.Option
 	out = append(out, provideOpt)
@@ -244,11 +273,27 @@ func (n supplyNode) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec, _, err := buildProvideSpec(cfg, nil, n.value)
+	value := n.value
+	var constructor any
+	if constructor == nil && cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
+		wrapped, ok, err := wrapAutoInjectSupply(value)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			constructor = wrapped
+		}
+	}
+	spec, _, err := buildProvideSpec(cfg, constructor, value)
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideSupplyOption(spec, n.value)
+	var provideOpt fx.Option
+	if constructor != nil {
+		provideOpt, err = buildProvideConstructorOption(spec, constructor)
+	} else {
+		provideOpt, err = buildProvideSupplyOption(spec, value)
+	}
 	if err != nil {
 		return nil, err
 	}
