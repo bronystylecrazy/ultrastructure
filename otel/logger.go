@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bronystylecrazy/ultrastructure/log"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -38,13 +39,17 @@ func AttachLoggerToOtel(base *zap.Logger, lp *LoggerProvider, config Config) *za
 		return base
 	}
 
-	otelCore := otelzap.NewCore(config.Service, otelzap.WithLoggerProvider(lp))
-
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
 		base.Error("otel error", zap.Error(err))
 	}))
 
-	return base.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		return zapcore.NewTee(c, otelCore)
+	return base.WithOptions(zap.WrapCore(func(_ zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(log.FilterFieldsCore(
+			base.Core(),
+			"trace.id",
+			"span.id",
+			"span.name",
+			"trace.sampled",
+		), otelzap.NewCore(config.Service, otelzap.WithLoggerProvider(lp)))
 	}))
 }

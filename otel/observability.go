@@ -82,10 +82,10 @@ func (o *Observability) Span(ctx context.Context, name string, opts ...trace.Spa
 	if span.IsRecording() {
 		spanCtx := span.SpanContext()
 		enrichedLogger = o.Logger.With(
-			zap.String("trace_id", spanCtx.TraceID().String()),
-			zap.Bool("trace_sampled", spanCtx.IsSampled()),
-			zap.String("span_name", name),
-			zap.String("span_id", spanCtx.SpanID().String()),
+			zap.String("trace.id", spanCtx.TraceID().String()),
+			zap.Bool("trace.sampled", spanCtx.IsSampled()),
+			zap.String("span.name", name),
+			zap.String("span.id", spanCtx.SpanID().String()),
 		)
 	}
 
