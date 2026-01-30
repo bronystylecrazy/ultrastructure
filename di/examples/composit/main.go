@@ -49,7 +49,7 @@ func main() {
 			for _, logSetter := range logSetters {
 				logSetter.SetLogger(log)
 			}
-		}, di.InOptional(), di.Group("loggers")),
+		}, di.Optional(), di.Group("loggers")),
 		di.Invoke(func(handlers ...Handler) {
 			for _, handler := range handlers {
 				handler.Handle()

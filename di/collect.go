@@ -120,6 +120,7 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 	}
 
 	if len(replacements) > 0 {
+		// Recompute tag sets after replacements so decorators target the final graph.
 		filtered := make([]provideItem, 0, len(provideItems))
 		for _, p := range provideItems {
 			if !matchesReplace(p.tagSets, replacements) {

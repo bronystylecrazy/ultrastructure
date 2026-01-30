@@ -20,13 +20,17 @@ type moduleNode struct {
 func (n moduleNode) Build() (fx.Option, error) {
 	var opts []fx.Option
 	for _, node := range n.nodes {
+		if _, ok := node.(decorateNode); ok {
+			// Decorators are composed globally at the app level.
+			continue
+		}
 		opt, err := node.Build()
 		if err != nil {
 			return nil, err
 		}
 		opts = append(opts, opt)
 	}
-	return fx.Module(n.name, opts...), nil
+	return fx.Module(n.name, packOptions(opts)), nil
 }
 
 type optionsNode struct {
@@ -36,17 +40,15 @@ type optionsNode struct {
 func (n optionsNode) Build() (fx.Option, error) {
 	var opts []fx.Option
 	for _, node := range n.nodes {
+		if _, ok := node.(decorateNode); ok {
+			// Decorators are composed globally at the app level.
+			continue
+		}
 		opt, err := node.Build()
 		if err != nil {
 			return nil, err
 		}
 		opts = append(opts, opt)
 	}
-	if len(opts) == 0 {
-		return fx.Options(), nil
-	}
-	if len(opts) == 1 {
-		return opts[0], nil
-	}
-	return fx.Options(opts...), nil
+	return packOptions(opts), nil
 }

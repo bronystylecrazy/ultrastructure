@@ -15,9 +15,11 @@ func Populate(args ...any) Node {
 			continue
 		}
 		if opt, ok := arg.(Option); ok {
+			// Collect param options separately from targets.
 			opts = append(opts, opt)
 			continue
 		}
+		// Non-option args are populate targets.
 		targets = append(targets, arg)
 	}
 	return populateNode{targets: targets, opts: opts}
@@ -30,25 +32,24 @@ type populateNode struct {
 
 func (n populateNode) Build() (fx.Option, error) {
 	if len(n.targets) == 0 {
+		// No targets: defer to fx.Populate() with no args.
 		return fx.Populate(), nil
 	}
 	if len(n.opts) == 0 {
+		// No tags: simple populate.
 		return fx.Populate(n.targets...), nil
 	}
 	var cfg paramConfig
-	for _, opt := range n.opts {
-		if opt != nil {
-			opt.applyParam(&cfg)
-		}
-		if cfg.err != nil {
-			return nil, cfg.err
-		}
+	if err := applyParamOptions(n.opts, &cfg); err != nil {
+		return nil, err
 	}
 	if len(cfg.tags) == 0 {
+		// Tags were not provided; populate directly.
 		return fx.Populate(n.targets...), nil
 	}
 	if len(n.targets) != 1 {
-		return nil, fmt.Errorf("Populate with tags requires a single target")
+		// Fx only supports tags when a single target is provided.
+		return nil, fmt.Errorf(errParamTagsSingleTarget)
 	}
 	annotated := fx.Annotate(n.targets[0], fx.ParamTags(cfg.tags...))
 	return fx.Populate(annotated), nil

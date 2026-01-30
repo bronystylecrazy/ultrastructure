@@ -15,6 +15,7 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Diagnostics installs a minimal error hook.
@@ -33,10 +34,23 @@ func (n diagnosticsNode) Build() (fx.Option, error) {
 	}) fxevent.Logger {
 		logger := in.Logger
 		if logger == nil {
-			logger = zap.NewNop()
+			logger = newDiagnosticsFallbackLogger()
 		}
+		logger = logger.WithOptions(zap.AddStacktrace(zapcore.FatalLevel))
 		return &diagnosticsLogger{simple: n.simple, logger: logger}
 	}), nil
+}
+
+func newDiagnosticsFallbackLogger() *zap.Logger {
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
+	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	logger, err := cfg.Build()
+	if err != nil {
+		return zap.NewNop()
+	}
+	return logger
 }
 
 type diagnosticsLogger struct {
@@ -47,6 +61,7 @@ type diagnosticsLogger struct {
 
 func (l *diagnosticsLogger) LogEvent(event fxevent.Event) {
 	var err error
+	// Extract error from any Fx event type that carries one.
 	switch e := event.(type) {
 	case *fxevent.Started:
 		err = e.Err
@@ -75,7 +90,7 @@ func (l *diagnosticsLogger) LogEvent(event fxevent.Event) {
 		return
 	}
 	l.once.Do(func() {
-		l.logger.Error("fx error", zap.String("diagnostic", formatDiagnostics(err, l.simple)))
+		l.logger.Error("fx error\n" + formatDiagnostics(err, l.simple))
 	})
 }
 

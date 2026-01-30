@@ -19,18 +19,18 @@ func Supply(value any, opts ...any) Node {
 
 func constructorResultType(constructor any) (reflect.Type, error) {
 	if constructor == nil {
-		return nil, fmt.Errorf("constructor must not be nil")
+		return nil, fmt.Errorf(errConstructorNil)
 	}
 	fn := reflect.TypeOf(constructor)
 	if fn.Kind() != reflect.Func {
-		return nil, fmt.Errorf("constructor must be a function")
+		return nil, fmt.Errorf(errConstructorMustBeFunction)
 	}
 	numOut := fn.NumOut()
 	if numOut < 1 || numOut > 2 {
-		return nil, fmt.Errorf("constructor must return 1 value (and optional error)")
+		return nil, fmt.Errorf(errConstructorReturnCount)
 	}
 	if numOut == 2 && fn.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		return nil, fmt.Errorf("constructor's second result must be error")
+		return nil, fmt.Errorf(errConstructorSecondResult)
 	}
 	return fn.Out(0), nil
 }
@@ -66,15 +66,15 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 		if value != nil {
 			baseType = reflect.TypeOf(value)
 			if baseType == nil {
-				return nil, fmt.Errorf("value must not be nil")
+				return nil, fmt.Errorf(errProvideValueNil)
 			}
 			return baseType, nil
 		}
-		return nil, fmt.Errorf("cannot infer type")
+		return nil, fmt.Errorf(errCannotInferType)
 	}
 	if cfg.pendingName != "" || cfg.pendingGroup != "" {
 		if len(cfg.exports) > 0 {
-			return provideSpec{}, nil, fmt.Errorf("name/group must apply to a single As, not mixed")
+			return provideSpec{}, nil, fmt.Errorf(errWithTagsSingleAs)
 		}
 		if _, err := getBaseType(); err != nil {
 			return provideSpec{}, nil, err
@@ -101,7 +101,7 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 	noExplicitExports := len(cfg.exports) == 0 && cfg.pendingName == "" && cfg.pendingGroup == "" && !cfg.includeSelf
 	for _, exp := range cfg.exports {
 		if exp.grouped && exp.named {
-			return provideSpec{}, nil, fmt.Errorf("export cannot be both grouped and named")
+			return provideSpec{}, nil, fmt.Errorf(errExportCannotBeGroupedAndNamed)
 		}
 		if exp.grouped {
 			tagSets = append(tagSets, tagSet{group: exp.group, typ: exp.typ})
@@ -133,6 +133,9 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 		}
 		for _, rule := range cfg.autoGroups {
 			if rule.iface == nil {
+				continue
+			}
+			if isAutoGroupIgnored(cfg, rule) {
 				continue
 			}
 			if rule.filter != nil && !rule.filter(baseType) {
@@ -167,6 +170,19 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 	}
 
 	return spec, tagSets, nil
+}
+
+func isAutoGroupIgnored(cfg bindConfig, rule autoGroupRule) bool {
+	for _, ignore := range cfg.autoGroupIgnores {
+		if ignore.iface != rule.iface {
+			continue
+		}
+		if ignore.group != "" && ignore.group != rule.group {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func implementsInterface(base reflect.Type, iface reflect.Type) bool {
@@ -225,6 +241,7 @@ func (n provideNode) Build() (fx.Option, error) {
 	}
 	constructor := n.constructor
 	if cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
+		// Wrap constructor to auto-inject fields before construction.
 		wrapped, ok, err := wrapAutoInjectConstructor(constructor)
 		if err != nil {
 			return nil, err
@@ -239,17 +256,24 @@ func (n provideNode) Build() (fx.Option, error) {
 	}
 	finalConstructor := constructor
 	if len(spec.exports) > 0 || spec.includeSelf {
+		// Wrap constructor to emit multiple exports (As/Group/Name).
 		wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
 		if err != nil {
 			return nil, err
 		}
 		finalConstructor = wrapped
 	}
-	if n.paramTagsOverride != nil {
-		finalConstructor = fx.Annotate(finalConstructor, fx.ParamTags(n.paramTagsOverride...))
+	paramTags := n.paramTagsOverride
+	if paramTags == nil {
+		paramTags = cfg.paramTags
+	}
+	if hasAnyTag(paramTags) {
+		// Apply positional param tags to the constructor.
+		finalConstructor = fx.Annotate(finalConstructor, fx.ParamTags(paramTags...))
 	}
 	var provideOpt fx.Option
 	if cfg.privateSet && cfg.privateValue {
+		// Hide this provider from other modules.
 		provideOpt = fx.Provide(finalConstructor, fx.Private)
 	} else {
 		provideOpt = fx.Provide(finalConstructor)
@@ -257,10 +281,7 @@ func (n provideNode) Build() (fx.Option, error) {
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
-	if len(out) == 1 {
-		return out[0], nil
-	}
-	return fx.Options(out...), nil
+	return packOptions(out), nil
 }
 
 type supplyNode struct {
@@ -272,6 +293,9 @@ func (n supplyNode) Build() (fx.Option, error) {
 	cfg, _, extra, err := parseBindOptions(n.opts)
 	if err != nil {
 		return nil, err
+	}
+	if hasAnyTag(cfg.paramTags) {
+		return nil, fmt.Errorf(errParamsNotSupportedWithSupply)
 	}
 	value := n.value
 	var constructor any
@@ -300,8 +324,14 @@ func (n supplyNode) Build() (fx.Option, error) {
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
-	if len(out) == 1 {
-		return out[0], nil
+	return packOptions(out), nil
+}
+
+func hasAnyTag(tags []string) bool {
+	for _, tag := range tags {
+		if tag != "" {
+			return true
+		}
 	}
-	return fx.Options(out...), nil
+	return false
 }

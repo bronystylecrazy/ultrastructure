@@ -32,18 +32,23 @@ func Run(nodes ...any) error {
 func (a *appNode) Build() fx.Option {
 	nextID := 0
 	nextScopeID := 1
+	// Apply graph-wide transformations before building.
 	nodes := applyAutoGroups(a.nodes, nil)
 	nodes = applyConfigScopes(nodes)
 	nodes = applyAutoInjectFields(nodes, false)
+	// Expand global config watch settings into each config node.
 	if cfg, ok := collectGlobalConfigWatch(nodes); ok {
 		nodes = applyGlobalConfigWatch(nodes, cfg)
 	}
+	// Attach config resolvers so Switch/If can evaluate with config values.
 	resolver := buildConfigResolver(nodes)
 	nodes = attachConfigResolvers(nodes, resolver)
+	// Apply replacements after scopes and resolvers are in place.
 	nodes, err := applyReplacements(nodes, nil, &nextID, &nextScopeID, []int{0}, nil)
 	if err != nil {
 		return fx.Error(err)
 	}
+	// Detect diagnostics nodes to enable panic recovery.
 	hasDiagnostics := false
 	for _, n := range nodes {
 		if _, ok := n.(diagnosticsNode); ok {
@@ -51,32 +56,40 @@ func (a *appNode) Build() fx.Option {
 			break
 		}
 	}
+	// Extract diagnostics options so they can be appended on error paths.
+	diagOpts, nodes := extractDiagnostics(nodes)
+	// Collect tag sets and decorate entries after all transformations.
 	_, decorators, err := collectGlobalTagSets(nodes)
 	if err != nil {
-		return fx.Error(err)
+		return fx.Options(append(diagOpts, fx.Error(err))...)
 	}
 	var opts []fx.Option
 	if hasDiagnostics {
+		// Match fx.App defaults when diagnostics is enabled.
 		opts = append(opts, fx.RecoverFromPanics())
 	}
 	for _, n := range nodes {
 		var opt fx.Option
 		if _, ok := n.(decorateNode); ok {
+			// Decorators are composed globally below.
 			continue
 		}
 		var err error
 		opt, err = n.Build()
 		if err != nil {
-			return fx.Error(err)
+			return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
 		}
 		opts = append(opts, opt)
 	}
 
 	decorateOpts, err := buildDecorators(decorators)
 	if err != nil {
-		return fx.Error(err)
+		return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
 	}
+	// Append composed decorators last.
 	opts = append(opts, decorateOpts...)
+	// Append diagnostics options last so they win logger selection.
+	opts = append(opts, diagOpts...)
 	if len(opts) == 0 {
 		return fx.Options()
 	}
@@ -86,10 +99,33 @@ func (a *appNode) Build() fx.Option {
 	return fx.Options(opts...)
 }
 
+func extractDiagnostics(nodes []Node) ([]fx.Option, []Node) {
+	if len(nodes) == 0 {
+		return nil, nodes
+	}
+	var diagOpts []fx.Option
+	out := make([]Node, 0, len(nodes))
+	for _, n := range nodes {
+		if _, ok := n.(diagnosticsNode); ok {
+			// Build diagnostics immediately to include in error paths.
+			opt, err := n.Build()
+			if err != nil {
+				diagOpts = append(diagOpts, fx.Error(err))
+			} else {
+				diagOpts = append(diagOpts, opt)
+			}
+			continue
+		}
+		out = append(out, n)
+	}
+	return diagOpts, out
+}
+
 // Run starts the app and restarts it when ConfigWatch triggers.
 func (a *appNode) Run() error {
 	restart := make(restartSignal, 1)
 	for {
+		// Rebuild the app each time a config watch triggers a restart.
 		app := fx.New(
 			fx.Supply(restart),
 			a.Build(),
@@ -99,17 +135,21 @@ func (a *appNode) Run() error {
 		}
 		select {
 		case <-restart:
-			stopCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_ = app.Stop(stopCtx)
-			cancel()
+			// Gracefully stop and rebuild on config changes.
+			stopApp(app)
 			continue
 		case <-app.Done():
-			stopCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_ = app.Stop(stopCtx)
-			cancel()
+			// Stop when the app exits normally.
+			stopApp(app)
 			return nil
 		}
 	}
+}
+
+func stopApp(app *fx.App) {
+	stopCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	_ = app.Stop(stopCtx)
+	cancel()
 }
 
 func collectNodes(items []any) []Node {
@@ -121,13 +161,16 @@ func collectNodes(items []any) []Node {
 		case Node:
 			out = append(out, v)
 		case configOption:
+			// Allow config options at top-level for convenience.
 			out = append(out, configOptionNode{opt: v})
 		case ConfigWatchOption:
+			// Allow watch options at top-level to configure global watchers.
 			out = append(out, configOptionNode{watch: v})
 		case fx.Option:
+			// Accept raw fx.Options inside di.App.
 			out = append(out, fxOptionNode{opt: v})
 		default:
-			out = append(out, errorNode{err: fmt.Errorf("unsupported node type %T", it)})
+			out = append(out, errorNode{err: fmt.Errorf(errUnsupportedNodeType, it)})
 		}
 	}
 	return out

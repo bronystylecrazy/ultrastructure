@@ -9,12 +9,6 @@ import (
 var ModuleName = "ultrastructure/log"
 
 func Module(extends ...di.Node) di.Node {
-
-	anyExtends := make([]any, len(extends))
-	for i, ext := range extends {
-		anyExtends[i] = ext
-	}
-
 	return di.Options(
 		di.Provide(NewZapLogger),
 		fx.WithLogger(NewEventLogger),
@@ -26,6 +20,6 @@ func Module(extends ...di.Node) di.Node {
 				di.DefaultCase(di.ConfigDefault("log.level", "info")),
 			),
 		),
-		di.Options(anyExtends...),
+		di.Options(di.ConvertAnys(extends)...),
 	)
 }

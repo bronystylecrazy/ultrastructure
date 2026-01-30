@@ -9,8 +9,21 @@ import (
 
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
+// packOptions returns a single fx.Option with the same semantics as the slice.
+func packOptions(opts []fx.Option) fx.Option {
+	switch len(opts) {
+	case 0:
+		return fx.Options()
+	case 1:
+		return opts[0]
+	default:
+		return fx.Options(opts...)
+	}
+}
+
 func buildProvideConstructorOption(spec provideSpec, constructor any) (fx.Option, error) {
 	if len(spec.exports) == 0 && !spec.includeSelf {
+		// No export rewriting needed; provide directly.
 		if spec.privateSet && spec.privateValue {
 			return fx.Provide(constructor, fx.Private), nil
 		}
@@ -45,23 +58,24 @@ func buildProvideSupplyOption(spec provideSpec, value any) (fx.Option, error) {
 
 func buildGroupedConstructor(constructor any, exports []exportSpec, includeSelf bool) (any, error) {
 	if constructor == nil {
-		return nil, fmt.Errorf("constructor must not be nil")
+		return nil, fmt.Errorf(errConstructorNil)
 	}
 	if len(exports) == 0 && !includeSelf {
+		// Nothing to group; return constructor unchanged.
 		return constructor, nil
 	}
 	fn := reflect.TypeOf(constructor)
 	if fn.Kind() != reflect.Func {
-		return nil, fmt.Errorf("constructor must be a function, got %v", fn)
+		return nil, fmt.Errorf(errConstructorMustBeFunctionGot, fn)
 	}
 	numOut := fn.NumOut()
 	if numOut < 1 || numOut > 2 {
-		return nil, fmt.Errorf("constructor must return 1 value (and optional error), got %d results", numOut)
+		return nil, fmt.Errorf(errConstructorReturnCountGot, numOut)
 	}
 	hasErr := false
 	if numOut == 2 {
 		if fn.Out(1) != errorType {
-			return nil, fmt.Errorf("constructor's second result must be error")
+			return nil, fmt.Errorf(errConstructorSecondResult)
 		}
 		hasErr = true
 	}
@@ -140,10 +154,10 @@ func buildGroupedConstructor(constructor any, exports []exportSpec, includeSelf 
 
 func buildGroupedSupply(value any, exports []exportSpec, includeSelf bool) (any, error) {
 	if value == nil {
-		return nil, fmt.Errorf("supply value must not be nil")
+		return nil, fmt.Errorf(errSupplyValueNil)
 	}
 	if _, ok := value.(error); ok {
-		return nil, fmt.Errorf("supply value must not be error")
+		return nil, fmt.Errorf(errSupplyValueNotError)
 	}
 	valueType := reflect.TypeOf(value)
 	if err := validateExports(valueType, exports); err != nil {
@@ -196,23 +210,23 @@ func buildGroupedSupply(value any, exports []exportSpec, includeSelf bool) (any,
 func validateExports(valueType reflect.Type, exports []exportSpec) error {
 	for _, exp := range exports {
 		if exp.typ == nil {
-			return fmt.Errorf("export type must not be nil")
+			return fmt.Errorf(errExportTypeNil)
 		}
 		if exp.grouped {
 			if exp.group == "" {
-				return fmt.Errorf("export group must not be empty")
+				return fmt.Errorf(errExportGroupEmpty)
 			}
 			if exp.named {
-				return fmt.Errorf("export cannot be both grouped and named")
+				return fmt.Errorf(errExportCannotBeGroupedAndNamed)
 			}
 		} else if exp.group != "" {
-			return fmt.Errorf("export group must be empty for ungrouped export")
+			return fmt.Errorf(errExportGroupMustBeEmpty)
 		}
 		if exp.named && exp.name == "" {
-			return fmt.Errorf("export name must not be empty")
+			return fmt.Errorf(errExportNameEmpty)
 		}
 		if !valueType.AssignableTo(exp.typ) {
-			return fmt.Errorf("%v is not assignable to %v", valueType, exp.typ)
+			return fmt.Errorf(errNotAssignableToType, valueType, exp.typ)
 		}
 	}
 	return nil

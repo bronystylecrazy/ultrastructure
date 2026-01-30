@@ -33,5 +33,8 @@ func NewZapLogger(cfg Config) (*zap.Logger, error) {
 }
 
 func NewEventLogger(log *zap.Logger) fxevent.Logger {
+	if build.IsProduction() {
+		return fxevent.NopLogger
+	}
 	return &fxevent.ZapLogger{Logger: log}
 }

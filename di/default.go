@@ -22,20 +22,21 @@ func (n defaultNode) Build() (fx.Option, error) {
 		return nil, err
 	}
 	if len(decorators) > 0 {
-		return nil, fmt.Errorf("default does not support decorate options")
+		return nil, fmt.Errorf(errDefaultNoDecorate)
 	}
 	if cfg.privateSet {
-		return nil, fmt.Errorf("default does not support private/public")
+		return nil, fmt.Errorf(errDefaultNoPrivatePublic)
 	}
 	if cfg.pendingName != "" || cfg.pendingGroup != "" {
-		return nil, fmt.Errorf("default does not support named or grouped exports")
+		return nil, fmt.Errorf(errDefaultNoNamedOrGroupedExports)
 	}
+	// Defaults are only allowed for ungrouped, unnamed exports.
 	for _, exp := range cfg.exports {
 		if exp.grouped {
-			return nil, fmt.Errorf("default does not support groups")
+			return nil, fmt.Errorf(errDefaultNoGroups)
 		}
 		if exp.named {
-			return nil, fmt.Errorf("default does not support named exports")
+			return nil, fmt.Errorf(errDefaultNoNamedExports)
 		}
 	}
 	spec, _, err := buildProvideSpec(cfg, nil, n.value)

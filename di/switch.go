@@ -31,7 +31,7 @@ func Switch(items ...any) Node {
 			}
 		case switchDefaultNode:
 			if s.hasDefault {
-				return errorNode{err: fmt.Errorf("switch allows only one Default")}
+				return errorNode{err: fmt.Errorf(errSwitchDefaultOnlyOnce)}
 			}
 			s.defaultCase = v
 			s.hasDefault = true
@@ -40,22 +40,22 @@ func Switch(items ...any) Node {
 				continue
 			}
 			if s.hasDefault {
-				return errorNode{err: fmt.Errorf("switch allows only one Default")}
+				return errorNode{err: fmt.Errorf(errSwitchDefaultOnlyOnce)}
 			}
 			s.defaultCase = *v
 			s.hasDefault = true
 		default:
-			return errorNode{err: fmt.Errorf("switch accepts only Case/WhenCase/DefaultCase, got %T", it)}
+			return errorNode{err: fmt.Errorf(errSwitchUnsupportedNode, it)}
 		}
 	}
 	return s
 }
 
 type caseNode struct {
-	mode  condMode
-	cond  bool
-	when  any
-	nodes []Node
+	mode     condMode
+	cond     bool
+	when     any
+	nodes    []Node
 	resolver func(reflect.Type) (any, error)
 }
 
@@ -92,14 +92,12 @@ func (n switchNode) Build() (fx.Option, error) {
 		}
 		opts = append(opts, opt)
 	}
-	if len(opts) == 1 {
-		return opts[0], nil
-	}
-	return fx.Options(opts...), nil
+	return packOptions(opts), nil
 }
 
 func (n switchNode) selectNodes() ([]Node, error) {
 	if n.resolved {
+		// Avoid re-evaluating cases after resolution.
 		return n.selected, nil
 	}
 	for _, c := range n.cases {
@@ -123,10 +121,10 @@ func (n caseNode) eval() (bool, error) {
 		return n.cond, nil
 	case condWhen:
 		if n.when == nil {
-			return false, fmt.Errorf("when function must not be nil")
+			return false, fmt.Errorf(errWhenFunctionNil)
 		}
 		return evalWhen(n.when, n.resolver)
 	default:
-		return false, fmt.Errorf("unknown condition mode")
+		return false, fmt.Errorf(errUnknownConditionMode)
 	}
 }

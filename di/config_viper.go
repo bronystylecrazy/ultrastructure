@@ -1,20 +1,16 @@
 package di
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 // Config loads a configuration file or binds a key from a shared ConfigFile.
@@ -86,7 +82,7 @@ func (n configNode[T]) Build() (fx.Option, error) {
 			v = store.v
 		} else {
 			if path == "" && !hasConfigSource(cfg) {
-				return out, fmt.Errorf("config source not provided; add di.ConfigFile or Config* options")
+				return out, fmt.Errorf(errConfigSourceMissing)
 			}
 			loaded, err := loadViper(cfg, path)
 			if err != nil {
@@ -111,13 +107,10 @@ func (n configNode[T]) Build() (fx.Option, error) {
 	var out []fx.Option
 	out = append(out, provideOpt)
 	if watchCfg.enabled {
-		out = append(out, buildConfigWatchOption(watchCfg, key, cfg, path))
+		out = append(out, buildConfigWatchOption(watchCfg, key, cfg, path, n.scope))
 	}
 	out = append(out, extra...)
-	if len(out) == 1 {
-		return out[0], nil
-	}
-	return fx.Options(out...), nil
+	return packOptions(out), nil
 }
 
 type configStore struct {
@@ -129,8 +122,8 @@ type configStore struct {
 }
 
 type configFileNode struct {
-	path string
-	opts []any
+	path  string
+	opts  []any
 	scope string
 }
 
@@ -159,15 +152,12 @@ func (n configFileNode) Build() (fx.Option, error) {
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
-	if len(out) == 1 {
-		return out[0], nil
-	}
-	return fx.Options(out...), nil
+	return packOptions(out), nil
 }
 
 type configBindNode[T any] struct {
-	key  string
-	opts []any
+	key   string
+	opts  []any
 	scope string
 }
 
@@ -186,17 +176,17 @@ func (n configBindNode[T]) Build() (fx.Option, error) {
 		var v *viper.Viper
 		if store != nil && store.v != nil {
 			v = store.v
-		} else if cfg.configName != "" || cfg.configType != "" || len(cfg.configPaths) > 0 || cfg.envPrefix != "" || cfg.keyReplacer != nil || cfg.automaticEnv || cfg.optional || len(cfg.defaults) > 0 || len(cfg.hooks) > 0 {
+		} else if hasConfigOptions(cfg) {
 			loaded, err := loadViper(cfg, "")
 			if err != nil {
 				return out, err
 			}
 			v = loaded
 		} else {
-			return out, fmt.Errorf("config source not provided; add di.ConfigFile or Config* options")
+			return out, fmt.Errorf(errConfigSourceMissing)
 		}
 		if v == nil {
-			return out, fmt.Errorf("config source not available")
+			return out, fmt.Errorf(errConfigSourceUnavailable)
 		}
 		return out, decodeConfig(v, n.key, &out)
 	}
@@ -212,10 +202,7 @@ func (n configBindNode[T]) Build() (fx.Option, error) {
 	var out []fx.Option
 	out = append(out, provideOpt)
 	out = append(out, extra...)
-	if len(out) == 1 {
-		return out[0], nil
-	}
-	return fx.Options(out...), nil
+	return packOptions(out), nil
 }
 
 func (n configBindNode[T]) provideTagSets() ([]tagSet, error) {
@@ -232,113 +219,6 @@ func (n configBindNode[T]) provideTagSets() ([]tagSet, error) {
 		return nil, err
 	}
 	return tagSets, nil
-}
-
-// ConfigWatch enables config watching for this config or for the whole app if used at top-level.
-func ConfigWatch(opts ...ConfigWatchOption) ConfigWatchOption {
-	cfg := configWatchConfig{enabled: true}
-	for _, opt := range opts {
-		if opt != nil {
-			opt.applyWatch(&cfg)
-		}
-	}
-	return configWatchAll{cfg: cfg}
-}
-
-type ConfigWatchOption interface {
-	applyWatch(*configWatchConfig)
-}
-
-type configWatchOptionFunc func(*configWatchConfig)
-
-func (f configWatchOptionFunc) applyWatch(cfg *configWatchConfig) { f(cfg) }
-
-type configWatchAll struct {
-	cfg configWatchConfig
-}
-
-func (c configWatchAll) applyWatch(cfg *configWatchConfig) {
-	if cfg.disabled {
-		return
-	}
-	cfg.enabled = true
-	if c.cfg.debounce != 0 {
-		cfg.debounce = c.cfg.debounce
-	}
-	cfg.keys = append(cfg.keys, c.cfg.keys...)
-}
-
-func (c configWatchAll) Build() (fx.Option, error) {
-	return fx.Options(), nil
-}
-
-// ConfigWatchDebounce sets a debounce duration for config change events.
-func ConfigWatchDebounce(d time.Duration) ConfigWatchOption {
-	return configWatchOptionFunc(func(cfg *configWatchConfig) {
-		if cfg.disabled {
-			return
-		}
-		cfg.enabled = true
-		if d < 0 {
-			d = 0
-		}
-		cfg.debounce = d
-	})
-}
-
-// ConfigWatchKeys watches only specific keys (e.g. "app", "db.host").
-func ConfigWatchKeys(keys ...string) ConfigWatchOption {
-	return configWatchOptionFunc(func(cfg *configWatchConfig) {
-		if cfg.disabled {
-			return
-		}
-		cfg.enabled = true
-		cfg.keys = append(cfg.keys, keys...)
-	})
-}
-
-type configWatchConfig struct {
-	enabled  bool
-	disabled bool
-	debounce time.Duration
-	keys     []string
-}
-
-type configDisableWatch struct{}
-
-// ConfigDisableWatch disables watching for this config.
-func ConfigDisableWatch() ConfigWatchOption {
-	return configDisableWatch{}
-}
-
-func (configDisableWatch) applyWatch(cfg *configWatchConfig) {
-	cfg.enabled = false
-	cfg.disabled = true
-	cfg.keys = nil
-}
-
-func snapshotKeys(v *viper.Viper, keys []string) (string, error) {
-	if v == nil {
-		return "", fmt.Errorf("viper is nil")
-	}
-	var payload any
-	if len(keys) == 0 {
-		payload = v.AllSettings()
-	} else {
-		out := make(map[string]any, len(keys))
-		for _, key := range keys {
-			if key == "" {
-				continue
-			}
-			out[key] = v.Get(key)
-		}
-		payload = out
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
 }
 
 type configConfig struct {
@@ -369,7 +249,7 @@ func ConfigType(kind string) configOption {
 			return
 		}
 		if kind == "" {
-			cfg.err = fmt.Errorf("config type must not be empty")
+			cfg.err = fmt.Errorf(errConfigTypeEmpty)
 			return
 		}
 		cfg.configType = kind
@@ -383,7 +263,7 @@ func ConfigName(name string) configOption {
 			return
 		}
 		if name == "" {
-			cfg.err = fmt.Errorf("config name must not be empty")
+			cfg.err = fmt.Errorf(errConfigNameEmpty)
 			return
 		}
 		cfg.configName = name
@@ -397,7 +277,7 @@ func ConfigPath(path string) configOption {
 			return
 		}
 		if path == "" {
-			cfg.err = fmt.Errorf("config path must not be empty")
+			cfg.err = fmt.Errorf(errConfigPathEmpty)
 			return
 		}
 		cfg.configPaths = append(cfg.configPaths, path)
@@ -566,7 +446,7 @@ type configOptionNode struct {
 }
 
 func (n configOptionNode) Build() (fx.Option, error) {
-	return nil, fmt.Errorf("config option used outside Config")
+	return nil, fmt.Errorf(errConfigOptionOutsideConfig)
 }
 
 func wrapConfigStoreParam(fn any, scope string) any {
@@ -639,7 +519,7 @@ func extractConfigOptionsFromNode(n Node) ([]configOption, []ConfigWatchOption, 
 		if opt, ok := v.constructor.(ConfigWatchOption); ok {
 			return nil, []ConfigWatchOption{opt}, nil
 		}
-		return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", v)
+		return nil, nil, fmt.Errorf(errUnsupportedConfigNode, v)
 	case supplyNode:
 		if opt, ok := v.value.(configOption); ok {
 			return []configOption{opt}, nil, nil
@@ -647,7 +527,7 @@ func extractConfigOptionsFromNode(n Node) ([]configOption, []ConfigWatchOption, 
 		if opt, ok := v.value.(ConfigWatchOption); ok {
 			return nil, []ConfigWatchOption{opt}, nil
 		}
-		return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", v)
+		return nil, nil, fmt.Errorf(errUnsupportedConfigNode, v)
 	case configOptionNode:
 		if v.opt != nil {
 			return []configOption{v.opt}, nil, nil
@@ -667,7 +547,7 @@ func extractConfigOptionsFromNode(n Node) ([]configOption, []ConfigWatchOption, 
 			return nil, []ConfigWatchOption{opt}, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("unsupported node type %T inside Config options", n)
+	return nil, nil, fmt.Errorf(errUnsupportedConfigNode, n)
 }
 
 func extractConfigOptionsFromNodes(nodes []Node) ([]configOption, []ConfigWatchOption, error) {
@@ -690,6 +570,7 @@ func extractConfigOptionsFromNodes(nodes []Node) ([]configOption, []ConfigWatchO
 
 func loadViper(cfg configConfig, path string) (*viper.Viper, error) {
 	v := viper.New()
+	// Apply env/config options before reading from disk.
 	if cfg.envPrefix != "" {
 		v.SetEnvPrefix(cfg.envPrefix)
 	}
@@ -700,6 +581,7 @@ func loadViper(cfg configConfig, path string) (*viper.Viper, error) {
 		v.AutomaticEnv()
 	}
 	if path != "" {
+		// Explicit file path overrides name/path search.
 		v.SetConfigFile(path)
 	}
 	if cfg.configType != "" {
@@ -722,6 +604,7 @@ func loadViper(cfg configConfig, path string) (*viper.Viper, error) {
 		}
 	}
 	if path != "" || cfg.configName != "" {
+		// Read config from file if a file path or name is configured.
 		if err := v.ReadInConfig(); err != nil {
 			var nf viper.ConfigFileNotFoundError
 			if cfg.optional && errors.As(err, &nf) {
@@ -755,157 +638,22 @@ func hasConfigSource(cfg configConfig) bool {
 	return cfg.configName != "" || cfg.configType != "" || len(cfg.configPaths) > 0
 }
 
-func buildConfigWatchOption(cfg configWatchConfig, key string, config configConfig, path string) fx.Option {
-	if !cfg.enabled {
-		return fx.Options()
-	}
-	if cfg.debounce == 0 {
-		cfg.debounce = 200 * time.Millisecond
-	}
-	keys := cfg.keys
-	if len(keys) == 0 && key != "" {
-		keys = []string{key}
-	}
-	return fx.Invoke(func(in struct {
-		fx.In
-		Store   *configStore  `optional:"true"`
-		Restart restartSignal `optional:"true"`
-		Logger  *zap.Logger   `optional:"true"`
-	}) {
-		if in.Restart == nil {
-			return
-		}
-		if in.Store != nil && in.Store.v != nil {
-			in.Store.addWatch(keys, cfg.debounce, in.Restart, in.Logger)
-			return
-		}
-		var v *viper.Viper
-		if path != "" || hasConfigSource(config) {
-			loaded, err := loadViper(config, path)
-			if err != nil {
-				return
-			}
-			v = loaded
-		}
-		if v == nil {
-			return
-		}
-		installSingleWatch(v, keys, cfg.debounce, in.Restart, in.Logger)
-	})
-}
-
-type configWatcher struct {
-	keys     []string
-	debounce time.Duration
-	restart  restartSignal
-	logger   *zap.Logger
-	last     string
-	timer    *time.Timer
-	pending  bool
-}
-
-func (s *configStore) addWatch(keys []string, debounce time.Duration, restart restartSignal, logger *zap.Logger) {
-	if s.v == nil || restart == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	w := &configWatcher{
-		keys:     keys,
-		debounce: debounce,
-		restart:  restart,
-		logger:   logger,
-	}
-	w.last, _ = snapshotKeys(s.v, keys)
-	s.watchers = append(s.watchers, w)
-	if s.watchActive {
-		return
-	}
-	s.watchActive = true
-	s.v.OnConfigChange(func(_ fsnotify.Event) {
-		s.handleChange()
-	})
-	s.v.WatchConfig()
-}
-
-func (s *configStore) handleChange() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, w := range s.watchers {
-		next, err := snapshotKeys(s.v, w.keys)
-		if err == nil && w.last == next {
-			continue
-		}
-		w.last = next
-		if w.logger != nil {
-			w.logger.Info("config changed, restarting...")
-		}
-		scheduleRestart(w)
-	}
-}
-
-func scheduleRestart(w *configWatcher) {
-	if w.debounce == 0 {
-		select {
-		case w.restart <- struct{}{}:
-		default:
-		}
-		return
-	}
-	if w.timer == nil {
-		w.timer = time.NewTimer(w.debounce)
-		w.pending = true
-		go func() {
-			for range w.timer.C {
-				if !w.pending {
-					return
-				}
-				w.pending = false
-				select {
-				case w.restart <- struct{}{}:
-				default:
-				}
-				return
-			}
-		}()
-		return
-	}
-	if !w.timer.Stop() {
-		select {
-		case <-w.timer.C:
-		default:
-		}
-	}
-	w.timer.Reset(w.debounce)
-	w.pending = true
-}
-
-func installSingleWatch(v *viper.Viper, keys []string, debounce time.Duration, restart restartSignal, logger *zap.Logger) {
-	w := &configWatcher{
-		keys:     keys,
-		debounce: debounce,
-		restart:  restart,
-		logger:   logger,
-	}
-	w.last, _ = snapshotKeys(v, keys)
-	v.OnConfigChange(func(_ fsnotify.Event) {
-		next, err := snapshotKeys(v, keys)
-		if err == nil && w.last == next {
-			return
-		}
-		w.last = next
-		if w.logger != nil {
-			w.logger.Info("config changed, restarting...")
-		}
-		scheduleRestart(w)
-	})
-	v.WatchConfig()
+func hasConfigOptions(cfg configConfig) bool {
+	return cfg.configName != "" ||
+		cfg.configType != "" ||
+		len(cfg.configPaths) > 0 ||
+		cfg.envPrefix != "" ||
+		cfg.keyReplacer != nil ||
+		cfg.automaticEnv ||
+		cfg.optional ||
+		len(cfg.defaults) > 0 ||
+		len(cfg.hooks) > 0
 }
 
 func decodeConfig(v *viper.Viper, key string, out any) error {
 	t := reflect.TypeOf(out)
 	if t == nil || t.Kind() != reflect.Pointer {
-		return fmt.Errorf("config target must be a pointer")
+		return fmt.Errorf(errConfigTargetMustBePointer)
 	}
 	elem := t.Elem()
 	if elem.Kind() != reflect.Struct {

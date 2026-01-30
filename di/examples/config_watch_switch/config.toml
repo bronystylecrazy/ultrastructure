@@ -1,5 +1,0 @@
-[app]
-log = "dev"
-
-[db]
-message = "Sirawit Pratoomsuwan"

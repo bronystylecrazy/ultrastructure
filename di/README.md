@@ -68,6 +68,19 @@ app := di.App(
 ).Build()
 ```
 
+## Param tags (Params)
+
+`Params` scopes options to positional parameter tags for `Provide`, `Invoke`, and `Decorate`.
+
+```go
+app := di.App(
+	di.Provide(NewDB, di.Name("primary")),
+	di.Provide(NewDB, di.Name("test")),
+	di.Provide(NewService, di.Params(di.Name("test"))),
+	di.Invoke(func(db *DB) {}, di.Params(di.Name("primary"))),
+).Build()
+```
+
 ## Conditional wiring
 
 Gate providers based on environment and select defaults.

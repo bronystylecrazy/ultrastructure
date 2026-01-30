@@ -38,6 +38,7 @@ type conditionalNode struct {
 
 func (n *conditionalNode) eval() (bool, error) {
 	if n.evaluated {
+		// Cache the result to avoid re-evaluating conditions.
 		return n.result, nil
 	}
 	switch n.mode {
@@ -45,7 +46,7 @@ func (n *conditionalNode) eval() (bool, error) {
 		n.result = n.cond
 	case condWhen:
 		if n.when == nil {
-			return false, fmt.Errorf("when function must not be nil")
+			return false, fmt.Errorf(errWhenFunctionNil)
 		}
 		ok, err := evalWhen(n.when, n.resolver)
 		if err != nil {
@@ -53,7 +54,7 @@ func (n *conditionalNode) eval() (bool, error) {
 		}
 		n.result = ok
 	default:
-		return false, fmt.Errorf("unknown condition mode")
+		return false, fmt.Errorf(errUnknownConditionMode)
 	}
 	n.evaluated = true
 	return n.result, nil
@@ -75,30 +76,24 @@ func (n conditionalNode) Build() (fx.Option, error) {
 		}
 		opts = append(opts, opt)
 	}
-	if len(opts) == 0 {
-		return fx.Options(), nil
-	}
-	if len(opts) == 1 {
-		return opts[0], nil
-	}
-	return fx.Options(opts...), nil
+	return packOptions(opts), nil
 }
 
 func evalWhen(fn any, resolver func(reflect.Type) (any, error)) (bool, error) {
 	fnType := reflect.TypeOf(fn)
 	if fnType == nil || fnType.Kind() != reflect.Func {
-		return false, fmt.Errorf("when must be a function")
+		return false, fmt.Errorf(errWhenMustBeFunction)
 	}
 	if fnType.NumOut() != 1 || fnType.Out(0).Kind() != reflect.Bool {
-		return false, fmt.Errorf("when must return bool")
+		return false, fmt.Errorf(errWhenMustReturnBool)
 	}
 	if fnType.NumIn() > 8 {
-		return false, fmt.Errorf("when must accept at most 8 parameters")
+		return false, fmt.Errorf(errWhenParamLimit)
 	}
 	var args []reflect.Value
 	if fnType.NumIn() > 0 {
 		if resolver == nil {
-			return false, fmt.Errorf("when requires config values but no config source available")
+			return false, fmt.Errorf(errWhenRequiresConfig)
 		}
 		for i := 0; i < fnType.NumIn(); i++ {
 			paramType := fnType.In(i)
@@ -106,12 +101,12 @@ func evalWhen(fn any, resolver func(reflect.Type) (any, error)) (bool, error) {
 			if err != nil {
 				var notFound configTypeNotFoundError
 				if errors.As(err, &notFound) {
-					return false, fmt.Errorf("when parameter %s is not a config type", paramType)
+					return false, fmt.Errorf(errWhenParamNotConfigType, paramType)
 				}
 				return false, err
 			}
 			if val == nil {
-				return false, fmt.Errorf("when could not resolve %s", paramType)
+				return false, fmt.Errorf(errWhenCouldNotResolve, paramType)
 			}
 			args = append(args, reflect.ValueOf(val))
 		}

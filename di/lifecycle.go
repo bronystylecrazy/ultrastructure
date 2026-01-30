@@ -33,29 +33,30 @@ type lifecycleNode struct {
 func (n lifecycleNode) Build() (fx.Option, error) {
 	fnType := reflect.TypeOf(n.fn)
 	if fnType == nil || fnType.Kind() != reflect.Func {
-		return nil, fmt.Errorf("lifecycle hook must be a function")
+		return nil, fmt.Errorf(errLifecycleHookFunction)
 	}
 	if fnType.NumIn() > 1 {
-		return nil, fmt.Errorf("lifecycle hook must accept 0 or 1 parameters")
+		return nil, fmt.Errorf(errLifecycleHookParamCount)
 	}
 	if fnType.NumOut() > 1 {
-		return nil, fmt.Errorf("lifecycle hook must return 0 or 1 values")
+		return nil, fmt.Errorf(errLifecycleHookReturnCount)
 	}
 	if fnType.NumOut() == 1 && fnType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
-		return nil, fmt.Errorf("lifecycle hook return must be error")
+		return nil, fmt.Errorf(errLifecycleHookReturnType)
 	}
 	if fnType.NumIn() == 1 {
 		param := fnType.In(0)
 		ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
 		lifecycleType := reflect.TypeOf((*fx.Lifecycle)(nil)).Elem()
 		if param != ctxType && param != lifecycleType {
-			return nil, fmt.Errorf("lifecycle hook param must be context.Context or fx.Lifecycle")
+			return nil, fmt.Errorf(errLifecycleHookParamType)
 		}
 	}
 
 	makeHook := func(lc fx.Lifecycle) func(context.Context) error {
 		return func(ctx context.Context) error {
 			var args []reflect.Value
+			// Support hooks taking either context.Context or fx.Lifecycle.
 			if fnType.NumIn() == 1 {
 				param := fnType.In(0)
 				if param == reflect.TypeOf((*fx.Lifecycle)(nil)).Elem() {

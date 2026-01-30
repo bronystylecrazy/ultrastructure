@@ -20,6 +20,7 @@ func applyReplacements(
 	scopeID := scopeStack[len(scopeStack)-1]
 	if provides == nil {
 		var err error
+		// Collect providers in the current scope for replacement targeting.
 		provides, err = collectScopeProvides(nodes)
 		if err != nil {
 			return nil, err
@@ -31,6 +32,7 @@ func applyReplacements(
 	for i, n := range nodes {
 		switch r := n.(type) {
 		case replaceNode:
+			// Build a replacement spec anchored at this position.
 			spec, err := buildReplaceSpec(r, i)
 			if err != nil {
 				return nil, err
@@ -42,6 +44,7 @@ func applyReplacements(
 			localSpecs = append(localSpecs, spec)
 			localByIndex[i] = spec
 		case defaultNode:
+			// Defaults are replacements that only apply if not matched by any replace.
 			spec, err := buildDefaultSpec(r, i)
 			if err != nil {
 				return nil, err
@@ -66,7 +69,7 @@ func applyReplacements(
 			*nextScopeID++
 			childStack := append(append([]int{}, scopeStack...), childScopeID)
 			active := applicableSpecsAtIndex(specs, i)
-			child, err := applyReplacements(v.nodes, inheritSpecs(active), nextID, nextScopeID, childStack, nil)
+			child, err := applyReplacements(v.nodes, inheritSpecs(active), nextID, nextScopeID, childStack, provides)
 			if err != nil {
 				return nil, err
 			}
@@ -207,13 +210,13 @@ func (n replaceNode) Build() (fx.Option, error) {
 		return nil, err
 	}
 	if len(decorators) > 0 {
-		return nil, fmt.Errorf("replace does not support decorate options")
+		return nil, fmt.Errorf(errReplaceNoDecorate)
 	}
 	if cfg.privateSet {
-		return nil, fmt.Errorf("replace does not support private/public")
+		return nil, fmt.Errorf(errReplaceNoPrivatePublic)
 	}
 	if cfg.pendingName != "" || cfg.pendingGroup != "" {
-		return nil, fmt.Errorf("replace does not support named or grouped exports")
+		return nil, fmt.Errorf(errReplaceNoNamedOrGroupedExports)
 	}
 	anns, err := buildReplaceAnnotations(cfg)
 	if err != nil {
@@ -231,7 +234,7 @@ func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
 		return replaceSpec{}, err
 	}
 	if cfg.privateSet {
-		return replaceSpec{}, fmt.Errorf("replace does not support private/public")
+		return replaceSpec{}, fmt.Errorf(errReplaceNoPrivatePublic)
 	}
 	var (
 		tagSets []tagSet
@@ -251,7 +254,7 @@ func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
 		node = supplyNode{value: n.value, opts: n.opts}
 	}
 	if len(tagSets) == 0 {
-		return replaceSpec{}, fmt.Errorf("replace requires a type match")
+		return replaceSpec{}, fmt.Errorf(errReplaceRequiresTypeMatch)
 	}
 	return replaceSpec{tagSets: tagSets, node: node, pos: pos, mode: n.mode}, nil
 }
@@ -262,7 +265,7 @@ func buildDefaultSpec(n defaultNode, pos int) (replaceSpec, error) {
 		return replaceSpec{}, err
 	}
 	if cfg.privateSet {
-		return replaceSpec{}, fmt.Errorf("default does not support private/public")
+		return replaceSpec{}, fmt.Errorf(errDefaultNoPrivatePublic)
 	}
 	var (
 		tagSets []tagSet
@@ -282,7 +285,7 @@ func buildDefaultSpec(n defaultNode, pos int) (replaceSpec, error) {
 		node = supplyNode{value: n.value, opts: n.opts}
 	}
 	if len(tagSets) == 0 {
-		return replaceSpec{}, fmt.Errorf("default requires a type match")
+		return replaceSpec{}, fmt.Errorf(errDefaultRequiresTypeMatch)
 	}
 	return replaceSpec{tagSets: tagSets, node: node, pos: pos, mode: replaceAll, isDefault: true}, nil
 }
@@ -525,7 +528,7 @@ func selectReplacement(tagSets []tagSet, specs []replaceSpec) (replaceSpec, bool
 		}
 		if bestScore == -1 ||
 			score > bestScore ||
-			(score == bestScore && spec.depth < bestDepth) ||
+			(score == bestScore && spec.depth > bestDepth) ||
 			(score == bestScore && spec.depth == bestDepth && i > bestIndex) {
 			bestScore = score
 			bestDepth = spec.depth
@@ -689,168 +692,17 @@ func overrideNameGroupOpts(opts []any, target tagSet) []any {
 	return filtered
 }
 
-func rewriteInvokeWithTags(node invokeNode, activeTags map[string]tagSet) (invokeNode, bool, error) {
-	if len(activeTags) == 0 {
-		return node, false, nil
-	}
-	fnType := reflect.TypeOf(node.function)
-	if fnType == nil || fnType.Kind() != reflect.Func {
-		return node, false, nil
-	}
-	numIn := fnType.NumIn()
-	if numIn == 0 {
-		return node, false, nil
-	}
-	var cfg paramConfig
-	for _, opt := range node.opts {
-		if opt != nil {
-			opt.applyParam(&cfg)
-		}
-		if cfg.err != nil {
-			return node, false, cfg.err
-		}
-	}
-	tags := make([]string, numIn)
-	for i := 0; i < numIn && i < len(cfg.tags); i++ {
-		tags[i] = cfg.tags[i]
-	}
-	changed := false
-	for i := 0; i < numIn; i++ {
-		paramType := fnType.In(i)
-		tag := tags[i]
-		name, group := parseTagNameGroup(tag)
-		key := fullTagKey(tagSet{typ: paramType, name: name, group: group})
-		scoped, ok := activeTags[key]
-		if !ok {
-			continue
-		}
-		newTag := rewriteParamTag(tag, scoped)
-		if newTag != tag {
-			tags[i] = newTag
-			changed = true
-		}
-	}
-	if !changed {
-		return node, false, nil
-	}
-	return invokeNode{
-		function:          node.function,
-		opts:              node.opts,
-		paramTagsOverride: tags,
-	}, true, nil
-}
-
-func rewriteProvideWithTags(node provideNode, activeTags map[string]tagSet) (provideNode, bool, error) {
-	if len(activeTags) == 0 {
-		return node, false, nil
-	}
-	fnType := reflect.TypeOf(node.constructor)
-	if fnType == nil || fnType.Kind() != reflect.Func {
-		return node, false, nil
-	}
-	numIn := fnType.NumIn()
-	if numIn == 0 {
-		return node, false, nil
-	}
-	tags := make([]string, numIn)
-	if node.paramTagsOverride != nil {
-		for i := 0; i < numIn && i < len(node.paramTagsOverride); i++ {
-			tags[i] = node.paramTagsOverride[i]
-		}
-	}
-	changed := false
-	for i := 0; i < numIn; i++ {
-		paramType := fnType.In(i)
-		tag := tags[i]
-		name, group := parseTagNameGroup(tag)
-		key := fullTagKey(tagSet{typ: paramType, name: name, group: group})
-		scoped, ok := activeTags[key]
-		if !ok {
-			continue
-		}
-		newTag := rewriteParamTag(tag, scoped)
-		if newTag != tag {
-			tags[i] = newTag
-			changed = true
-		}
-	}
-	if !changed {
-		return node, false, nil
-	}
-	node.paramTagsOverride = tags
-	return node, true, nil
-}
-
-func parseTagNameGroup(tag string) (string, string) {
-	name, _ := extractTagValue(tag, `name:"`)
-	group, _ := extractTagValue(tag, `group:"`)
-	return name, group
-}
-
-func extractTagValue(tag string, key string) (string, bool) {
-	idx := strings.Index(tag, key)
-	if idx < 0 {
-		return "", false
-	}
-	start := idx + len(key)
-	end := strings.Index(tag[start:], `"`)
-	if end < 0 {
-		return "", false
-	}
-	end += start
-	return tag[start:end], true
-}
-
-func rewriteParamTag(tag string, scoped tagSet) string {
-	repl := ""
-	if scoped.group != "" {
-		repl = `group:"` + scoped.group + `"`
-	} else if scoped.name != "" {
-		repl = `name:"` + scoped.name + `"`
-	} else {
-		return tag
-	}
-	if strings.Contains(tag, `name:"`) {
-		if updated, ok := replaceTagValue(tag, `name:"`, scoped.name); ok {
-			return updated
-		}
-	}
-	if strings.Contains(tag, `group:"`) {
-		if updated, ok := replaceTagValue(tag, `group:"`, scoped.group); ok {
-			return updated
-		}
-	}
-	if tag == "" {
-		return repl
-	}
-	return tag + " " + repl
-}
-
-func replaceTagValue(tag string, key string, value string) (string, bool) {
-	idx := strings.Index(tag, key)
-	if idx < 0 {
-		return tag, false
-	}
-	start := idx + len(key)
-	end := strings.Index(tag[start:], `"`)
-	if end < 0 {
-		return tag, false
-	}
-	end += start
-	return tag[:start] + value + tag[end:], true
-}
-
 func replacementBaseType(node Node) (reflect.Type, error) {
 	switch n := node.(type) {
 	case provideNode:
 		return constructorResultType(n.constructor)
 	case supplyNode:
 		if n.value == nil {
-			return nil, fmt.Errorf("value must not be nil")
+			return nil, fmt.Errorf(errProvideValueNil)
 		}
 		return reflect.TypeOf(n.value), nil
 	default:
-		return nil, fmt.Errorf("replacement must be provide or supply")
+		return nil, fmt.Errorf(errReplacementMustBeProvideOrSupply)
 	}
 }
 
@@ -878,13 +730,13 @@ func buildReplaceAnnotations(cfg bindConfig) ([]fx.Annotation, error) {
 	}
 	for _, exp := range cfg.exports {
 		if exp.grouped {
-			return nil, fmt.Errorf("replace does not support groups")
+			return nil, fmt.Errorf(errReplaceNoGroups)
 		}
 		if exp.named {
-			return nil, fmt.Errorf("replace does not support named exports")
+			return nil, fmt.Errorf(errReplaceNoNamedExports)
 		}
 		if exp.typ.Kind() != reflect.Interface {
-			return nil, fmt.Errorf("replace AsType requires an interface type, got %v", exp.typ)
+			return nil, fmt.Errorf(errReplaceAsTypeInterface, exp.typ)
 		}
 		anns = append(anns, fx.As(reflect.New(exp.typ).Interface()))
 	}

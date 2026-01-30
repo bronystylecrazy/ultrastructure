@@ -10,10 +10,12 @@ import (
 
 // AutoInject enables automatic injection into tagged struct fields.
 // Supported tags:
-//   di:"inject"
-//   di:"name=prod"
-//   di:"group=loggers"
-//   di:"optional"
+//
+//	di:"inject"
+//	di:"name=prod"
+//	di:"group=loggers"
+//	di:"optional"
+//
 // Tags can be comma-separated.
 func AutoInject() Node {
 	return autoInjectNode{}
@@ -27,8 +29,8 @@ func (n autoInjectNode) Build() (fx.Option, error) {
 
 type autoInjectOption struct{}
 
-func (o autoInjectOption) applyBind(cfg *bindConfig)  { cfg.autoInjectFields = true }
-func (o autoInjectOption) applyParam(*paramConfig)    {}
+func (o autoInjectOption) applyBind(cfg *bindConfig) { cfg.autoInjectFields = true }
+func (o autoInjectOption) applyParam(*paramConfig)   {}
 
 type autoInjectApplier interface {
 	withAutoInjectFields(bool) Node
@@ -39,6 +41,7 @@ func applyAutoInjectFields(nodes []Node, enabled bool) []Node {
 	for i, n := range nodes {
 		switch v := n.(type) {
 		case autoInjectNode:
+			// Enable auto-inject for all subsequent nodes in this scope.
 			enabled = true
 			out[i] = v
 		case moduleNode:
@@ -60,6 +63,7 @@ func applyAutoInjectFields(nodes []Node, enabled bool) []Node {
 			v.defaultCase = switchDefaultNode{nodes: applyAutoInjectFields(v.defaultCase.nodes, enabled)}
 			out[i] = v
 		default:
+			// Apply the flag to nodes that support auto-inject.
 			if applier, ok := n.(autoInjectApplier); ok {
 				out[i] = applier.withAutoInjectFields(enabled)
 			} else {

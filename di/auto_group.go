@@ -13,7 +13,7 @@ import (
 func AutoGroup[T any](group ...string) Node {
 	iface := reflect.TypeOf((*T)(nil)).Elem()
 	if iface.Kind() != reflect.Interface {
-		return errorNode{err: fmt.Errorf("AutoGroup expects an interface type")}
+		return errorNode{err: fmt.Errorf(errAutoGroupInterface)}
 	}
 	name := ""
 	if len(group) > 0 {
@@ -60,11 +60,8 @@ type autoGroupApplier interface {
 
 func applyAutoGroups(nodes []Node, inherited []autoGroupRule) []Node {
 	local := append([]autoGroupRule{}, inherited...)
-	for _, n := range nodes {
-		if g, ok := n.(autoGroupNode); ok {
-			local = append(local, g.rule)
-		}
-	}
+	// Collect AutoGroup rules from the current scope (including Options/conditions).
+	local = append(local, collectAutoGroupRules(nodes)...)
 	out := make([]Node, len(nodes))
 	for i, n := range nodes {
 		switch v := n.(type) {
@@ -95,6 +92,26 @@ func applyAutoGroups(nodes []Node, inherited []autoGroupRule) []Node {
 		}
 	}
 	return out
+}
+
+func collectAutoGroupRules(nodes []Node) []autoGroupRule {
+	var rules []autoGroupRule
+	for _, n := range nodes {
+		switch v := n.(type) {
+		case autoGroupNode:
+			rules = append(rules, v.rule)
+		case optionsNode:
+			rules = append(rules, collectAutoGroupRules(v.nodes)...)
+		case conditionalNode:
+			rules = append(rules, collectAutoGroupRules(v.nodes)...)
+		case switchNode:
+			for _, c := range v.cases {
+				rules = append(rules, collectAutoGroupRules(c.nodes)...)
+			}
+			rules = append(rules, collectAutoGroupRules(v.defaultCase.nodes)...)
+		}
+	}
+	return rules
 }
 
 func appendAutoGroupOptions(opts []any, rules []autoGroupRule) []any {
@@ -151,6 +168,30 @@ func AutoGroupAsSelf() Option {
 	return autoGroupOption{rule: autoGroupRule{asSelf: true}}
 }
 
+// AutoGroupIgnoreType ignores auto-grouping for the given interface.
+// If a group is provided, it targets that group; otherwise it ignores all groups for the interface.
+func AutoGroupIgnoreType[T any](group ...string) Option {
+	iface := reflect.TypeOf((*T)(nil)).Elem()
+	if iface.Kind() != reflect.Interface {
+		return errorOption{err: fmt.Errorf(errAutoGroupIgnoreTypeInterface)}
+	}
+	name := ""
+	if len(group) > 0 {
+		name = group[0]
+	}
+	return autoGroupIgnoreOption{rule: autoGroupRule{iface: iface, group: name}}
+}
+
+type autoGroupIgnoreOption struct {
+	rule autoGroupRule
+}
+
+func (o autoGroupIgnoreOption) applyBind(cfg *bindConfig) {
+	cfg.autoGroupIgnores = append(cfg.autoGroupIgnores, o.rule)
+}
+
+func (o autoGroupIgnoreOption) applyParam(*paramConfig) {}
+
 func (n provideNode) withAutoGroups(rules []autoGroupRule) Node {
 	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
 	return provideNode{constructor: n.constructor, opts: opts}
@@ -169,4 +210,20 @@ func (n configNode[T]) withAutoGroups(rules []autoGroupRule) Node {
 func (n configBindNode[T]) withAutoGroups(rules []autoGroupRule) Node {
 	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
 	return configBindNode[T]{key: n.key, opts: opts, scope: n.scope}
+}
+
+type errorOption struct {
+	err error
+}
+
+func (o errorOption) applyBind(cfg *bindConfig) {
+	if cfg.err == nil {
+		cfg.err = o.err
+	}
+}
+
+func (o errorOption) applyParam(cfg *paramConfig) {
+	if cfg.err == nil {
+		cfg.err = o.err
+	}
 }

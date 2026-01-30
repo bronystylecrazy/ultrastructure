@@ -15,6 +15,7 @@ func Plan(nodes ...any) (string, error) {
 func (a *appNode) Plan() (string, error) {
 	nextID := 0
 	nextScopeID := 1
+	// Build a resolved node list similar to Build(), but only for planning.
 	resolver := buildConfigResolver(a.nodes)
 	nodes := attachConfigResolvers(a.nodes, resolver)
 	nodes = applyAutoGroups(nodes, nil)
@@ -157,7 +158,7 @@ func describeSupply(n supplyNode) (string, error) {
 	}
 	typ := reflect.TypeOf(n.value)
 	if typ == nil {
-		return "", fmt.Errorf("value must not be nil")
+		return "", fmt.Errorf(errValueMustNotBeNil)
 	}
 	return formatTypeAndTags(typ, tagSets), nil
 }
@@ -196,16 +197,11 @@ func describeDefault(n defaultNode) (string, error) {
 func describeInvoke(n invokeNode) (string, error) {
 	fnType := reflect.TypeOf(n.function)
 	if fnType == nil || fnType.Kind() != reflect.Func {
-		return "", fmt.Errorf("invoke must be a function")
+		return "", fmt.Errorf(errInvokeMustBeFunction)
 	}
 	var cfg paramConfig
-	for _, opt := range n.opts {
-		if opt != nil {
-			opt.applyParam(&cfg)
-		}
-		if cfg.err != nil {
-			return "", cfg.err
-		}
+	if err := applyParamOptions(n.opts, &cfg); err != nil {
+		return "", err
 	}
 	if len(cfg.tags) == 0 {
 		return fnType.String(), nil
@@ -218,13 +214,8 @@ func describePopulate(n populateNode) (string, error) {
 		return "<empty>", nil
 	}
 	var cfg paramConfig
-	for _, opt := range n.opts {
-		if opt != nil {
-			opt.applyParam(&cfg)
-		}
-		if cfg.err != nil {
-			return "", cfg.err
-		}
+	if err := applyParamOptions(n.opts, &cfg); err != nil {
+		return "", err
 	}
 	parts := make([]string, 0, len(n.targets))
 	for _, target := range n.targets {
@@ -245,7 +236,7 @@ func describePopulate(n populateNode) (string, error) {
 func describeDecorate(n decorateNode) (string, error) {
 	fnType := reflect.TypeOf(n.function)
 	if fnType == nil || fnType.Kind() != reflect.Func {
-		return "", fmt.Errorf("decorate must be a function")
+		return "", fmt.Errorf(errDecorateFunctionRequired)
 	}
 	explicit, hasExplicit, err := explicitTagSets(n)
 	if err != nil {

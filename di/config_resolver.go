@@ -44,6 +44,7 @@ func (n configFileNode) configSource() (string, configConfig, bool) {
 func buildConfigResolver(nodes []Node) func(reflect.Type) (any, error) {
 	targets, source := collectConfigTargets(nodes)
 	return func(t reflect.Type) (any, error) {
+		// Resolve a config type by loading viper and unmarshalling into T.
 		tgt, ok := targets[t]
 		if !ok {
 			return nil, configTypeNotFoundError{typ: t}
@@ -56,7 +57,7 @@ func buildConfigResolver(nodes []Node) func(reflect.Type) (any, error) {
 			}
 		}
 		if path == "" && !hasConfigSource(cfg) {
-			return nil, fmt.Errorf("no config source for %s", t)
+			return nil, fmt.Errorf(errNoConfigSourceForType, t)
 		}
 		v, err := loadViper(cfg, path)
 		if err != nil {
