@@ -39,21 +39,32 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 		isSliceParam := fnType.NumIn() > 0 && fnType.In(0).Kind() == reflect.Slice
 
 		for _, ts := range targets {
+			fn := entry.dec.function
+			fnSig := fnType
 			if ts.group != "" && !isSliceParam {
-				if ts.name == "" {
-					continue
+				if ts.name != "" {
+					// fall back to name-only for non-slice decorators
+					ts = tagSet{name: ts.name}
+				} else {
+					wrapped, err := buildGroupDecoratorWrapper(entry.dec.function, ts.typ)
+					if err != nil {
+						return nil, err
+					}
+					if wrapped == nil {
+						continue
+					}
+					fn = wrapped
+					fnSig = reflect.TypeOf(fn)
 				}
-				// fall back to name-only for non-slice decorators
-				ts = tagSet{name: ts.name}
 			}
-			key := tagSetKey(ts) + "|sig:" + fnType.String()
+			key := tagSetKey(ts) + "|sig:" + fnSig.String()
 			b := buckets[key]
 			if b == nil {
 				b = &bucket{ts: ts}
 				buckets[key] = b
 				order = append(order, key)
 			}
-			b.funcs = append(b.funcs, entry.dec.function)
+			b.funcs = append(b.funcs, fn)
 		}
 	}
 
@@ -97,6 +108,96 @@ func explicitTagSets(dec decorateNode) ([]tagSet, bool, error) {
 		return []tagSet{{group: t[7 : len(t)-1]}}, true, nil
 	}
 	return nil, false, fmt.Errorf(errUnsupportedTag, t)
+}
+
+func buildGroupDecoratorWrapper(fn any, groupIface reflect.Type) (any, error) {
+	if groupIface == nil || groupIface.Kind() != reflect.Interface {
+		return nil, nil
+	}
+	fnType := reflect.TypeOf(fn)
+	if fnType == nil || fnType.Kind() != reflect.Func {
+		return nil, fmt.Errorf(errDecorateFunctionRequired)
+	}
+	if fnType.NumIn() < 1 {
+		return nil, fmt.Errorf(errDecorateTooFewArgs)
+	}
+	if fnType.NumOut() != 1 && fnType.NumOut() != 2 {
+		return nil, fmt.Errorf(errDecorateReturnCount)
+	}
+	if fnType.NumOut() == 2 && fnType.Out(1) != errorType {
+		return nil, fmt.Errorf(errDecorateSecondResult)
+	}
+	inTypes := []reflect.Type{reflect.SliceOf(groupIface)}
+	for i := 1; i < fnType.NumIn(); i++ {
+		inTypes = append(inTypes, fnType.In(i))
+	}
+	outTypes := []reflect.Type{reflect.SliceOf(groupIface)}
+	if fnType.NumOut() == 2 {
+		outTypes = append(outTypes, errorType)
+	}
+	wrapperType := reflect.FuncOf(inTypes, outTypes, fnType.IsVariadic())
+	orig := reflect.ValueOf(fn)
+	wrapper := reflect.MakeFunc(wrapperType, func(args []reflect.Value) []reflect.Value {
+		inSlice := args[0]
+		outSlice := reflect.MakeSlice(inSlice.Type(), inSlice.Len(), inSlice.Len())
+		for i := 0; i < inSlice.Len(); i++ {
+			elem := inSlice.Index(i)
+			outElem := elem
+			if v, ok := coerceDecoratorValue(elem, fnType.In(0)); ok {
+				callArgs := make([]reflect.Value, fnType.NumIn())
+				callArgs[0] = v
+				if len(args) > 1 {
+					copy(callArgs[1:], args[1:])
+				}
+				results := orig.Call(callArgs)
+				if fnType.NumOut() == 2 && !results[1].IsNil() {
+					return []reflect.Value{inSlice, results[1]}
+				}
+				outElem = results[0]
+			}
+			if !outElem.Type().AssignableTo(groupIface) {
+				if outElem.Type().ConvertibleTo(groupIface) {
+					outElem = outElem.Convert(groupIface)
+				} else {
+					outElem = elem
+				}
+			}
+			outSlice.Index(i).Set(outElem)
+		}
+		if fnType.NumOut() == 2 {
+			return []reflect.Value{outSlice, reflect.Zero(errorType)}
+		}
+		return []reflect.Value{outSlice}
+	})
+	return wrapper.Interface(), nil
+}
+
+func coerceDecoratorValue(elem reflect.Value, target reflect.Type) (reflect.Value, bool) {
+	if !elem.IsValid() {
+		return reflect.Value{}, false
+	}
+	if elem.Type().AssignableTo(target) {
+		if elem.Type() == target {
+			return elem, true
+		}
+		if elem.Type().ConvertibleTo(target) {
+			return elem.Convert(target), true
+		}
+		return elem, true
+	}
+	if elem.Kind() == reflect.Interface && !elem.IsNil() {
+		concrete := elem.Elem()
+		if concrete.Type().AssignableTo(target) {
+			if concrete.Type() == target {
+				return concrete, true
+			}
+			if concrete.Type().ConvertibleTo(target) {
+				return concrete.Convert(target), true
+			}
+			return concrete, true
+		}
+	}
+	return reflect.Value{}, false
 }
 
 func tagSetTags(ts tagSet) []string {

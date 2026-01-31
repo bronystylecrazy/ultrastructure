@@ -34,14 +34,14 @@ type catalogService struct{ *service }
 type billingService struct{ *service }
 type notificationsService struct{ *service }
 
-func NewGatewayA() *gatewayService       { return &gatewayService{service: newService("gateway", "a")} }
-func NewGatewayB() *gatewayService       { return &gatewayService{service: newService("gateway", "b")} }
-func NewAuthA() *authService             { return &authService{service: newService("auth", "a")} }
-func NewAuthB() *authService             { return &authService{service: newService("auth", "b")} }
-func NewCatalogA() *catalogService       { return &catalogService{service: newService("catalog", "a")} }
-func NewCatalogB() *catalogService       { return &catalogService{service: newService("catalog", "b")} }
-func NewBillingA() *billingService       { return &billingService{service: newService("billing", "a")} }
-func NewBillingB() *billingService       { return &billingService{service: newService("billing", "b")} }
+func NewGatewayA() *gatewayService { return &gatewayService{service: newService("gateway", "a")} }
+func NewGatewayB() *gatewayService { return &gatewayService{service: newService("gateway", "b")} }
+func NewAuthA() *authService       { return &authService{service: newService("auth", "a")} }
+func NewAuthB() *authService       { return &authService{service: newService("auth", "b")} }
+func NewCatalogA() *catalogService { return &catalogService{service: newService("catalog", "a")} }
+func NewCatalogB() *catalogService { return &catalogService{service: newService("catalog", "b")} }
+func NewBillingA() *billingService { return &billingService{service: newService("billing", "a")} }
+func NewBillingB() *billingService { return &billingService{service: newService("billing", "b")} }
 func NewNotificationsA() *notificationsService {
 	return &notificationsService{service: newService("notifications", "a")}
 }
@@ -92,6 +92,7 @@ func (s *service) simulateLifecycle(ctx context.Context, phase string) {
 	)
 
 	for i, step := range []string{"prepare", "warmup", "ready"} {
+
 		stepCtx, stepObs := otel.Start(ctx, fmt.Sprintf("service.%s.%s", phase, step))
 		stepObs.Info(
 			"Lifecycle step",
