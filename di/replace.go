@@ -166,7 +166,21 @@ func applyReplacements(
 		case invokeNode:
 			active := applicableSpecsAtIndex(specs, i)
 			activeTags := buildActiveTagMap(provides, active)
+			activeTags = appendDefaultTags(activeTags, provides, specs)
 			node, changed, err := rewriteInvokeWithTags(v, activeTags)
+			if err != nil {
+				return nil, err
+			}
+			if changed {
+				final = append(final, node)
+			} else {
+				final = append(final, n)
+			}
+		case populateNode:
+			active := applicableSpecsAtIndex(specs, i)
+			activeTags := buildActiveTagMap(provides, active)
+			activeTags = appendDefaultTags(activeTags, provides, specs)
+			node, changed, err := rewritePopulateWithTags(v, activeTags)
 			if err != nil {
 				return nil, err
 			}
@@ -416,6 +430,37 @@ func buildActiveTagMap(provides []provideItem, specs []replaceSpec) map[string]t
 				continue
 			}
 			active[fullTagKey(ts)] = scopedTagSet(ts, spec.id)
+		}
+	}
+	return active
+}
+
+func appendDefaultTags(active map[string]tagSet, provides []provideItem, specs []replaceSpec) map[string]tagSet {
+	if len(specs) == 0 {
+		return active
+	}
+	if active == nil {
+		active = map[string]tagSet{}
+	}
+	provided := map[string]struct{}{}
+	for _, p := range provides {
+		for _, ts := range p.tagSets {
+			provided[fullTagKey(ts)] = struct{}{}
+		}
+	}
+	for _, spec := range specs {
+		if !spec.isDefault {
+			continue
+		}
+		for _, ts := range spec.tagSets {
+			key := fullTagKey(ts)
+			if _, ok := provided[key]; ok {
+				continue
+			}
+			if _, ok := active[key]; ok {
+				continue
+			}
+			active[key] = scopedTagSet(ts, spec.id)
 		}
 	}
 	return active

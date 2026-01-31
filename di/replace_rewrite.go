@@ -67,6 +67,43 @@ func rewriteProvideWithTags(node provideNode, activeTags map[string]tagSet) (pro
 	return node, true, nil
 }
 
+func rewritePopulateWithTags(node populateNode, activeTags map[string]tagSet) (populateNode, bool, error) {
+	if len(activeTags) == 0 {
+		return node, false, nil
+	}
+	if len(node.targets) != 1 {
+		return node, false, nil
+	}
+	target := node.targets[0]
+	if target == nil {
+		return node, false, nil
+	}
+	targetType := reflect.TypeOf(target)
+	if targetType == nil {
+		return node, false, nil
+	}
+	paramType := targetType
+	if paramType.Kind() == reflect.Pointer {
+		paramType = paramType.Elem()
+	}
+	fnType := reflect.FuncOf([]reflect.Type{paramType}, []reflect.Type{}, false)
+	tags := node.paramTagsOverride
+	if tags == nil {
+		var cfg paramConfig
+		if err := applyParamOptions(node.opts, &cfg); err != nil {
+			return node, false, err
+		}
+		tags = cfg.tags
+	}
+	tagList := buildParamTags(1, tags)
+	tagList, changed := rewriteParamTags(fnType, tagList, activeTags)
+	if !changed {
+		return node, false, nil
+	}
+	node.paramTagsOverride = tagList
+	return node, true, nil
+}
+
 func buildParamTags(numIn int, src []string) []string {
 	tags := make([]string, numIn)
 	for i := 0; i < numIn && i < len(src); i++ {
@@ -81,7 +118,11 @@ func rewriteParamTags(fnType reflect.Type, tags []string, activeTags map[string]
 		paramType := fnType.In(i)
 		tag := tags[i]
 		name, group := parseTagNameGroup(tag)
-		key := fullTagKey(tagSet{typ: paramType, name: name, group: group})
+		keyType := paramType
+		if group != "" && paramType.Kind() == reflect.Slice {
+			keyType = paramType.Elem()
+		}
+		key := fullTagKey(tagSet{typ: keyType, name: name, group: group})
 		scoped, ok := activeTags[key]
 		if !ok {
 			continue

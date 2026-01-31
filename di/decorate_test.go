@@ -48,3 +48,39 @@ func TestDecorateAutoGroupSeesDecoratedInstance(t *testing.T) {
 		t.Fatalf("expected decorated handler, got %q", handlers[0].ID())
 	}
 }
+
+func TestDecorateInvalidSignatureFails(t *testing.T) {
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Decorate(func() *basicThing { return &basicThing{} }),
+			Decorate(func() *basicThing { return &basicThing{} }),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestAutoGroupIgnoreTypeOption(t *testing.T) {
+	var handlers []testHandler
+	app := fx.New(
+		App(
+			AutoGroup[testHandler]("handlers"),
+			Provide(newTestHandler, AutoGroupIgnoreType[testHandler]("handlers")),
+			Populate(&handlers, Group("handlers")),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	if len(handlers) != 0 {
+		t.Fatalf("expected 0 handlers, got %d", len(handlers))
+	}
+}
