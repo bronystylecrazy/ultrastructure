@@ -13,13 +13,7 @@ func Decorate(function any, opts ...Option) Node {
 }
 
 func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
-	type bucket struct {
-		ts    tagSet
-		funcs []any
-	}
-	buckets := map[string]*bucket{}
-	order := []string{}
-
+	var out []fx.Option
 	for _, entry := range entries {
 		explicit, hasExplicit, err := explicitTagSets(entry.dec)
 		if err != nil {
@@ -34,6 +28,9 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 		fnType := reflect.TypeOf(entry.dec.function)
 		if fnType == nil || fnType.Kind() != reflect.Func {
 			return nil, fmt.Errorf(errDecorateFunctionRequired)
+		}
+		if fnType.NumIn() < 1 {
+			return nil, fmt.Errorf(errDecorateTooFewArgs)
 		}
 		// Slice decorators can target groups directly.
 		isSliceParam := fnType.NumIn() > 0 && fnType.In(0).Kind() == reflect.Slice
@@ -57,34 +54,23 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 					fnSig = reflect.TypeOf(fn)
 				}
 			}
-			key := tagSetKey(ts) + "|sig:" + fnSig.String()
-			b := buckets[key]
-			if b == nil {
-				b = &bucket{ts: ts}
-				buckets[key] = b
-				order = append(order, key)
+			paramTags, resultTags, err := buildDecorateTags(entry.dec, ts, fnSig)
+			if err != nil {
+				return nil, err
 			}
-			b.funcs = append(b.funcs, fn)
+			if len(paramTags) == 0 && len(resultTags) == 0 {
+				out = append(out, fx.Decorate(fn))
+				continue
+			}
+			anns := []fx.Annotation{}
+			if len(paramTags) > 0 {
+				anns = append(anns, fx.ParamTags(paramTags...))
+			}
+			if len(resultTags) > 0 {
+				anns = append(anns, fx.ResultTags(resultTags...))
+			}
+			out = append(out, fx.Decorate(fx.Annotate(fn, anns...)))
 		}
-	}
-
-	var out []fx.Option
-	for _, key := range order {
-		b := buckets[key]
-		if len(b.funcs) == 0 {
-			continue
-		}
-		fn, err := composeDecorators(b.funcs)
-		if err != nil {
-			return nil, err
-		}
-		if b.ts.name == "" && b.ts.group == "" {
-			out = append(out, fx.Decorate(fn))
-			continue
-		}
-		tags := tagSetTags(b.ts)
-		anns := []fx.Annotation{fx.ParamTags(tags...), fx.ResultTags(tags...)}
-		out = append(out, fx.Decorate(fx.Annotate(fn, anns...)))
 	}
 	return out, nil
 }
@@ -94,13 +80,13 @@ func explicitTagSets(dec decorateNode) ([]tagSet, bool, error) {
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
 		return nil, false, err
 	}
-	if len(cfg.tags) == 0 {
+	if len(cfg.resultTags) == 0 {
 		return nil, false, nil
 	}
-	if len(cfg.tags) > 1 {
+	if len(cfg.resultTags) > 1 {
 		return nil, false, fmt.Errorf(errDecorateNameGroupSingle)
 	}
-	t := cfg.tags[0]
+	t := cfg.resultTags[0]
 	if len(t) >= 6 && t[:5] == "name:" {
 		return []tagSet{{name: t[6 : len(t)-1]}}, true, nil
 	}
@@ -108,6 +94,40 @@ func explicitTagSets(dec decorateNode) ([]tagSet, bool, error) {
 		return []tagSet{{group: t[7 : len(t)-1]}}, true, nil
 	}
 	return nil, false, fmt.Errorf(errUnsupportedTag, t)
+}
+
+func buildDecorateTags(dec decorateNode, ts tagSet, fnType reflect.Type) ([]string, []string, error) {
+	var cfg paramConfig
+	if err := applyParamOptions(dec.opts, &cfg); err != nil {
+		return nil, nil, err
+	}
+	extraTags := cfg.tags
+	if len(cfg.resultTags) > 0 && len(cfg.tags) > 0 && cfg.tags[0] == cfg.resultTags[0] {
+		extraTags = cfg.tags[1:]
+	}
+	var paramTags []string
+	if fnType.NumIn() > 0 {
+		paramTags = make([]string, fnType.NumIn())
+		if ts.name != "" || ts.group != "" {
+			paramTags[0] = rewriteParamTag("", ts)
+		}
+		if fnType.NumIn() > 1 {
+			extras := buildParamTags(fnType.NumIn()-1, extraTags)
+			for i := 0; i < len(extras); i++ {
+				paramTags[i+1] = extras[i]
+			}
+		}
+		if !hasAnyTag(paramTags) {
+			paramTags = nil
+		}
+	}
+	var resultTags []string
+	if ts.name != "" || ts.group != "" {
+		resultTags = tagSetTags(ts)
+	} else if len(cfg.resultTags) > 0 {
+		resultTags = append([]string{}, cfg.resultTags...)
+	}
+	return paramTags, resultTags, nil
 }
 
 func buildGroupDecoratorWrapper(fn any, groupIface reflect.Type) (any, error) {
