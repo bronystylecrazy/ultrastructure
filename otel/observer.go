@@ -14,7 +14,7 @@ type tracerKey struct{}
 
 type Observer struct {
 	*zap.Logger
-	tracer trace.Tracer
+	trace.Tracer
 }
 
 type Span struct {
@@ -25,7 +25,7 @@ type Span struct {
 func NewObserver(logger *zap.Logger, tracer trace.Tracer) *Observer {
 	return &Observer{
 		Logger: logger,
-		tracer: tracer,
+		Tracer: tracer,
 	}
 }
 
@@ -68,6 +68,23 @@ func From(ctx context.Context) *Observer {
 	return NewObserver(logger, tracer)
 }
 
+// HasContext returns true if ctx contains observer, logger, or tracer overrides.
+func HasContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	if _, ok := ctx.Value(obsKey{}).(*Observer); ok {
+		return true
+	}
+	if _, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok {
+		return true
+	}
+	if _, ok := ctx.Value(tracerKey{}).(trace.Tracer); ok {
+		return true
+	}
+	return false
+}
+
 // Span starts a new span using Observability from context (or a safe default).
 func Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
 	return From(ctx).Span(ctx, name, opts...)
@@ -75,7 +92,10 @@ func Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (con
 
 // Span starts a new span and returns enriched context plus span-scoped observability.
 func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
-	ctx, span := o.tracer.Start(ctx, name, opts...)
+	if o == nil || o.Tracer == nil || o.Logger == nil {
+		return From(ctx).Span(ctx, name, opts...)
+	}
+	ctx, span := o.Tracer.Start(ctx, name, opts...)
 
 	// Enrich logger with trace context
 	enrichedLogger := o.Logger
@@ -92,7 +112,7 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 	// Store enriched obs back in context
 	enrichedObs := &Observer{
 		Logger: enrichedLogger,
-		tracer: o.tracer,
+		Tracer: o.Tracer,
 	}
 	ctx = enrichedObs.With(ctx)
 

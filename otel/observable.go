@@ -6,27 +6,30 @@ import (
 	"go.uber.org/zap"
 )
 
-// ObserversGroupName is the DI group name for observable setters.
-const ObserversGroupName = "observers"
+// ObservablesGroupName is the DI group name for observable setters.
+const ObservablesGroupName = "us.observables"
 
-// ObserverSetter is implemented by types that can receive an Observability instance.
-type ObserverSetter interface {
-	SetObserver(*Observer)
+// Observable is implemented by types that can receive an Observability instance.
+type Observable interface {
+	apply(*Observer)
 }
 
 // Observable can be embedded to receive an Observability via DI auto-grouping.
-type Observable struct {
-	Layer string
-	Obs   *Observer
+type Telemetry struct {
+	Obs *Observer
 }
 
-// SetObserver stores the shared Observability instance.
-func (o *Observable) SetObserver(obs *Observer) {
+// apply stores the shared Observability instance.
+func (o *Telemetry) apply(obs *Observer) {
 	if obs == nil {
 		o.Obs = NewNopObserver()
 		return
 	}
 	o.Obs = obs
+}
+
+func Nop() Telemetry {
+	return Telemetry{Obs: NewNopObserver()}
 }
 
 func NewNopObserver() *Observer {
@@ -38,9 +41,9 @@ func NewDefaultObserver(logger *zap.Logger, tp *TracerProvider) *Observer {
 	return NewObserver(logger, tp.Tracer(""))
 }
 
-func RegisterObservers(logger *zap.Logger, tp *TracerProvider, setters ...ObserverSetter) {
-	for _, setter := range setters {
-		meta, ok := di.ReflectMetadata[[]any](setter)
+func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) {
+	for _, observable := range observables {
+		meta, ok := di.ReflectMetadata[[]any](observable)
 		if !ok || len(meta) == 0 {
 			continue
 		}
@@ -48,7 +51,6 @@ func RegisterObservers(logger *zap.Logger, tp *TracerProvider, setters ...Observ
 		if !ok {
 			continue
 		}
-
-		setter.SetObserver(NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name)))
+		observable.apply(NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name)))
 	}
 }

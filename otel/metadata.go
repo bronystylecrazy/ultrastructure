@@ -10,8 +10,5 @@ type LayerMetadata struct {
 
 // Layer packs layer metadata into a single DI option.
 func Layer(name string) di.Option {
-	return di.Options(
-		di.Metadata(LayerMetadata{Kind: "layer", Name: name}),
-		di.Metadata(name),
-	)
+	return di.Metadata(LayerMetadata{Kind: "layer", Name: name})
 }

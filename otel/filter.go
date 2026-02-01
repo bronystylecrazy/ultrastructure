@@ -1,4 +1,4 @@
-package log
+package otel
 
 import "go.uber.org/zap/zapcore"
 
