@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"embed"
+	"log"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
+	"github.com/bronystylecrazy/ultrastructure/realtime"
 	web "github.com/bronystylecrazy/ultrastructure/web"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -79,11 +81,24 @@ func main() {
 	options := di.App(
 		otel.Module(),
 		lifecycle.Module(),
+		realtime.Module(),
 		web.Module(
+			web.UseMqttWebsocket(),
 			web.UseSpa(&assets),
 			web.UseSwagger(),
 			di.Provide(NewAPIService, otel.Layer("hello1")),
 			di.Provide(NewWorkerService, otel.Layer("hello2")),
+			di.Invoke(func(ms realtime.Server) {
+				go func() {
+					var i int
+					for {
+						log.Println("Sending message", i)
+						ms.Send("hello", i, true, 1)
+						time.Sleep(1 * time.Second)
+						i++
+					}
+				}()
+			}),
 		),
 	).Build()
 
