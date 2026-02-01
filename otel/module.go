@@ -7,6 +7,7 @@ import (
 
 func Module() di.Node {
 	return di.Options(
+		di.AutoGroup[ObserverSetter](ObserversGroupName),
 		di.Module(
 			"us/opentelemetry",
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
@@ -16,7 +17,9 @@ func Module() di.Node {
 			di.Provide(NewLoggerProvider),
 			di.Provide(NewTraceExporter),
 			di.Provide(NewTracerProvider),
+			di.Provide(NewDefaultObserver),
 		),
 		fx.Decorate(AttachLoggerToOtel),
+		di.Invoke(RegisterObservers, di.Params(``, ``, di.Group(ObserversGroupName))),
 	)
 }

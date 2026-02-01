@@ -15,6 +15,7 @@ import (
 )
 
 type service struct {
+	otel.Observable
 	name     string
 	instance string
 	id       string
@@ -50,7 +51,7 @@ func NewNotificationsB() *notificationsService {
 }
 
 func (s *service) Start(ctx context.Context) error {
-	ctx, obs := otel.Start(ctx, "service.start")
+	ctx, obs := s.Obs.Start(ctx, "service.start")
 	defer obs.End()
 
 	obs.Info(
@@ -66,7 +67,7 @@ func (s *service) Start(ctx context.Context) error {
 }
 
 func (s *service) Stop(ctx context.Context) error {
-	ctx, obs := otel.Start(ctx, "service.stop")
+	ctx, obs := s.Obs.Start(ctx, "service.stop")
 	defer obs.End()
 
 	obs.Info(
@@ -81,7 +82,7 @@ func (s *service) Stop(ctx context.Context) error {
 }
 
 func (s *service) simulateLifecycle(ctx context.Context, phase string) {
-	ctx, obs := otel.Start(ctx, fmt.Sprintf("service.%s", phase))
+	ctx, obs := s.Obs.Start(ctx, fmt.Sprintf("service.%s", phase))
 	defer obs.End()
 
 	obs.Info(
@@ -93,7 +94,7 @@ func (s *service) simulateLifecycle(ctx context.Context, phase string) {
 
 	for i, step := range []string{"prepare", "warmup", "ready"} {
 
-		stepCtx, stepObs := otel.Start(ctx, fmt.Sprintf("service.%s.%s", phase, step))
+		stepCtx, stepObs := s.Obs.Start(ctx, fmt.Sprintf("service.%s.%s", phase, step))
 		stepObs.Info(
 			"Lifecycle step",
 			zap.Int("step", i+1),
@@ -103,7 +104,7 @@ func (s *service) simulateLifecycle(ctx context.Context, phase string) {
 			zap.String("label", step),
 		)
 
-		_, innerObs := otel.Start(stepCtx, fmt.Sprintf("service.%s.%s.io", phase, step))
+		_, innerObs := s.Obs.Start(stepCtx, fmt.Sprintf("service.%s.%s.io", phase, step))
 		innerObs.Info("Lifecycle io", zap.String("label", "io"))
 		innerObs.End()
 
@@ -114,7 +115,7 @@ func (s *service) simulateLifecycle(ctx context.Context, phase string) {
 
 func (s *service) simulateTraffic(ctx context.Context) {
 	for i := 0; i < 3; i++ {
-		reqCtx, reqObs := otel.Start(ctx, fmt.Sprintf("service.%s.request", s.name))
+		reqCtx, reqObs := s.Obs.Start(ctx, fmt.Sprintf("service.%s.request", s.name))
 		reqObs.Info(
 			"Request",
 			zap.Int("request", i+1),
@@ -126,7 +127,7 @@ func (s *service) simulateTraffic(ctx context.Context) {
 		s.simulateDependency(reqCtx, "db")
 
 		for _, target := range s.downstreamServices() {
-			callCtx, callObs := otel.Start(reqCtx, fmt.Sprintf("service.call.%s", target))
+			callCtx, callObs := s.Obs.Start(reqCtx, fmt.Sprintf("service.call.%s", target))
 			callObs.Info(
 				"Outbound call",
 				zap.String("service", s.name),
@@ -143,14 +144,14 @@ func (s *service) simulateTraffic(ctx context.Context) {
 }
 
 func (s *service) simulateDependency(ctx context.Context, name string) {
-	depCtx, depObs := otel.Start(ctx, fmt.Sprintf("service.dep.%s", name))
+	depCtx, depObs := s.Obs.Start(ctx, fmt.Sprintf("service.dep.%s", name))
 	depObs.Info(
 		"Dependency",
 		zap.String("service", s.name),
 		zap.String("instance", s.instance),
 		zap.String("dependency", name),
 	)
-	_, innerObs := otel.Start(depCtx, fmt.Sprintf("service.dep.%s.io", name))
+	_, innerObs := s.Obs.Start(depCtx, fmt.Sprintf("service.dep.%s.io", name))
 	innerObs.Info("Dependency io", zap.String("dependency", name))
 	innerObs.End()
 	time.Sleep(10 * time.Millisecond)

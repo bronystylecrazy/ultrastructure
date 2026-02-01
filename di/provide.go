@@ -273,7 +273,13 @@ func (n provideNode) Build() (fx.Option, error) {
 		return nil, err
 	}
 	finalConstructor := constructor
-	if len(spec.exports) > 0 || spec.includeSelf {
+	if len(cfg.metadata) > 0 {
+		wrapped, err := buildMetadataConstructor(constructor, spec.exports, spec.includeSelf, cfg.metadata)
+		if err != nil {
+			return nil, err
+		}
+		finalConstructor = wrapped
+	} else if len(spec.exports) > 0 || spec.includeSelf {
 		// Wrap constructor to emit multiple exports (As/Group/Name).
 		wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
 		if err != nil {
@@ -322,7 +328,13 @@ func (n provideNode) buildConstructor() (any, bool, []fx.Option, error) {
 		return nil, false, nil, err
 	}
 	finalConstructor := constructor
-	if len(spec.exports) > 0 || spec.includeSelf {
+	if len(cfg.metadata) > 0 {
+		wrapped, err := buildMetadataConstructor(constructor, spec.exports, spec.includeSelf, cfg.metadata)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		finalConstructor = wrapped
+	} else if len(spec.exports) > 0 || spec.includeSelf {
 		wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
 		if err != nil {
 			return nil, false, nil, err
@@ -370,9 +382,9 @@ func (n supplyNode) Build() (fx.Option, error) {
 	}
 	var provideOpt fx.Option
 	if constructor != nil {
-		provideOpt, err = buildProvideConstructorOption(spec, constructor)
+		provideOpt, err = buildProvideConstructorOption(spec, constructor, cfg.metadata)
 	} else {
-		provideOpt, err = buildProvideSupplyOption(spec, value)
+		provideOpt, err = buildProvideSupplyOption(spec, value, cfg.metadata)
 	}
 	if err != nil {
 		return nil, err
@@ -409,7 +421,13 @@ func (n supplyNode) buildSupply() (any, any, bool, bool, []fx.Option, error) {
 	private := cfg.privateSet && cfg.privateValue
 	if constructor != nil {
 		finalConstructor := constructor
-		if len(spec.exports) > 0 || spec.includeSelf {
+		if len(cfg.metadata) > 0 {
+			wrapped, err := buildMetadataConstructor(constructor, spec.exports, spec.includeSelf, cfg.metadata)
+			if err != nil {
+				return nil, nil, false, false, nil, err
+			}
+			finalConstructor = wrapped
+		} else if len(spec.exports) > 0 || spec.includeSelf {
 			wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
 			if err != nil {
 				return nil, nil, false, false, nil, err
@@ -417,6 +435,13 @@ func (n supplyNode) buildSupply() (any, any, bool, bool, []fx.Option, error) {
 			finalConstructor = wrapped
 		}
 		return finalConstructor, nil, false, private, extra, nil
+	}
+	if len(cfg.metadata) > 0 {
+		wrapped, err := buildMetadataSupply(value, spec.exports, spec.includeSelf, cfg.metadata)
+		if err != nil {
+			return nil, nil, false, false, nil, err
+		}
+		return wrapped, nil, false, private, extra, nil
 	}
 	if len(spec.exports) > 0 || spec.includeSelf {
 		wrapped, err := buildGroupedSupply(value, spec.exports, spec.includeSelf)

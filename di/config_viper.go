@@ -100,7 +100,7 @@ func (n configNode[T]) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, wrapped)
+	provideOpt, err := buildProvideConstructorOption(spec, wrapped, bindCfg.metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (n configBindNode[T]) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	provideOpt, err := buildProvideConstructorOption(spec, wrapped)
+	provideOpt, err := buildProvideConstructorOption(spec, wrapped, bindCfg.metadata)
 	if err != nil {
 		return nil, err
 	}

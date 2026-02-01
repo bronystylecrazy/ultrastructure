@@ -45,6 +45,7 @@ const (
 	errLifecycleHookReturnType          = "lifecycle hook return must be error"
 	errNameAlreadySet                   = "name already set"
 	errNameEmpty                        = "name must not be empty"
+	errMetadataNil                      = "metadata must not be nil"
 	errNoConfigSourceForType            = "no config source for %s"
 	errOptionalParamTagType             = "Params expects Option or string, got %T"
 	errParamsNotSupportedWithSupply     = "Params is not supported with Supply"

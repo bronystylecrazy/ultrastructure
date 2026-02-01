@@ -12,25 +12,25 @@ type obsKey struct{}
 type loggerKey struct{}
 type tracerKey struct{}
 
-type Observability struct {
+type Observer struct {
 	*zap.Logger
 	tracer trace.Tracer
 }
 
 type Span struct {
-	*Observability
+	*Observer
 	end func(options ...trace.SpanEndOption)
 }
 
-func NewObservability(logger *zap.Logger, tracer trace.Tracer) *Observability {
-	return &Observability{
+func NewObserver(logger *zap.Logger, tracer trace.Tracer) *Observer {
+	return &Observer{
 		Logger: logger,
 		tracer: tracer,
 	}
 }
 
 // With stores Obs in context
-func (o *Observability) With(ctx context.Context) context.Context {
+func (o *Observer) With(ctx context.Context) context.Context {
 	return context.WithValue(ctx, obsKey{}, o)
 }
 
@@ -51,8 +51,8 @@ func WithTracer(ctx context.Context, tracer trace.Tracer) context.Context {
 }
 
 // From retrieves Obs from context
-func From(ctx context.Context) *Observability {
-	if o, ok := ctx.Value(obsKey{}).(*Observability); ok {
+func From(ctx context.Context) *Observer {
+	if o, ok := ctx.Value(obsKey{}).(*Observer); ok {
 		return o
 	}
 
@@ -65,7 +65,7 @@ func From(ctx context.Context) *Observability {
 		tracer = noop.NewTracerProvider().Tracer("")
 	}
 	// Return safe default (or context-provided logger/tracer)
-	return NewObservability(logger, tracer)
+	return NewObserver(logger, tracer)
 }
 
 // Span starts a new span using Observability from context (or a safe default).
@@ -74,7 +74,7 @@ func Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (con
 }
 
 // Span starts a new span and returns enriched context plus span-scoped observability.
-func (o *Observability) Span(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
+func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
 	ctx, span := o.tracer.Start(ctx, name, opts...)
 
 	// Enrich logger with trace context
@@ -90,7 +90,7 @@ func (o *Observability) Span(ctx context.Context, name string, opts ...trace.Spa
 	}
 
 	// Store enriched obs back in context
-	enrichedObs := &Observability{
+	enrichedObs := &Observer{
 		Logger: enrichedLogger,
 		tracer: o.tracer,
 	}
@@ -98,9 +98,14 @@ func (o *Observability) Span(ctx context.Context, name string, opts ...trace.Spa
 
 	// Return context and span-scoped obs wrapper
 	return ctx, &Span{
-		Observability: enrichedObs,
-		end:           span.End,
+		Observer: enrichedObs,
+		end:      span.End,
 	}
+}
+
+// Start is a convenience alias for Span.
+func (o *Observer) Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
+	return o.Span(ctx, name, opts...)
 }
 
 // End closes the span.

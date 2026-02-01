@@ -43,5 +43,5 @@ func (n defaultNode) Build() (fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildProvideSupplyOption(spec, n.value)
+	return buildProvideSupplyOption(spec, n.value, cfg.metadata)
 }

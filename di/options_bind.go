@@ -21,6 +21,7 @@ type bindConfig struct {
 	includeSelf            bool
 	privateSet             bool
 	privateValue           bool
+	metadata               []any
 	pendingNames           []string
 	pendingGroups          []string
 	autoGroups             []autoGroupRule
