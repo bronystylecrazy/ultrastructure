@@ -6,25 +6,24 @@ import (
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
-	"github.com/bronystylecrazy/ultrastructure/log"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
 type apiService struct {
-	otel.Observable
-	name string
+	otel.Telemetry
 
+	name          string
 	workerService *workerService
 }
 
 func NewAPIService(workerService *workerService) *apiService {
-	s := &apiService{name: "api", workerService: workerService}
-	return s
+	return &apiService{Telemetry: otel.Nop(), name: "api", workerService: workerService}
 }
 
 func (s *apiService) Start(ctx context.Context) error {
+	s.Obs.Info("hello")
 	ctx, obs := s.Obs.Start(ctx, "service.start")
 	defer obs.End()
 
@@ -44,12 +43,11 @@ func (s *apiService) Stop(ctx context.Context) error {
 }
 
 type workerService struct {
-	otel.Observable
+	otel.Telemetry
 }
 
 func NewWorkerService() *workerService {
-	s := &workerService{}
-	return s
+	return &workerService{}
 }
 
 func (s *workerService) Foo(ctx context.Context, arg string) error {
@@ -72,10 +70,15 @@ func (s *workerService) Bar(ctx context.Context, arg string) error {
 }
 
 func main() {
+
+	// workerService := NewWorkerService()
+
 	options := di.App(
-		log.Module(),
 		otel.Module(),
 		lifecycle.Module(),
+		di.Decorate(func(logger *zap.Logger) *zap.Logger {
+			return logger.With(zap.String("service", "api"))
+		}),
 		di.Provide(NewAPIService, otel.Layer("hello1")),
 		di.Provide(NewWorkerService, otel.Layer("hello2")),
 	).Build()
