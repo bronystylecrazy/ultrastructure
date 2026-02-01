@@ -30,16 +30,22 @@ func TestReplaceOverridesProvide(t *testing.T) {
 }
 
 func TestReplaceBeforeAfterOrder(t *testing.T) {
-	var first *basicThing
-	var second *basicThing
+	type firstThing struct {
+		value string
+	}
+	type secondThing struct {
+		value string
+	}
+	var first *firstThing
+	var second *secondThing
 	app := fx.New(
 		App(
-			Provide(func() *basicThing { return &basicThing{value: "orig"} }),
+			Provide(func() *firstThing { return &firstThing{value: "orig"} }),
 			Populate(&first),
-			ReplaceBefore(&basicThing{value: "before"}),
-			ReplaceAfter(&basicThing{value: "after"}, Name("later")),
-			Provide(func() *basicThing { return &basicThing{value: "later"} }, Name("later")),
-			Populate(&second, Name("later")),
+			ReplaceBefore(&firstThing{value: "before"}),
+			ReplaceAfter(&secondThing{value: "after"}),
+			Provide(func() *secondThing { return &secondThing{value: "later"} }),
+			Populate(&second),
 		).Build(),
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -86,23 +92,17 @@ func TestReplaceBeforeModuleScope(t *testing.T) {
 	}
 }
 
-func TestPopulateGroupWithReplaceAfter(t *testing.T) {
-	var got []depThing
+func TestReplaceAfterRejectsGroup(t *testing.T) {
 	app := fx.New(
 		App(
 			ReplaceAfter(depThing{id: 99}, Group("deps")),
 			Supply(depThing{id: 1}, Group("deps")),
-			Populate(&got, Group("deps")),
 		).Build(),
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
-
-	if len(got) != 1 || got[0].id != 99 {
-		t.Fatalf("unexpected deps: %#v", got)
+	if err := app.Start(ctx); err == nil {
+		_ = app.Stop(ctx)
+		t.Fatal("expected start to fail")
 	}
 }

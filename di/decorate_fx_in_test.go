@@ -2,6 +2,7 @@ package di
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,5 +63,80 @@ func TestDecorateMixedFxInAndParams(t *testing.T) {
 	if err := app.Start(context.Background()); err == nil {
 		_ = app.Stop(context.Background())
 		t.Fatal("expected start to fail for mixed fx.In and positional decorators")
+	} else if !strings.Contains(err.Error(), errDecorateSignatureMismatch) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecorateRejectsFxInAsOnlyParam(t *testing.T) {
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Decorate(func(in struct {
+				fx.In
+				Target *basicThing
+			}) *basicThing {
+				in.Target.value = in.Target.value + "-fxin"
+				return in.Target
+			}),
+		).Build(),
+	)
+	if err := app.Start(context.Background()); err == nil {
+		_ = app.Stop(context.Background())
+		t.Fatal("expected start to fail for fx.In-only decorator")
+	} else if !strings.Contains(err.Error(), errDecorateSignatureMismatch) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecorateRejectsFxInWithParamTags(t *testing.T) {
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Supply(&fxDecoDep{val: "-fxin"}, Name("dep")),
+			Decorate(func(b *basicThing, in struct {
+				fx.In
+				Dep *fxDecoDep `name:"dep"`
+			}) *basicThing {
+				b.value = b.value + in.Dep.val
+				return b
+			}, Params(`name:"dep"`)),
+		).Build(),
+	)
+	if err := app.Start(context.Background()); err == nil {
+		_ = app.Stop(context.Background())
+		t.Fatal("expected start to fail for fx.In with ParamTags")
+	} else if !strings.Contains(err.Error(), errDecorateSignatureMismatch) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecorateRejectsMultipleFxInDecorators(t *testing.T) {
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Supply(&fxDecoDep{val: "-one"}, Name("dep1")),
+			Supply(&fxDecoDep{val: "-two"}, Name("dep2")),
+			Decorate(func(b *basicThing, in struct {
+				fx.In
+				Dep *fxDecoDep `name:"dep1"`
+			}) *basicThing {
+				b.value = b.value + in.Dep.val
+				return b
+			}),
+			Decorate(func(b *basicThing, in struct {
+				fx.In
+				Dep *fxDecoDep `name:"dep2"`
+			}) *basicThing {
+				b.value = b.value + in.Dep.val
+				return b
+			}),
+		).Build(),
+	)
+	if err := app.Start(context.Background()); err == nil {
+		_ = app.Stop(context.Background())
+		t.Fatal("expected start to fail for multiple fx.In decorators")
+	} else if !strings.Contains(err.Error(), errDecorateSignatureMismatch) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

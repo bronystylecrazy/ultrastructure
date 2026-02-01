@@ -15,8 +15,11 @@ type invokeNode struct {
 
 func (n invokeNode) Build() (fx.Option, error) {
 	if n.paramTagsOverride != nil {
-		// Use rewritten tags when replacements modified param tags.
-		return fx.Invoke(fx.Annotate(n.function, fx.ParamTags(n.paramTagsOverride...))), nil
+		if hasAnyTag(n.paramTagsOverride) {
+			// Use rewritten tags when replacements modified param tags.
+			return fx.Invoke(fx.Annotate(n.function, fx.ParamTags(n.paramTagsOverride...))), nil
+		}
+		return fx.Invoke(n.function), nil
 	}
 	var cfg paramConfig
 	if err := applyParamOptions(n.opts, &cfg); err != nil {

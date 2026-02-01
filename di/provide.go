@@ -3,6 +3,7 @@ package di
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"go.uber.org/fx"
 )
@@ -72,33 +73,33 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 		}
 		return nil, fmt.Errorf(errCannotInferType)
 	}
-	if cfg.pendingName != "" || cfg.pendingGroup != "" {
+	if len(cfg.pendingNames) > 0 || len(cfg.pendingGroups) > 0 {
 		if len(cfg.exports) > 0 {
 			return provideSpec{}, nil, fmt.Errorf(errWithTagsSingleAs)
 		}
 		if _, err := getBaseType(); err != nil {
 			return provideSpec{}, nil, err
 		}
-		if cfg.pendingName != "" {
+		for _, name := range cfg.pendingNames {
 			spec.exports = append(spec.exports, exportSpec{
 				typ:   baseType,
-				name:  cfg.pendingName,
+				name:  name,
 				named: true,
 			})
-			tagSets = append(tagSets, tagSet{name: cfg.pendingName, typ: baseType})
+			tagSets = append(tagSets, tagSet{name: name, typ: baseType})
 		}
-		if cfg.pendingGroup != "" {
+		for _, group := range cfg.pendingGroups {
 			spec.exports = append(spec.exports, exportSpec{
 				typ:     baseType,
-				group:   cfg.pendingGroup,
+				group:   group,
 				grouped: true,
 			})
-			tagSets = append(tagSets, tagSet{group: cfg.pendingGroup, typ: baseType})
+			tagSets = append(tagSets, tagSet{group: group, typ: baseType})
 		}
 	}
 
 	hasUntagged := false
-	noExplicitExports := len(cfg.exports) == 0 && cfg.pendingName == "" && cfg.pendingGroup == "" && !cfg.includeSelf
+	noExplicitExports := len(cfg.exports) == 0 && len(cfg.pendingNames) == 0 && len(cfg.pendingGroups) == 0 && !cfg.includeSelf
 	for _, exp := range cfg.exports {
 		if exp.grouped && exp.named {
 			return provideSpec{}, nil, fmt.Errorf(errExportCannotBeGroupedAndNamed)
@@ -162,6 +163,12 @@ func buildProvideSpec(cfg bindConfig, constructor any, value any) (provideSpec, 
 		}
 	}
 
+	if noExplicitExports && !spec.includeSelf && hasUntagged && len(cfg.autoGroups) > 0 && !cfg.ignoreAuto {
+		// Auto-group-only providers do not need the untagged export.
+		tagSets = tagSets[:0]
+		hasUntagged = false
+	}
+
 	if spec.includeSelf && !hasUntagged && !tagSetHasType(tagSets, baseType) {
 		if _, err := getBaseType(); err != nil {
 			return provideSpec{}, nil, err
@@ -185,19 +192,30 @@ func isAutoGroupIgnored(cfg bindConfig, rule autoGroupRule) bool {
 	return false
 }
 
+type implementsKey struct {
+	base  reflect.Type
+	iface reflect.Type
+}
+
+var implementsCache sync.Map
+
 func implementsInterface(base reflect.Type, iface reflect.Type) bool {
 	if iface == nil || iface.Kind() != reflect.Interface {
 		return false
 	}
-	if base.Implements(iface) {
-		return true
+	if base == nil {
+		return false
 	}
-	if base.Kind() != reflect.Pointer {
-		if reflect.PointerTo(base).Implements(iface) {
-			return true
-		}
+	key := implementsKey{base: base, iface: iface}
+	if cached, ok := implementsCache.Load(key); ok {
+		return cached.(bool)
 	}
-	return false
+	ok := base.Implements(iface)
+	if !ok && base.Kind() != reflect.Pointer {
+		ok = reflect.PointerTo(base).Implements(iface)
+	}
+	implementsCache.Store(key, ok)
+	return ok
 }
 
 func hasExport(exports []exportSpec, typ reflect.Type, group string) bool {
@@ -284,6 +302,44 @@ func (n provideNode) Build() (fx.Option, error) {
 	return packOptions(out), nil
 }
 
+func (n provideNode) buildConstructor() (any, bool, []fx.Option, error) {
+	cfg, _, extra, err := parseBindOptions(n.opts)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	constructor := n.constructor
+	if cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
+		wrapped, ok, err := wrapAutoInjectConstructor(constructor)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		if ok {
+			constructor = wrapped
+		}
+	}
+	spec, _, err := buildProvideSpec(cfg, constructor, nil)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	finalConstructor := constructor
+	if len(spec.exports) > 0 || spec.includeSelf {
+		wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		finalConstructor = wrapped
+	}
+	paramTags := n.paramTagsOverride
+	if paramTags == nil {
+		paramTags = cfg.paramTags
+	}
+	if hasAnyTag(paramTags) {
+		finalConstructor = fx.Annotate(finalConstructor, fx.ParamTags(paramTags...))
+	}
+	private := cfg.privateSet && cfg.privateValue
+	return finalConstructor, private, extra, nil
+}
+
 type supplyNode struct {
 	value any
 	opts  []any
@@ -325,6 +381,51 @@ func (n supplyNode) Build() (fx.Option, error) {
 	out = append(out, provideOpt)
 	out = append(out, extra...)
 	return packOptions(out), nil
+}
+
+func (n supplyNode) buildSupply() (any, any, bool, bool, []fx.Option, error) {
+	cfg, _, extra, err := parseBindOptions(n.opts)
+	if err != nil {
+		return nil, nil, false, false, nil, err
+	}
+	if hasAnyTag(cfg.paramTags) {
+		return nil, nil, false, false, nil, fmt.Errorf(errParamsNotSupportedWithSupply)
+	}
+	value := n.value
+	var constructor any
+	if constructor == nil && cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
+		wrapped, ok, err := wrapAutoInjectSupply(value)
+		if err != nil {
+			return nil, nil, false, false, nil, err
+		}
+		if ok {
+			constructor = wrapped
+		}
+	}
+	spec, _, err := buildProvideSpec(cfg, constructor, value)
+	if err != nil {
+		return nil, nil, false, false, nil, err
+	}
+	private := cfg.privateSet && cfg.privateValue
+	if constructor != nil {
+		finalConstructor := constructor
+		if len(spec.exports) > 0 || spec.includeSelf {
+			wrapped, err := buildGroupedConstructor(constructor, spec.exports, spec.includeSelf)
+			if err != nil {
+				return nil, nil, false, false, nil, err
+			}
+			finalConstructor = wrapped
+		}
+		return finalConstructor, nil, false, private, extra, nil
+	}
+	if len(spec.exports) > 0 || spec.includeSelf {
+		wrapped, err := buildGroupedSupply(value, spec.exports, spec.includeSelf)
+		if err != nil {
+			return nil, nil, false, false, nil, err
+		}
+		return wrapped, nil, false, private, extra, nil
+	}
+	return nil, value, true, private, extra, nil
 }
 
 func hasAnyTag(tags []string) bool {

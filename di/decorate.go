@@ -37,6 +37,18 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 		if fnType.NumIn() < 1 {
 			return nil, fmt.Errorf(errDecorateTooFewArgs)
 		}
+		if fnType.NumIn() == 1 && isFxInStruct(fnType.In(0)) {
+			return nil, fmt.Errorf(errDecorateSignatureMismatch)
+		}
+		if hasFxInParam(fnType) {
+			var cfg paramConfig
+			if err := applyParamOptions(entry.dec.opts, &cfg); err != nil {
+				return nil, err
+			}
+			if len(cfg.tags) > 0 && !tagsEqual(cfg.tags, cfg.resultTags) {
+				return nil, fmt.Errorf(errDecorateSignatureMismatch)
+			}
+		}
 		explicit, hasExplicit, err := explicitTagSets(entry.dec, fnType)
 		if err != nil {
 			return nil, err
@@ -254,7 +266,7 @@ func buildDecorateResultTags(ts tagSet) []string {
 }
 
 func hasFxInParam(fnType reflect.Type) bool {
-	for i := 1; i < fnType.NumIn(); i++ {
+	for i := 0; i < fnType.NumIn(); i++ {
 		param := fnType.In(i)
 		if isFxInStruct(param) {
 			return true

@@ -21,8 +21,8 @@ type bindConfig struct {
 	includeSelf            bool
 	privateSet             bool
 	privateValue           bool
-	pendingName            string
-	pendingGroup           string
+	pendingNames           []string
+	pendingGroups          []string
 	autoGroups             []autoGroupRule
 	autoGroupIgnores       []autoGroupRule
 	ignoreAuto             bool
@@ -169,11 +169,7 @@ func (n nameOption) applyBind(cfg *bindConfig) {
 		return
 	}
 	if len(cfg.exports) == 0 {
-		if cfg.pendingName != "" {
-			cfg.err = fmt.Errorf(errNameAlreadySet)
-			return
-		}
-		cfg.pendingName = name
+		cfg.pendingNames = append(cfg.pendingNames, name)
 		return
 	}
 	last := &cfg.exports[len(cfg.exports)-1]
@@ -214,11 +210,7 @@ func (g groupOption) applyBind(cfg *bindConfig) {
 		return
 	}
 	if len(cfg.exports) == 0 {
-		if cfg.pendingGroup != "" {
-			cfg.err = fmt.Errorf(errGroupAlreadySet)
-			return
-		}
-		cfg.pendingGroup = name
+		cfg.pendingGroups = append(cfg.pendingGroups, name)
 		return
 	}
 	last := &cfg.exports[len(cfg.exports)-1]

@@ -27,7 +27,7 @@ func (n defaultNode) Build() (fx.Option, error) {
 	if cfg.privateSet {
 		return nil, fmt.Errorf(errDefaultNoPrivatePublic)
 	}
-	if cfg.pendingName != "" || cfg.pendingGroup != "" {
+	if len(cfg.pendingNames) > 0 || len(cfg.pendingGroups) > 0 {
 		return nil, fmt.Errorf(errDefaultNoNamedOrGroupedExports)
 	}
 	// Defaults are only allowed for ungrouped, unnamed exports.

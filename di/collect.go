@@ -10,11 +10,12 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 	var (
 		out          []tagSet
 		decorators   []decorateEntry
-		replacements []replaceSpec
 		pos          int
 		localDecs    []decorateNode
+		replacements []replaceSpec
 		provideItems []provideItem
 	)
+	trackReplacements := hasReplaceNodes(nodes)
 
 	for _, n := range nodes {
 		switch v := n.(type) {
@@ -28,7 +29,9 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 				return nil, nil, err
 			}
 			out = append(out, tagSets...)
-			provideItems = append(provideItems, provideItem{pos: pos, node: v, tagSets: tagSets})
+			if trackReplacements {
+				provideItems = append(provideItems, provideItem{pos: pos, node: v, tagSets: tagSets})
+			}
 			for _, dec := range decs {
 				decorators = append(decorators, decorateEntry{
 					dec:      dec,
@@ -48,7 +51,9 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 				return nil, nil, err
 			}
 			out = append(out, tagSets...)
-			provideItems = append(provideItems, provideItem{pos: pos, node: v, tagSets: tagSets})
+			if trackReplacements {
+				provideItems = append(provideItems, provideItem{pos: pos, node: v, tagSets: tagSets})
+			}
 			for _, dec := range decs {
 				decorators = append(decorators, decorateEntry{
 					dec:      dec,
@@ -59,6 +64,9 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 			}
 			pos++
 		case replaceNode:
+			if !trackReplacements {
+				continue
+			}
 			spec, err := buildReplaceSpec(v, pos)
 			if err != nil {
 				return nil, nil, err
@@ -66,6 +74,9 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 			replacements = append(replacements, spec)
 			pos++
 		case defaultNode:
+			if !trackReplacements {
+				continue
+			}
 			spec, err := buildDefaultSpec(v, pos)
 			if err != nil {
 				return nil, nil, err
@@ -152,4 +163,35 @@ func collectScope(nodes []Node) ([]tagSet, []decorateEntry, error) {
 	}
 
 	return out, decorators, nil
+}
+
+func hasReplaceNodes(nodes []Node) bool {
+	for _, n := range nodes {
+		switch v := n.(type) {
+		case replaceNode, defaultNode:
+			return true
+		case moduleNode:
+			if hasReplaceNodes(v.nodes) {
+				return true
+			}
+		case optionsNode:
+			if hasReplaceNodes(v.nodes) {
+				return true
+			}
+		case switchNode:
+			for _, c := range v.cases {
+				if hasReplaceNodes(c.nodes) {
+					return true
+				}
+			}
+			if hasReplaceNodes(v.defaultCase.nodes) {
+				return true
+			}
+		case conditionalNode:
+			if hasReplaceNodes(v.nodes) {
+				return true
+			}
+		}
+	}
+	return false
 }

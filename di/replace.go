@@ -229,7 +229,7 @@ func (n replaceNode) Build() (fx.Option, error) {
 	if cfg.privateSet {
 		return nil, fmt.Errorf(errReplaceNoPrivatePublic)
 	}
-	if cfg.pendingName != "" || cfg.pendingGroup != "" {
+	if len(cfg.pendingNames) > 0 || len(cfg.pendingGroups) > 0 {
 		return nil, fmt.Errorf(errReplaceNoNamedOrGroupedExports)
 	}
 	anns, err := buildReplaceAnnotations(cfg)
@@ -243,12 +243,18 @@ func (n replaceNode) Build() (fx.Option, error) {
 }
 
 func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
-	cfg, _, _, err := parseBindOptions(n.opts)
+	cfg, decorators, _, err := parseBindOptions(n.opts)
 	if err != nil {
 		return replaceSpec{}, err
 	}
+	if len(decorators) > 0 {
+		return replaceSpec{}, fmt.Errorf(errReplaceNoDecorate)
+	}
 	if cfg.privateSet {
 		return replaceSpec{}, fmt.Errorf(errReplaceNoPrivatePublic)
+	}
+	if len(cfg.pendingNames) > 0 || len(cfg.pendingGroups) > 0 {
+		return replaceSpec{}, fmt.Errorf(errReplaceNoNamedOrGroupedExports)
 	}
 	var (
 		tagSets []tagSet
@@ -274,12 +280,26 @@ func buildReplaceSpec(n replaceNode, pos int) (replaceSpec, error) {
 }
 
 func buildDefaultSpec(n defaultNode, pos int) (replaceSpec, error) {
-	cfg, _, _, err := parseBindOptions(n.opts)
+	cfg, decorators, _, err := parseBindOptions(n.opts)
 	if err != nil {
 		return replaceSpec{}, err
 	}
+	if len(decorators) > 0 {
+		return replaceSpec{}, fmt.Errorf(errDefaultNoDecorate)
+	}
 	if cfg.privateSet {
 		return replaceSpec{}, fmt.Errorf(errDefaultNoPrivatePublic)
+	}
+	if len(cfg.pendingNames) > 0 || len(cfg.pendingGroups) > 0 {
+		return replaceSpec{}, fmt.Errorf(errDefaultNoNamedOrGroupedExports)
+	}
+	for _, exp := range cfg.exports {
+		if exp.grouped {
+			return replaceSpec{}, fmt.Errorf(errDefaultNoGroups)
+		}
+		if exp.named {
+			return replaceSpec{}, fmt.Errorf(errDefaultNoNamedExports)
+		}
 	}
 	var (
 		tagSets []tagSet

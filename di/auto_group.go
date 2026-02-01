@@ -55,37 +55,70 @@ func (o autoGroupOption) applyBind(cfg *bindConfig) {
 func (o autoGroupOption) applyParam(*paramConfig) {}
 
 type autoGroupApplier interface {
-	withAutoGroups([]autoGroupRule) Node
+	withAutoGroups(autoGroupSet) Node
 }
 
-func applyAutoGroups(nodes []Node, inherited []autoGroupRule) []Node {
+type autoGroupSet struct {
+	rules []autoGroupRule
+	opts  []any
+}
+
+type autoGroupKey struct {
+	iface reflect.Type
+	group string
+}
+
+func autoGroupRuleKey(rule autoGroupRule) autoGroupKey {
+	return autoGroupKey{iface: rule.iface, group: rule.group}
+}
+
+func buildAutoGroupSet(inherited []autoGroupRule, nodes []Node) autoGroupSet {
 	local := append([]autoGroupRule{}, inherited...)
 	// Collect AutoGroup rules from the current scope (including Options/conditions).
 	local = append(local, collectAutoGroupRules(nodes)...)
+	return autoGroupSet{
+		rules: local,
+		opts:  buildAutoGroupOptions(local),
+	}
+}
+
+func buildAutoGroupOptions(rules []autoGroupRule) []any {
+	if len(rules) == 0 {
+		return nil
+	}
+	opts := make([]any, len(rules))
+	for i, rule := range rules {
+		opts[i] = autoGroupOption{rule: rule}
+	}
+	return opts
+}
+
+func applyAutoGroups(nodes []Node, inherited []autoGroupRule) []Node {
+	localSet := buildAutoGroupSet(inherited, nodes)
 	out := make([]Node, len(nodes))
 	for i, n := range nodes {
 		switch v := n.(type) {
 		case moduleNode:
-			v.nodes = applyAutoGroups(v.nodes, local)
+			v.nodes = applyAutoGroups(v.nodes, localSet.rules)
 			out[i] = v
 		case optionsNode:
-			v.nodes = applyAutoGroups(v.nodes, local)
+			v.nodes = applyAutoGroups(v.nodes, localSet.rules)
 			out[i] = v
 		case conditionalNode:
-			v.nodes = applyAutoGroups(v.nodes, local)
+			v.nodes = applyAutoGroups(v.nodes, localSet.rules)
 			out[i] = v
 		case switchNode:
 			cases := make([]caseNode, len(v.cases))
 			for idx, c := range v.cases {
-				c.nodes = applyAutoGroups(c.nodes, local)
+				c.nodes = applyAutoGroups(c.nodes, localSet.rules)
 				cases[idx] = c
 			}
 			v.cases = cases
-			v.defaultCase = switchDefaultNode{nodes: applyAutoGroups(v.defaultCase.nodes, local)}
+			v.defaultCase = switchDefaultNode{nodes: applyAutoGroups(v.defaultCase.nodes, localSet.rules)}
 			out[i] = v
 		default:
 			if applier, ok := n.(autoGroupApplier); ok {
-				out[i] = applier.withAutoGroups(local)
+				out[i] = applier.withAutoGroups(localSet)
 				continue
 			}
 			out[i] = n
@@ -114,17 +147,38 @@ func collectAutoGroupRules(nodes []Node) []autoGroupRule {
 	return rules
 }
 
-func appendAutoGroupOptions(opts []any, rules []autoGroupRule) []any {
-	if len(rules) == 0 {
-		return opts
+func addAutoGroupOptions(opts []any, set autoGroupSet) ([]any, bool) {
+	if len(set.rules) == 0 {
+		return opts, false
 	}
-	for _, rule := range rules {
-		if hasAutoGroupOption(opts, rule) {
+	if len(opts) == 0 {
+		return set.opts, true
+	}
+	existing := map[autoGroupKey]bool{}
+	for _, opt := range opts {
+		if ag, ok := opt.(autoGroupOption); ok {
+			existing[autoGroupRuleKey(ag.rule)] = true
+		}
+	}
+	added := 0
+	for _, rule := range set.rules {
+		if existing[autoGroupRuleKey(rule)] {
 			continue
 		}
-		opts = append(opts, autoGroupOption{rule: rule})
+		added++
 	}
-	return opts
+	if added == 0 {
+		return opts, false
+	}
+	out := make([]any, 0, len(opts)+added)
+	out = append(out, opts...)
+	for _, rule := range set.rules {
+		if existing[autoGroupRuleKey(rule)] {
+			continue
+		}
+		out = append(out, autoGroupOption{rule: rule})
+	}
+	return out, true
 }
 
 func hasAutoGroupOption(opts []any, rule autoGroupRule) bool {
@@ -192,23 +246,35 @@ func (o autoGroupIgnoreOption) applyBind(cfg *bindConfig) {
 
 func (o autoGroupIgnoreOption) applyParam(*paramConfig) {}
 
-func (n provideNode) withAutoGroups(rules []autoGroupRule) Node {
-	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
+func (n provideNode) withAutoGroups(set autoGroupSet) Node {
+	opts, changed := addAutoGroupOptions(n.opts, set)
+	if !changed {
+		return n
+	}
 	return provideNode{constructor: n.constructor, opts: opts}
 }
 
-func (n supplyNode) withAutoGroups(rules []autoGroupRule) Node {
-	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
+func (n supplyNode) withAutoGroups(set autoGroupSet) Node {
+	opts, changed := addAutoGroupOptions(n.opts, set)
+	if !changed {
+		return n
+	}
 	return supplyNode{value: n.value, opts: opts}
 }
 
-func (n configNode[T]) withAutoGroups(rules []autoGroupRule) Node {
-	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
+func (n configNode[T]) withAutoGroups(set autoGroupSet) Node {
+	opts, changed := addAutoGroupOptions(n.opts, set)
+	if !changed {
+		return n
+	}
 	return configNode[T]{pathOrKey: n.pathOrKey, opts: opts, scope: n.scope}
 }
 
-func (n configBindNode[T]) withAutoGroups(rules []autoGroupRule) Node {
-	opts := appendAutoGroupOptions(append([]any{}, n.opts...), rules)
+func (n configBindNode[T]) withAutoGroups(set autoGroupSet) Node {
+	opts, changed := addAutoGroupOptions(n.opts, set)
+	if !changed {
+		return n
+	}
 	return configBindNode[T]{key: n.key, opts: opts, scope: n.scope}
 }
 

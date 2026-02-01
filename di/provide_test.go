@@ -1,8 +1,12 @@
 package di
 
 import (
+	"context"
 	"reflect"
 	"testing"
+	"time"
+
+	"go.uber.org/fx"
 )
 
 type provideIface interface {
@@ -125,6 +129,69 @@ func TestBuildProvideSpecAutoGroupPointerReceiver(t *testing.T) {
 	}
 	if !hasTagSet(tagSets, tagSet{typ: iface, group: "ptrs"}) {
 		t.Fatalf("expected group tag set, got %#v", tagSets)
+	}
+}
+
+func TestProvideMultipleNamesAndGroups(t *testing.T) {
+	type namedItem struct {
+		value string
+	}
+	cfg := bindConfig{
+		pendingNames:  []string{"a", "b"},
+		pendingGroups: []string{"items"},
+	}
+	spec, tagSets, err := buildProvideSpec(cfg, func() *namedItem { return &namedItem{value: "thing"} }, nil)
+	if err != nil {
+		t.Fatalf("buildProvideSpec: %v", err)
+	}
+	if len(spec.exports) != 3 {
+		t.Fatalf("expected 3 exports, got %d", len(spec.exports))
+	}
+	if !hasTagSet(tagSets, tagSet{name: "a", typ: reflect.TypeOf(&namedItem{})}) {
+		t.Fatalf("missing name a tag set: %#v", tagSets)
+	}
+	if !hasTagSet(tagSets, tagSet{name: "b", typ: reflect.TypeOf(&namedItem{})}) {
+		t.Fatalf("missing name b tag set: %#v", tagSets)
+	}
+	if !hasTagSet(tagSets, tagSet{group: "items", typ: reflect.TypeOf(&namedItem{})}) {
+		t.Fatalf("missing group tag set: %#v", tagSets)
+	}
+}
+
+func TestProvideMultipleNamesAndGroupsIntegration(t *testing.T) {
+	type namedItem struct {
+		value string
+	}
+	var a *namedItem
+	var b *namedItem
+	var items []*namedItem
+	app := fx.New(
+		App(
+			Provide(func() *namedItem { return &namedItem{value: "thing"} },
+				Name("a"),
+				Name("b"),
+				Group("items"),
+			),
+			Populate(&a, Name("a")),
+			Populate(&b, Name("b")),
+			Populate(&items, Group("items")),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	if a == nil || a.value != "thing" {
+		t.Fatalf("unexpected a: %#v", a)
+	}
+	if b == nil || b.value != "thing" {
+		t.Fatalf("unexpected b: %#v", b)
+	}
+	if len(items) != 1 || items[0].value != "thing" {
+		t.Fatalf("unexpected items: %#v", items)
 	}
 }
 

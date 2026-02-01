@@ -58,36 +58,115 @@ func (a *appNode) Build() fx.Option {
 	}
 	// Extract diagnostics options so they can be appended on error paths.
 	diagOpts, nodes := extractDiagnostics(nodes)
-	// Collect tag sets and decorate entries after all transformations.
-	_, decorators, err := collectGlobalTagSets(nodes)
-	if err != nil {
-		return fx.Options(append(diagOpts, fx.Error(err))...)
+	// Collect tag sets and decorate entries only when decorators are present.
+	var decorators []decorateEntry
+	if hasDecorators(nodes) {
+		_, decs, err := collectGlobalTagSets(nodes)
+		if err != nil {
+			return fx.Options(append(diagOpts, fx.Error(err))...)
+		}
+		decorators = decs
 	}
 	var opts []fx.Option
+	var batchProvide []any
+	var batchSupply []any
+	batchPrivate := false
+	batchKind := ""
+
+	flushBatch := func() {
+		if len(batchProvide) > 0 {
+			if batchPrivate {
+				opts = append(opts, fx.Provide(append(batchProvide, fx.Private)...))
+			} else {
+				opts = append(opts, fx.Provide(batchProvide...))
+			}
+		} else if len(batchSupply) > 0 {
+			if batchPrivate {
+				opts = append(opts, fx.Supply(append(batchSupply, fx.Private)...))
+			} else {
+				opts = append(opts, fx.Supply(batchSupply...))
+			}
+		}
+		batchProvide = nil
+		batchSupply = nil
+		batchKind = ""
+		batchPrivate = false
+	}
+
+	addProvide := func(ctor any, private bool) {
+		if batchKind != "provide" || batchPrivate != private {
+			flushBatch()
+			batchKind = "provide"
+			batchPrivate = private
+		}
+		batchProvide = append(batchProvide, ctor)
+	}
+
+	addSupply := func(value any, private bool) {
+		if batchKind != "supply" || batchPrivate != private {
+			flushBatch()
+			batchKind = "supply"
+			batchPrivate = private
+		}
+		batchSupply = append(batchSupply, value)
+	}
+
 	if hasDiagnostics {
 		// Match fx.App defaults when diagnostics is enabled.
 		opts = append(opts, fx.RecoverFromPanics())
 	}
 	for _, n := range nodes {
-		var opt fx.Option
-		if _, ok := n.(decorateNode); ok {
+		switch v := n.(type) {
+		case decorateNode:
 			// Decorators are composed globally below.
 			continue
+		case provideNode:
+			ctor, private, extra, err := v.buildConstructor()
+			if err != nil {
+				flushBatch()
+				return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
+			}
+			addProvide(ctor, private)
+			if len(extra) > 0 {
+				flushBatch()
+				opts = append(opts, extra...)
+			}
+			continue
+		case supplyNode:
+			ctor, value, useSupply, private, extra, err := v.buildSupply()
+			if err != nil {
+				flushBatch()
+				return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
+			}
+			if useSupply {
+				addSupply(value, private)
+			} else {
+				addProvide(ctor, private)
+			}
+			if len(extra) > 0 {
+				flushBatch()
+				opts = append(opts, extra...)
+			}
+			continue
+		default:
+			flushBatch()
+			opt, err := n.Build()
+			if err != nil {
+				return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
+			}
+			opts = append(opts, opt)
 		}
-		var err error
-		opt, err = n.Build()
+	}
+	flushBatch()
+
+	if len(decorators) > 0 {
+		decorateOpts, err := buildDecorators(decorators)
 		if err != nil {
 			return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
 		}
-		opts = append(opts, opt)
+		// Append composed decorators last.
+		opts = append(opts, decorateOpts...)
 	}
-
-	decorateOpts, err := buildDecorators(decorators)
-	if err != nil {
-		return fx.Options(append(append(opts, diagOpts...), fx.Error(err))...)
-	}
-	// Append composed decorators last.
-	opts = append(opts, decorateOpts...)
 	// Append diagnostics options last so they win logger selection.
 	opts = append(opts, diagOpts...)
 	if len(opts) == 0 {
@@ -174,6 +253,54 @@ func collectNodes(items []any) []Node {
 		}
 	}
 	return out
+}
+
+func hasDecorators(nodes []Node) bool {
+	for _, n := range nodes {
+		switch v := n.(type) {
+		case decorateNode:
+			return true
+		case provideNode:
+			if optsHaveDecorate(v.opts) {
+				return true
+			}
+		case supplyNode:
+			if optsHaveDecorate(v.opts) {
+				return true
+			}
+		case moduleNode:
+			if hasDecorators(v.nodes) {
+				return true
+			}
+		case optionsNode:
+			if hasDecorators(v.nodes) {
+				return true
+			}
+		case conditionalNode:
+			if hasDecorators(v.nodes) {
+				return true
+			}
+		case switchNode:
+			for _, c := range v.cases {
+				if hasDecorators(c.nodes) {
+					return true
+				}
+			}
+			if hasDecorators(v.defaultCase.nodes) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func optsHaveDecorate(opts []any) bool {
+	for _, opt := range opts {
+		if _, ok := opt.(decorateNode); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func applyConfigScopes(nodes []Node) []Node {
