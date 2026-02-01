@@ -20,7 +20,8 @@ type apiService struct {
 }
 
 func NewAPIService(workerService *workerService) *apiService {
-	return &apiService{name: "api", workerService: workerService}
+	s := &apiService{name: "api", workerService: workerService}
+	return s
 }
 
 func (s *apiService) Start(ctx context.Context) error {
@@ -47,7 +48,8 @@ type workerService struct {
 }
 
 func NewWorkerService() *workerService {
-	return &workerService{}
+	s := &workerService{}
+	return s
 }
 
 func (s *workerService) Foo(ctx context.Context, arg string) error {
@@ -74,8 +76,8 @@ func main() {
 		log.Module(),
 		otel.Module(),
 		lifecycle.Module(),
-		di.Provide(NewAPIService),
-		di.Provide(NewWorkerService),
+		di.Provide(NewAPIService, otel.Layer("hello1")),
+		di.Provide(NewWorkerService, otel.Layer("hello2")),
 	).Build()
 
 	fx.New(options).Run()
