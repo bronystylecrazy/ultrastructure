@@ -210,6 +210,35 @@ func TestAutoInjectWithAutoGroup(t *testing.T) {
 	}
 }
 
+type aiOutResult struct {
+	fx.Out
+	Dep aiDep `di:"inject" name:"out"`
+}
+
+func TestAutoInjectWithFxOut(t *testing.T) {
+	var got aiDep
+	app := fx.New(
+		App(
+			AutoInject(),
+			Supply(aiDep{val: "dep"}),
+			Provide(func() aiOutResult {
+				return aiOutResult{}
+			}),
+			Populate(&got, Name("out")),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	if got.val != "dep" {
+		t.Fatalf("unexpected dep: %#v", got)
+	}
+}
+
 type aiModuleTarget struct {
 	Dep aiDep `di:"inject"`
 }

@@ -71,3 +71,31 @@ func TestDecorateGroupSlice(t *testing.T) {
 		t.Fatalf("unexpected items: %#v", got)
 	}
 }
+
+func TestDecorateMultipleTimesOrder(t *testing.T) {
+	var got *basicThing
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Decorate(func(b *basicThing) *basicThing {
+				b.value = b.value + "-one"
+				return b
+			}),
+			Decorate(func(b *basicThing) *basicThing {
+				b.value = b.value + "-two"
+				return b
+			}),
+			Populate(&got),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	if got == nil || got.value != "provided-one-two" {
+		t.Fatalf("unexpected decorated value: %#v", got)
+	}
+}

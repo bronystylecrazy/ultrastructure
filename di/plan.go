@@ -238,7 +238,7 @@ func describeDecorate(n decorateNode) (string, error) {
 	if fnType == nil || fnType.Kind() != reflect.Func {
 		return "", fmt.Errorf(errDecorateFunctionRequired)
 	}
-	explicit, hasExplicit, err := explicitTagSets(n)
+	explicit, hasExplicit, err := explicitTagSets(n, fnType)
 	if err != nil {
 		return "", err
 	}

@@ -131,3 +131,33 @@ func TestDecorateNamedWithDeps(t *testing.T) {
 		t.Fatalf("unexpected secondary: %#v", secondary)
 	}
 }
+
+func TestDecorateMultipleWithDifferentDeps(t *testing.T) {
+	var got *basicThing
+	app := fx.New(
+		App(
+			Provide(newBasicThing),
+			Supply(&decoDep{val: "one"}, Name("one")),
+			Supply(&decoDep{val: "two"}, Name("two")),
+			Decorate(func(b *basicThing, dep *decoDep) *basicThing {
+				b.value = b.value + "-" + dep.val
+				return b
+			}, Params(Name("one"))),
+			Decorate(func(b *basicThing, dep *decoDep) *basicThing {
+				b.value = b.value + "-" + dep.val
+				return b
+			}, Params(Name("two"))),
+			Populate(&got),
+		).Build(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	if got == nil || got.value != "provided-one-two" {
+		t.Fatalf("unexpected decorated value: %#v", got)
+	}
+}

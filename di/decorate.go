@@ -12,10 +12,32 @@ func Decorate(function any, opts ...Option) Node {
 	return decorateNode{function: function, opts: opts}
 }
 
+type decorateSpec struct {
+	fn        any
+	fnType    reflect.Type
+	extraTags []string
+	depIdx    []int
+}
+
+type decorateBucket struct {
+	ts        tagSet
+	targetTyp reflect.Type
+	specs     []decorateSpec
+}
+
 func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
-	var out []fx.Option
+	buckets := map[string]*decorateBucket{}
+	order := []string{}
+
 	for _, entry := range entries {
-		explicit, hasExplicit, err := explicitTagSets(entry.dec)
+		fnType := reflect.TypeOf(entry.dec.function)
+		if fnType == nil || fnType.Kind() != reflect.Func {
+			return nil, fmt.Errorf(errDecorateFunctionRequired)
+		}
+		if fnType.NumIn() < 1 {
+			return nil, fmt.Errorf(errDecorateTooFewArgs)
+		}
+		explicit, hasExplicit, err := explicitTagSets(entry.dec, fnType)
 		if err != nil {
 			return nil, err
 		}
@@ -24,18 +46,17 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 		if hasExplicit {
 			targets = explicit
 		}
-
-		fnType := reflect.TypeOf(entry.dec.function)
-		if fnType == nil || fnType.Kind() != reflect.Func {
-			return nil, fmt.Errorf(errDecorateFunctionRequired)
-		}
-		if fnType.NumIn() < 1 {
-			return nil, fmt.Errorf(errDecorateTooFewArgs)
-		}
+		targetType, isSliceTarget := decoratorTargetType(fnType)
 		// Slice decorators can target groups directly.
-		isSliceParam := fnType.NumIn() > 0 && fnType.In(0).Kind() == reflect.Slice
+		isSliceParam := isSliceTarget
 
 		for _, ts := range targets {
+			if ts.typ == nil {
+				ts.typ = targetType
+			}
+			if !decoratorTargetsTagSet(ts, targetType, isSliceParam) {
+				continue
+			}
 			fn := entry.dec.function
 			fnSig := fnType
 			if ts.group != "" && !isSliceParam {
@@ -54,12 +75,37 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 					fnSig = reflect.TypeOf(fn)
 				}
 			}
-			paramTags, resultTags, err := buildDecorateTags(entry.dec, ts, fnSig)
+			extraTags, err := buildDecorateExtraTags(entry.dec, fnSig)
 			if err != nil {
 				return nil, err
 			}
+			key := tagSetKey(ts) + "|t:" + targetType.String()
+			b := buckets[key]
+			if b == nil {
+				b = &decorateBucket{ts: ts, targetTyp: fnSig.In(0)}
+				buckets[key] = b
+				order = append(order, key)
+			}
+			b.specs = append(b.specs, decorateSpec{
+				fn:        fn,
+				fnType:    fnSig,
+				extraTags: extraTags,
+			})
+		}
+	}
+
+	var out []fx.Option
+	for _, key := range order {
+		b := buckets[key]
+		if b == nil || len(b.specs) == 0 {
+			continue
+		}
+		if len(b.specs) == 1 {
+			spec := b.specs[0]
+			paramTags := buildDecorateParamTagsFromSpec(spec, b.ts)
+			resultTags := buildDecorateResultTags(b.ts)
 			if len(paramTags) == 0 && len(resultTags) == 0 {
-				out = append(out, fx.Decorate(fn))
+				out = append(out, fx.Decorate(spec.fn))
 				continue
 			}
 			anns := []fx.Annotation{}
@@ -69,18 +115,58 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 			if len(resultTags) > 0 {
 				anns = append(anns, fx.ResultTags(resultTags...))
 			}
-			out = append(out, fx.Decorate(fx.Annotate(fn, anns...)))
+			out = append(out, fx.Decorate(fx.Annotate(spec.fn, anns...)))
+			continue
 		}
+		opt, err := buildCompositeDecorator(b)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, opt)
 	}
 	return out, nil
 }
 
-func explicitTagSets(dec decorateNode) ([]tagSet, bool, error) {
+func decoratorTargetsTagSet(ts tagSet, target reflect.Type, isSlice bool) bool {
+	if target == nil || ts.typ == nil {
+		return false
+	}
+	if isSlice {
+		if ts.group == "" {
+			return false
+		}
+	}
+	if ts.group != "" {
+		return target.AssignableTo(ts.typ) || ts.typ.AssignableTo(target)
+	}
+	return ts.typ.AssignableTo(target)
+}
+
+func decoratorTargetType(fnType reflect.Type) (reflect.Type, bool) {
+	if fnType == nil || fnType.Kind() != reflect.Func {
+		return nil, false
+	}
+	var target reflect.Type
+	if fnType.NumOut() > 0 {
+		target = fnType.Out(0)
+	} else if fnType.NumIn() > 0 {
+		target = fnType.In(0)
+	}
+	if target == nil {
+		return nil, false
+	}
+	if target.Kind() == reflect.Slice {
+		return target.Elem(), true
+	}
+	return target, false
+}
+
+func explicitTagSets(dec decorateNode, fnType reflect.Type) ([]tagSet, bool, error) {
 	var cfg paramConfig
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
 		return nil, false, err
 	}
-	if len(cfg.resultTags) == 0 {
+	if !shouldUseResultTags(cfg, fnType) {
 		return nil, false, nil
 	}
 	if len(cfg.resultTags) > 1 {
@@ -96,38 +182,186 @@ func explicitTagSets(dec decorateNode) ([]tagSet, bool, error) {
 	return nil, false, fmt.Errorf(errUnsupportedTag, t)
 }
 
-func buildDecorateTags(dec decorateNode, ts tagSet, fnType reflect.Type) ([]string, []string, error) {
+func buildDecorateExtraTags(dec decorateNode, fnType reflect.Type) ([]string, error) {
 	var cfg paramConfig
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	extraTags := cfg.tags
-	if len(cfg.resultTags) > 0 && len(cfg.tags) > 0 && cfg.tags[0] == cfg.resultTags[0] {
+	if shouldUseResultTags(cfg, fnType) && len(cfg.resultTags) > 0 && len(cfg.tags) > 0 && cfg.tags[0] == cfg.resultTags[0] {
 		extraTags = cfg.tags[1:]
 	}
-	var paramTags []string
-	if fnType.NumIn() > 0 {
-		paramTags = make([]string, fnType.NumIn())
-		if ts.name != "" || ts.group != "" {
-			paramTags[0] = rewriteParamTag("", ts)
+	if fnType.NumIn() <= 1 {
+		return nil, nil
+	}
+	tags := make([]string, fnType.NumIn()-1)
+	for i := 0; i < len(tags) && i < len(extraTags); i++ {
+		tags[i] = extraTags[i]
+	}
+	return tags, nil
+}
+
+func shouldUseResultTags(cfg paramConfig, fnType reflect.Type) bool {
+	if len(cfg.resultTags) == 0 {
+		return false
+	}
+	if fnType != nil && fnType.NumIn() > 1 && tagsEqual(cfg.tags, cfg.resultTags) {
+		return false
+	}
+	return true
+}
+
+func tagsEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
-		if fnType.NumIn() > 1 {
-			extras := buildParamTags(fnType.NumIn()-1, extraTags)
-			for i := 0; i < len(extras); i++ {
-				paramTags[i+1] = extras[i]
+	}
+	return true
+}
+
+func buildDecorateParamTagsFromSpec(spec decorateSpec, ts tagSet) []string {
+	fnType := spec.fnType
+	if fnType == nil || fnType.NumIn() == 0 {
+		return nil
+	}
+	if hasFxInParam(fnType) {
+		return nil
+	}
+	paramTags := make([]string, fnType.NumIn())
+	if ts.name != "" || ts.group != "" {
+		paramTags[0] = rewriteParamTag("", ts)
+	}
+	extraIdx := 0
+	for i := 1; i < fnType.NumIn() && extraIdx < len(spec.extraTags); i++ {
+		paramTags[i] = spec.extraTags[extraIdx]
+		extraIdx++
+	}
+	if !hasAnyTag(paramTags) {
+		return nil
+	}
+	return paramTags
+}
+
+func buildDecorateResultTags(ts tagSet) []string {
+	if ts.name != "" || ts.group != "" {
+		return tagSetTags(ts)
+	}
+	return nil
+}
+
+func hasFxInParam(fnType reflect.Type) bool {
+	for i := 1; i < fnType.NumIn(); i++ {
+		param := fnType.In(i)
+		if isFxInStruct(param) {
+			return true
+		}
+	}
+	return false
+}
+
+func isFxInStruct(t reflect.Type) bool {
+	if t == nil || t.Kind() != reflect.Struct {
+		return false
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous && f.Type == reflect.TypeOf(fx.In{}) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildCompositeDecorator(b *decorateBucket) (fx.Option, error) {
+	type depField struct {
+		typ reflect.Type
+		tag string
+		idx int
+	}
+	depFields := []depField{}
+	depIndex := map[string]int{}
+	hasError := false
+	for i := range b.specs {
+		spec := &b.specs[i]
+		if spec.fnType.NumOut() == 2 {
+			hasError = true
+		}
+		if hasFxInParam(spec.fnType) {
+			return nil, fmt.Errorf(errDecorateSignatureMismatch)
+		}
+		spec.depIdx = make([]int, 0, spec.fnType.NumIn()-1)
+		for j := 1; j < spec.fnType.NumIn(); j++ {
+			tag := ""
+			if j-1 < len(spec.extraTags) {
+				tag = spec.extraTags[j-1]
+			}
+			key := spec.fnType.In(j).String() + "|" + tag
+			idx, ok := depIndex[key]
+			if !ok {
+				idx = len(depFields)
+				depIndex[key] = idx
+				depFields = append(depFields, depField{typ: spec.fnType.In(j), tag: tag, idx: idx})
+			}
+			spec.depIdx = append(spec.depIdx, idx)
+		}
+	}
+
+	fields := []reflect.StructField{{
+		Name:      "In",
+		Type:      reflect.TypeOf(fx.In{}),
+		Anonymous: true,
+	}}
+	targetTag := ""
+	if b.ts.name != "" {
+		targetTag = `name:"` + b.ts.name + `"`
+	} else if b.ts.group != "" {
+		targetTag = `group:"` + b.ts.group + `"`
+	}
+	fields = append(fields, reflect.StructField{
+		Name: "Target",
+		Type: b.targetTyp,
+		Tag:  reflect.StructTag(targetTag),
+	})
+	for i, dep := range depFields {
+		fields = append(fields, reflect.StructField{
+			Name: fmt.Sprintf("Dep%d", i),
+			Type: dep.typ,
+			Tag:  reflect.StructTag(dep.tag),
+		})
+	}
+
+	inType := reflect.StructOf(fields)
+	outTypes := []reflect.Type{b.targetTyp}
+	if hasError {
+		outTypes = append(outTypes, errorType)
+	}
+	wrapperType := reflect.FuncOf([]reflect.Type{inType}, outTypes, false)
+	wrapper := reflect.MakeFunc(wrapperType, func(args []reflect.Value) []reflect.Value {
+		in := args[0]
+		current := in.Field(1)
+		for _, spec := range b.specs {
+			callArgs := make([]reflect.Value, spec.fnType.NumIn())
+			callArgs[0] = current
+			for j := 1; j < spec.fnType.NumIn(); j++ {
+				fieldIdx := 2 + spec.depIdx[j-1]
+				callArgs[j] = in.Field(fieldIdx)
+			}
+			results := reflect.ValueOf(spec.fn).Call(callArgs)
+			current = results[0]
+			if spec.fnType.NumOut() == 2 && !results[1].IsNil() {
+				return []reflect.Value{current, results[1]}
 			}
 		}
-		if !hasAnyTag(paramTags) {
-			paramTags = nil
+		if hasError {
+			return []reflect.Value{current, reflect.Zero(errorType)}
 		}
-	}
-	var resultTags []string
-	if ts.name != "" || ts.group != "" {
-		resultTags = tagSetTags(ts)
-	} else if len(cfg.resultTags) > 0 {
-		resultTags = append([]string{}, cfg.resultTags...)
-	}
-	return paramTags, resultTags, nil
+		return []reflect.Value{current}
+	})
+	return fx.Decorate(wrapper.Interface()), nil
 }
 
 func buildGroupDecoratorWrapper(fn any, groupIface reflect.Type) (any, error) {
