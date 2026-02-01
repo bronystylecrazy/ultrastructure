@@ -66,7 +66,6 @@ func (l *Websocket) Protocol() string {
 // Init initializes the listener.
 func (l *Websocket) Init(log *slog.Logger) error {
 	l.log = log
-	log.Info("printtt")
 	l.app.All("/realtime", l.authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.handler))
 	return nil
 }

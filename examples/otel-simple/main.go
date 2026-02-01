@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"log"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
@@ -88,11 +87,11 @@ func main() {
 			web.UseSwagger(),
 			di.Provide(NewAPIService, otel.Layer("hello1")),
 			di.Provide(NewWorkerService, otel.Layer("hello2")),
-			di.Invoke(func(ms realtime.Server) {
+			di.Invoke(func(ms realtime.Server, logger *zap.Logger) {
 				go func() {
 					var i int
 					for {
-						log.Println("Sending message", i)
+						logger.Info("Sending message", zap.Int("i", i))
 						ms.Send("hello", i, true, 1)
 						time.Sleep(1 * time.Second)
 						i++

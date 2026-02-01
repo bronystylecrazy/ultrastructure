@@ -17,5 +17,6 @@ func Module(opts ...di.Node) di.Node {
 		di.Provide(NewAuthorizer),
 		di.Options(di.ConvertAnys(opts)...),
 		di.Invoke(AppendHooks, di.Params(``, di.Group(HooksGroupName))),
+		di.Invoke(AppendListeners, di.Params(``, di.Group(ListenersGroupName))),
 	)
 }
