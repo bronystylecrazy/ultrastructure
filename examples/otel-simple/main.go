@@ -81,7 +81,7 @@ func main() {
 		lifecycle.Module(),
 		web.Module(
 			web.UseSpa(&assets),
-			web.UseScalar(),
+			web.UseSwagger(),
 			di.Provide(NewAPIService, otel.Layer("hello1")),
 			di.Provide(NewWorkerService, otel.Layer("hello2")),
 		),

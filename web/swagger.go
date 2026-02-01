@@ -7,18 +7,18 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func UseScalar() di.Node {
-	return di.Provide(NewScalarHandler)
+func UseSwagger() di.Node {
+	return di.Provide(NewSwaggerHandler)
 }
 
-type ScalarHandler struct {
+type SwaggerHandler struct {
 	config Config
 }
 
-func NewScalarHandler(config Config) (*ScalarHandler, error) {
-	return &ScalarHandler{config: config}, nil
+func NewSwaggerHandler(config Config) (*SwaggerHandler, error) {
+	return &SwaggerHandler{config: config}, nil
 }
 
-func (h *ScalarHandler) Handle(r fiber.Router) {
+func (h *SwaggerHandler) Handle(r fiber.Router) {
 	r.Get("/docs/*", swagger.HandlerDefault)
 }
