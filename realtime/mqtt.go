@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/auth"
@@ -19,7 +18,7 @@ func NewMqttServer() (*MqttServer, error) {
 
 	server := &MqttServer{Server: mqtt.New(&mqtt.Options{
 		InlineClient: true,
-		Logger:       slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		Logger:       slog.New(slog.DiscardHandler),
 	})}
 
 	err := server.AddHook(new(auth.AllowHook), nil)
