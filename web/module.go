@@ -1,8 +1,6 @@
 package web
 
 import (
-	"fmt"
-
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/gofiber/fiber/v3"
 )
@@ -25,8 +23,6 @@ func Module(extends ...di.Node) di.Node {
 		di.Provide(NewZapMiddleware),
 		di.Options(di.ConvertAnys(extends)...),
 		di.Invoke(SetupHandlers, di.Params(``, di.Group(HandlersGroupName))),
-		di.Invoke(func(config Config, app *fiber.App) {
-			go app.Listen(fmt.Sprintf("%s:%d", config.Host, config.Port))
-		}),
+		di.Invoke(RegisterFiberApp),
 	)
 }
