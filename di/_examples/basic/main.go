@@ -33,7 +33,7 @@ func main() {
 			di.Provide(
 				NewPrimary,
 				di.Self(),
-				di.Both(
+				di.Options(
 					di.As[Handler](), di.Name("primary"),
 					di.As[Handler](), di.Group("handlers"),
 				),

@@ -1,8 +1,6 @@
 package otel
 
 import (
-	"log"
-
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -50,7 +48,7 @@ func RegisterObservers(logger *zap.Logger, tp *TracerProvider, setters ...Observ
 		if !ok {
 			continue
 		}
-		log.Println("Registering observer for", layer.Name, "with setter", setter)
-		setter.SetObserver(NewObserver(logger, tp.Tracer(layer.Name)))
+
+		setter.SetObserver(NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name)))
 	}
 }

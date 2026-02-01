@@ -1,6 +1,10 @@
 package di
 
-import "go.uber.org/fx"
+import (
+	"fmt"
+
+	"go.uber.org/fx"
+)
 
 // Module declares a named module of nodes.
 func Module(name string, nodes ...any) Node {
@@ -8,8 +12,8 @@ func Module(name string, nodes ...any) Node {
 }
 
 // Options groups nodes without a name.
-func Options(nodes ...any) Node {
-	return optionsNode{nodes: collectNodes(nodes)}
+func Options(nodes ...any) NodeOption {
+	return optionsNode{items: nodes, nodes: collectNodes(nodes)}
 }
 
 type moduleNode struct {
@@ -34,6 +38,7 @@ func (n moduleNode) Build() (fx.Option, error) {
 }
 
 type optionsNode struct {
+	items []any
 	nodes []Node
 }
 
@@ -51,4 +56,36 @@ func (n optionsNode) Build() (fx.Option, error) {
 		opts = append(opts, opt)
 	}
 	return packOptions(opts), nil
+}
+
+func (n optionsNode) applyBind(cfg *bindConfig) {
+	for _, item := range n.items {
+		switch v := item.(type) {
+		case nil:
+			continue
+		case Option:
+			v.applyBind(cfg)
+		default:
+			cfg.err = fmt.Errorf(errUnsupportedOptionType, item)
+		}
+		if cfg.err != nil {
+			return
+		}
+	}
+}
+
+func (n optionsNode) applyParam(cfg *paramConfig) {
+	for _, item := range n.items {
+		switch v := item.(type) {
+		case nil:
+			continue
+		case Option:
+			v.applyParam(cfg)
+		default:
+			cfg.err = fmt.Errorf(errUnsupportedOptionType, item)
+		}
+		if cfg.err != nil {
+			return
+		}
+	}
 }

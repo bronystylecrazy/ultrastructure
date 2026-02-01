@@ -38,29 +38,6 @@ type bindOptionFunc func(*bindConfig)
 func (f bindOptionFunc) applyBind(cfg *bindConfig) { f(cfg) }
 func (f bindOptionFunc) applyParam(*paramConfig)   {}
 
-type bothOption []Option
-
-func (b bothOption) applyBind(cfg *bindConfig) {
-	for _, opt := range b {
-		if opt != nil {
-			opt.applyBind(cfg)
-		}
-	}
-}
-
-func (b bothOption) applyParam(cfg *paramConfig) {
-	for _, opt := range b {
-		if opt != nil {
-			opt.applyParam(cfg)
-		}
-	}
-}
-
-// Both groups multiple options together.
-func Both(opts ...Option) Option {
-	return bothOption(opts)
-}
-
 // As exposes the constructor result as type T (non-grouped).
 func As[T any](tags ...string) Option {
 	return bindOptionFunc(func(cfg *bindConfig) {
@@ -242,7 +219,7 @@ func Group(name string) Option {
 
 // ToGroup assigns the previous As to a group.
 func ToGroup(name string) Option {
-	return bothOption{bindOptionFunc(func(cfg *bindConfig) {
+	return Options(bindOptionFunc(func(cfg *bindConfig) {
 		if cfg.err != nil {
 			return
 		}
@@ -255,7 +232,7 @@ func ToGroup(name string) Option {
 		last.grouped = true
 		last.name = ""
 		last.named = false
-	})}
+	}))
 }
 
 // Self exposes the concrete type along with any other As* options.
