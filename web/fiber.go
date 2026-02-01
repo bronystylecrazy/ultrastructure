@@ -2,11 +2,12 @@ package web
 
 import "github.com/gofiber/fiber/v3"
 
-type Config struct {
-	Host string `mapstructure:"host"`
-	Port string `mapstructure:"port"`
+type FiberConfig struct {
+	Name string `mapstructure:"name"`
 }
 
-func NewFiberApp(config ...fiber.Config) *fiber.App {
-	return fiber.New(config...)
+func NewFiberApp(config FiberConfig) *fiber.App {
+	return fiber.New(fiber.Config{
+		AppName: config.Name,
+	})
 }

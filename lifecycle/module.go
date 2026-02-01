@@ -6,8 +6,8 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
-var StartersGroupName = "auto-starters"
-var StoppersGroupName = "auto-stoppers"
+var StartersGroupName = "lifecycle.starters"
+var StoppersGroupName = "lifecycle.stoppers"
 
 func NewBackgroundContext() context.Context {
 	return context.Background()
@@ -18,7 +18,7 @@ func Module() di.Node {
 		di.AutoGroup[Starter](StartersGroupName),
 		di.AutoGroup[Stopper](StoppersGroupName),
 		di.Provide(NewBackgroundContext),
-		di.Invoke(RegisterStarters),
-		di.Invoke(RegisterStoppers),
+		di.Invoke(AppendStarters, di.Params(``, di.Group(StartersGroupName))),
+		di.Invoke(AppendStoppers, di.Params(``, di.Group(StoppersGroupName))),
 	)
 }

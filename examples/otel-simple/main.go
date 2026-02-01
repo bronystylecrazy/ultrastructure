@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"embed"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
+	web "github.com/bronystylecrazy/ultrastructure/web"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -23,7 +26,6 @@ func NewAPIService(workerService *workerService) *apiService {
 }
 
 func (s *apiService) Start(ctx context.Context) error {
-	s.Obs.Info("hello")
 	ctx, obs := s.Obs.Start(ctx, "service.start")
 	defer obs.End()
 
@@ -69,19 +71,22 @@ func (s *workerService) Bar(ctx context.Context, arg string) error {
 	return nil
 }
 
-func main() {
+//go:embed all:web/dist
+var assets embed.FS
 
-	// workerService := NewWorkerService()
+func main() {
 
 	options := di.App(
 		otel.Module(),
 		lifecycle.Module(),
-		di.Decorate(func(logger *zap.Logger) *zap.Logger {
-			return logger.With(zap.String("service", "api"))
-		}),
-		di.Provide(NewAPIService, otel.Layer("hello1")),
-		di.Provide(NewWorkerService, otel.Layer("hello2")),
+		web.Module(
+			web.UseSpa(&assets),
+			web.UseScalar(),
+			di.Provide(NewAPIService, otel.Layer("hello1")),
+			di.Provide(NewWorkerService, otel.Layer("hello2")),
+		),
 	).Build()
 
 	fx.New(options).Run()
+
 }

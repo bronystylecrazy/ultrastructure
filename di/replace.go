@@ -151,12 +151,16 @@ func applyReplacements(
 			}
 		case provideNode:
 			active := applicableSpecsAtIndex(specs, i)
+			stripped := false
+			if shouldStripAutoGroups(v, active) {
+				v, stripped = stripAutoGroupOptions(v)
+			}
 			activeTags := buildActiveTagMap(provides, active)
 			node, changed, err := rewriteProvideWithTags(v, activeTags)
 			if err != nil {
 				return nil, err
 			}
-			if changed {
+			if changed || stripped {
 				final = append(final, node)
 			} else {
 				final = append(final, n)
@@ -195,6 +199,44 @@ func applyReplacements(
 	}
 
 	return final, nil
+}
+
+func shouldStripAutoGroups(node provideNode, specs []replaceSpec) bool {
+	if len(specs) == 0 {
+		return false
+	}
+	cfg, _, _, err := parseBindOptions(node.opts)
+	if err != nil {
+		return false
+	}
+	_, tagSets, err := buildProvideSpec(cfg, node.constructor, nil)
+	if err != nil {
+		return false
+	}
+	_, ok := selectReplacement(tagSets, specs)
+	return ok
+}
+
+func stripAutoGroupOptions(node provideNode) (provideNode, bool) {
+	if len(node.opts) == 0 {
+		return node, false
+	}
+	filtered := make([]any, 0, len(node.opts))
+	removed := false
+	for _, opt := range node.opts {
+		switch opt.(type) {
+		case autoGroupOption:
+			removed = true
+			continue
+		default:
+			filtered = append(filtered, opt)
+		}
+	}
+	if !removed {
+		return node, false
+	}
+	node.opts = filtered
+	return node, true
 }
 
 // Replace declares a replacement value for the entire scope.
@@ -444,7 +486,7 @@ func buildActiveTagMap(provides []provideItem, specs []replaceSpec) map[string]t
 	}
 	active := map[string]tagSet{}
 	for _, p := range provides {
-		for _, ts := range p.tagSets {
+		for _, ts := range tagSetsForProvide(p, specs) {
 			spec, ok := selectReplacement([]tagSet{ts}, specs)
 			if !ok {
 				continue
@@ -464,7 +506,7 @@ func appendDefaultTags(active map[string]tagSet, provides []provideItem, specs [
 	}
 	provided := map[string]struct{}{}
 	for _, p := range provides {
-		for _, ts := range p.tagSets {
+		for _, ts := range tagSetsForProvide(p, specs) {
 			provided[fullTagKey(ts)] = struct{}{}
 		}
 	}
@@ -501,7 +543,7 @@ func defaultTargets(spec replaceSpec, provides []provideItem, specs []replaceSpe
 		add(ts)
 	}
 	for _, p := range provides {
-		for _, ts := range p.tagSets {
+		for _, ts := range tagSetsForProvide(p, specs) {
 			if !matchesAny(tagSet{typ: ts.typ, name: ts.name, group: ts.group}, spec.tagSets) {
 				continue
 			}
@@ -545,12 +587,27 @@ func replacementTargets(spec replaceSpec, provides []provideItem) []tagSet {
 		add(ts)
 	}
 	for _, p := range provides {
-		matched := matchingTagSets(p.tagSets, spec.tagSets)
+		matched := matchingTagSets(tagSetsForProvide(p, []replaceSpec{spec}), spec.tagSets)
 		for _, ts := range matched {
 			add(ts)
 		}
 	}
 	return out
+}
+
+func tagSetsForProvide(p provideItem, specs []replaceSpec) []tagSet {
+	if pn, ok := p.node.(provideNode); ok && shouldStripAutoGroups(pn, specs) {
+		stripped, _ := stripAutoGroupOptions(pn)
+		cfg, _, _, err := parseBindOptions(stripped.opts)
+		if err != nil {
+			return p.tagSets
+		}
+		_, tagSets, err := buildProvideSpec(cfg, stripped.constructor, nil)
+		if err == nil {
+			return tagSets
+		}
+	}
+	return p.tagSets
 }
 
 func fullTagKey(ts tagSet) string {

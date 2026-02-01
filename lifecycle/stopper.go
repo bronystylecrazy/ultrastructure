@@ -4,16 +4,9 @@ import (
 	"go.uber.org/fx"
 )
 
-type StopParams struct {
-	fx.In
-
-	Lc       fx.Lifecycle
-	Stoppers []Stopper `group:"auto-stoppers"`
-}
-
-func RegisterStoppers(params StopParams) {
-	for _, stopper := range params.Stoppers {
-		params.Lc.Append(fx.Hook{
+func AppendStoppers(lc fx.Lifecycle, stoppers ...Stopper) {
+	for _, stopper := range stoppers {
+		lc.Append(fx.Hook{
 			OnStop: stopper.Stop,
 		})
 	}

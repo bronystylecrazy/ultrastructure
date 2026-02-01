@@ -1,184 +1,37 @@
 package web
 
 import (
-	"errors"
+	"fmt"
 
-	"go.uber.org/fx"
-	"go.uber.org/zap"
+	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/gofiber/fiber/v3"
 )
 
-type Features struct {
-	Logger  bool
-	Health  bool
-	Etag    bool
-	Monitor bool
-	Swagger bool
-	Static  bool
-	Limiter bool
-}
+var HandlersGroupName = "us.handlers"
 
-type Option func(*Features)
+func Module(extends ...di.Node) di.Node {
+	nodes := []any{
+		di.Config[Config]("web"),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
 
-func defaultFeatures() Features {
-	return Features{
-		Logger:  true,
-		Health:  true,
-		Etag:    true,
-		Monitor: false,
-		Swagger: false,
-		Static:  false,
-		Limiter: true,
-	}
-}
+		di.Config[FiberConfig]("web"),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
+		di.Provide(NewFiberApp, di.As[fiber.Router](), di.AsSelf()),
 
-func WithDefaults() Option {
-	return func(features *Features) {
-		*features = defaultFeatures()
-	}
-}
+		// auto discovery for handlers
+		di.AutoGroup[Handler](HandlersGroupName),
+		di.Invoke(SetupHandlers, di.Params(``, di.Group(HandlersGroupName))),
 
-func WithLogger(enabled bool) Option {
-	return func(features *Features) {
-		features.Logger = enabled
-	}
-}
-
-func WithHealth(enabled bool) Option {
-	return func(features *Features) {
-		features.Health = enabled
-	}
-}
-
-func WithEtag(enabled bool) Option {
-	return func(features *Features) {
-		features.Etag = enabled
-	}
-}
-
-func WithMonitor(enabled bool) Option {
-	return func(features *Features) {
-		features.Monitor = enabled
-	}
-}
-
-func WithSwagger(enabled bool) Option {
-	return func(features *Features) {
-		features.Swagger = enabled
-	}
-}
-
-func WithStatic(enabled bool) Option {
-	return func(features *Features) {
-		features.Static = enabled
-	}
-}
-
-func WithLimiter(enabled bool) Option {
-	return func(features *Features) {
-		features.Limiter = enabled
-	}
-}
-
-func Module(options ...Option) fx.Option {
-	features := defaultFeatures()
-	for _, opt := range options {
-		if opt != nil {
-			opt(&features)
-		}
+		di.Provide(NewZapMiddleware),
 	}
 
-	return fx.Options(
-		fx.Supply(features),
-		fx.Provide(
-			NewApp,
-			fx.Annotate(selectLoggerHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectHealthHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectEtagHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectMonitorHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectSwaggerHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectStaticHandler, fx.ResultTags(`group:"web.handlers"`)),
-			fx.Annotate(selectLimiterHandler, fx.ResultTags(`group:"web.handlers"`)),
-		),
-		fx.Invoke(
-			fx.Annotate(SetupHandlers, fx.ParamTags(`group:"web.handlers"`)),
-			registerLifecycle,
-		),
-	)
-}
+	if len(extends) > 0 {
+		nodes = append(nodes, di.ConvertAnys(extends)...)
+	}
 
-type loggerDeps struct {
-	fx.In
-	Logger *zap.Logger `optional:"true"`
-}
+	nodes = append(nodes, di.Invoke(func(config Config, app *fiber.App) {
+		app.Listen(fmt.Sprintf("%s:%d", config.Host, config.Port))
+	}))
 
-type staticDeps struct {
-	fx.In
-	Assets *FS         `optional:"true"`
-	Logger *zap.Logger `optional:"true"`
-}
-
-type swaggerDeps struct {
-	fx.In
-	Config *Config `optional:"true"`
-}
-
-func selectLoggerHandler(features Features, deps loggerDeps) (Handler, error) {
-	if !features.Logger {
-		return NopLoggerHandler, nil
-	}
-	if deps.Logger == nil {
-		return nil, errors.New("web logger enabled but zap.Logger not provided")
-	}
-	return NewLoggerHandler(deps.Logger), nil
-}
-
-func selectHealthHandler(features Features) Handler {
-	if !features.Health {
-		return NopHealthHandler
-	}
-	return NewHealthHandler()
-}
-
-func selectEtagHandler(features Features) Handler {
-	if !features.Etag {
-		return NopEtagHandler
-	}
-	return NewEtagHandler()
-}
-
-func selectMonitorHandler(features Features) Handler {
-	if !features.Monitor {
-		return NopMonitorHandler
-	}
-	return NewMonitorHandler()
-}
-
-func selectSwaggerHandler(features Features, deps swaggerDeps) (Handler, error) {
-	if !features.Swagger {
-		return NopSwaggerHandler, nil
-	}
-	if deps.Config == nil {
-		return nil, errors.New("swagger enabled but web.Config not provided")
-	}
-	return NewSwaggerHandler(*deps.Config)
-}
-
-func selectStaticHandler(features Features, deps staticDeps) (Handler, error) {
-	if !features.Static {
-		return NopStaticHandler, nil
-	}
-	if deps.Assets == nil {
-		return nil, errors.New("static enabled but web.FS assets not provided")
-	}
-	if deps.Logger == nil {
-		return nil, errors.New("static enabled but zap.Logger not provided")
-	}
-	return NewStaticHandler(*deps.Assets, deps.Logger), nil
-}
-
-func selectLimiterHandler(features Features) Handler {
-	if !features.Limiter {
-		return NopLimitterHandler
-	}
-	return NewLimitterHandler()
+	return di.Module("us/web", nodes...)
 }

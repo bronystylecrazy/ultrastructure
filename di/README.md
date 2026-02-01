@@ -1,250 +1,476 @@
 # di
 
-`di` is a declarative layer on top of Uber Fx. It lets you compose apps from
-small nodes (Provide, Invoke, Module, etc.), generate a plan, and build an
-`fx.Option` with replacements, conditionals, config, and diagnostics.
+Declarative wiring for Uber Fx. `di` is built for teams that want consistent
+composition patterns, easy graph introspection, and clean test overrides without
+hand-editing Fx options.
 
-## Installation
+== Installation ==
 
 ```
 go get github.com/bronystylecrazy/ultrastructure/di
 ```
 
-## Quick start
+== How We Use It ==
 
-Minimal app with a single provide + invoke.
+* Build the graph with small, composable nodes (`Provide`, `Invoke`, `Module`).
+* Keep wiring close to the boundary (modules), keep business logic in constructors.
+* Use `Plan` during reviews to see what gets wired and why.
+* Prefer `Replace`/`Default` for tests over ad-hoc conditional wiring.
+
+== Core Vocabulary ==
+
+* **Node** – a declarative unit such as `Provide`, `Invoke`, `Module`, `Replace`.
+* **App** – a tree of nodes. `di.App(...).Build()` returns an `fx.Option`.
+* **Plan** – a structured view of the wiring graph (`di.Plan(...)`).
+
+== Quick Start ==
 
 ```go
 package main
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
+
+type Store struct {
+	Ready bool
+}
+
+func NewStore() *Store { return &Store{} }
+func MarkStoreReady(s *Store) *Store {
+	// Decorators can mutate or replace instances.
+	s.Ready = true
+	return s
+}
+func PrintStoreReady(s *Store) {
+	// Invokes run after the graph is built.
+	fmt.Println("store ready:", s.Ready)
+}
 
 func main() {
 	app := fx.New(
 		di.App(
-			di.Provide(zap.NewDevelopment),
-			di.Invoke(func(l *zap.Logger) { l.Info("ready") }),
+			di.Provide(NewStore),
+			di.Decorate(MarkStoreReady),
+			di.Invoke(PrintStoreReady),
 		).Build(),
 	)
-	if err := app.Start(nil); err != nil {
-		log.Fatal(err)
-	}
+	_ = app.Start(nil)
 }
 ```
 
-## Concepts
+Result of execution:
 
-- **Node**: a declarative unit like `Provide`, `Invoke`, `Module`, `Replace`.
-- **App**: a tree of nodes. `di.App(...).Build()` returns an `fx.Option`.
-- **Plan**: `di.Plan(...)` builds a tree view of what will be wired.
-
-## Core API (high level)
-
-- `di.App(...)` build graph into Fx options
-- `di.Module(name, ...)` module scope
-- `di.Provide(fn, ...)` constructor
-- `di.Supply(value, ...)` value
-- `di.Invoke(fn, ...)` invoke function
-- `di.Decorate(fn, ...)` decorate existing values
-- `di.Populate(&target, ...)` populate values (supports `di.Name`/`di.Group`)
-
-Basic usage of the most common nodes.
-
-```go
-app := di.App(
-	di.Module("core",
-		di.Provide(NewService),
-		di.Supply(Config{Port: 9000}),
-		di.Decorate(func(s *Service) *Service { return s }),
-	),
-	di.Invoke(func(s *Service) {}),
-	di.Populate(&someService),
-).Build()
+```
+store ready: true
 ```
 
-## Param tags (Params)
+== Common Patterns ==
 
-`Params` scopes options to positional parameter tags for `Provide`, `Invoke`, and `Decorate`.
+=== Param Tags ===
+
+Use `Params` to tag positional parameters on `Provide`, `Invoke`, and `Decorate`.
 
 ```go
-app := di.App(
-	di.Provide(NewDB, di.Name("primary")),
-	di.Provide(NewDB, di.Name("test")),
+type Service struct {
+	DB string
+}
+
+func NewPrimaryDB() string { return "primary" }
+func NewTestDB() string    { return "test" }
+func NewService(db string) *Service {
+	// Params let you control which named input is used.
+	return &Service{DB: db}
+}
+func PrintServiceDB(s *Service) {
+	// Simple verification output.
+	fmt.Println("service db:", s.DB)
+}
+
+// imports: fmt
+di.App(
+	di.Provide(NewPrimaryDB, di.Name("primary")),
+	di.Provide(NewTestDB, di.Name("test")),
 	di.Provide(NewService, di.Params(di.Name("test"))),
-	di.Invoke(func(db *DB) {}, di.Params(di.Name("primary"))),
+	di.Invoke(PrintServiceDB),
 ).Build()
 ```
 
-## Conditional wiring
+Result of execution:
 
-Gate providers based on environment and select defaults.
+```
+service db: test
+```
+
+=== Replace & Default ===
+
+Swap implementations without reshaping your graph.
 
 ```go
-app := di.App(
-	di.If(os.Getenv("APP_ENV") != "prod",
-		di.Provide(zap.NewDevelopment),
-	),
-	di.Switch(
-		di.WhenCase(func() bool { return os.Getenv("APP_ENV") == "prod" },
-			di.Provide(zap.NewProduction),
-		),
-		di.DefaultCase(
-			di.Provide(zap.NewExample),
-		),
-	),
+type Reader interface {
+	Read() string
+}
+
+type realReader struct{}
+func (realReader) Read() string { return "real" }
+
+type mockReader struct{}
+func (mockReader) Read() string { return "mock" }
+
+func NewReader() Reader { return realReader{} }
+func PrintReader(r Reader) {
+	// Replace swaps the implementation.
+	fmt.Println("read:", r.Read())
+}
+
+// imports: fmt
+di.App(
+	di.Provide(NewReader),
+	di.Replace(mockReader{}),
+	di.Invoke(PrintReader),
 ).Build()
 ```
 
-## Replace / Default
+Result of execution:
 
-Override a provided implementation with a test/mock value.
+```
+read: mock
+```
+
+Use `ReplaceBefore` / `ReplaceAfter` when ordering matters across modules.
 
 ```go
-app := di.App(
-	di.Provide(func() *realReader { return &realReader{} }, di.As[Reader]()),
-	di.Replace(&mockReader{}, di.As[Reader]()),
+func NewProdLabel() string { return "prod" }
+func NewDevLabel() string  { return "dev" }
+func PrintLabels(prod string, dev string) {
+	// ReplaceBefore/After are order-sensitive.
+	fmt.Println("prod:", prod, "dev:", dev)
+}
+
+// imports: fmt
+di.App(
+	di.Provide(NewProdLabel, di.Name("prod")),
+	di.ReplaceBefore("nop", di.Name("prod")),
+	di.Provide(NewDevLabel, di.Name("dev")),
+	di.ReplaceAfter("json", di.Name("dev")),
+	di.Invoke(PrintLabels, di.Params(di.Name("prod"), di.Name("dev"))),
 ).Build()
 ```
 
-### ReplaceBefore / ReplaceAfter
+Result of execution:
 
-Apply replacements only to nodes declared before or after the replacement.
+```
+prod: nop dev: json
+```
+
+=== Auto-Group ===
+
+Collect implementations into a group without explicit `Group(...)` on each provider.
 
 ```go
-app := di.App(
-	di.Provide(NewProdLogger, di.Name("prod")),
-	di.ReplaceBefore(NewNopLogger),
-	di.Provide(NewDevLogger, di.Name("dev")),
-	di.ReplaceAfter(NewJSONLogger, di.Name("dev")),
-).Build()
+type Handler interface {
+	Name() string
+}
+
+type handlerA struct{}
+func (handlerA) Name() string { return "A" }
+
+type handlerB struct{}
+func (handlerB) Name() string { return "B" }
+
+func NewHandlerA() Handler { return handlerA{} }
+func NewHandlerB() Handler { return handlerB{} }
+func PrintHandlers(handlers []Handler) {
+	// AutoGroup collects implementations into a slice.
+	for _, h := range handlers {
+		fmt.Println("handler:", h.Name())
+	}
+}
+
+// imports: fmt
+fx.New(
+	di.App(
+		di.AutoGroup[Handler]("handlers"),
+		di.Provide(NewHandlerA),
+		di.Provide(NewHandlerB),
+		di.Invoke(PrintHandlers, di.Group("handlers")),
+	).Build(),
+).Run()
 ```
 
-## Config (Viper)
+Result of execution:
 
-### Load a TOML file
+```
+handler: A
+handler: B
+```
+
+=== Populate ===
+
+Populate local variables from the container (supports name/group tags).
+
+```go
+type AppConfig struct {
+	Name string
+	Port int
+}
+
+var cfg AppConfig
+
+func PrintConfig(cfg AppConfig) {
+	// Populate writes into local variables after build.
+	fmt.Println("config:", cfg.Name, cfg.Port)
+}
+
+// imports: context, fmt
+app := fx.New(
+	di.App(
+		di.Supply(AppConfig{Name: "demo", Port: 9000}),
+		di.Populate(&cfg),
+	).Build(),
+)
+_ = app.Start(context.Background())
+PrintConfig(cfg)
+```
+
+Result of execution:
+
+```
+config: demo 9000
+```
+
+== Config (Viper) ==
 
 Load a config file into a typed struct.
 
 ```go
+type Config struct {
+	App struct {
+		Name string
+	}
+	Db struct {
+		Host string
+	}
+}
+
+func PrintConfigSummary(cfg Config) {
+	// Config binds file values to a typed struct.
+	log.Println(cfg.App.Name, cfg.Db.Host)
+}
+
+// imports: log
 fx.New(
 	di.App(
 		di.Config[Config](
 			"di/examples/config_toml/config.toml",
 			di.ConfigType("toml"),
 		),
-		di.Invoke(func(cfg Config) {
-			log.Println(cfg.App.Name, cfg.Db.Host)
-		}),
+		di.Invoke(PrintConfigSummary),
 	).Build(),
 ).Run()
 ```
 
-### Env override
+Result of execution:
 
-Override config values with environment variables.
+```
+demo-app db.local
+```
+
+Override with environment variables.
 
 ```go
+type Config struct {
+	App struct {
+		Name string
+	}
+}
+
+func LogConfigName(cfg Config, l *zap.Logger) {
+	// Env overrides land in the same struct.
+	l.Info("app", zap.String("name", cfg.App.Name))
+}
+
+// imports: go.uber.org/zap
 fx.New(
 	di.App(
 		di.Config[Config](
 			"di/examples/config_env/config.toml",
 			di.ConfigEnvOverride(),
 		),
-		di.Invoke(func(cfg Config, l *zap.Logger) {
-			l.Info("app", zap.String("name", cfg.App.Name))
-		}),
+		di.Invoke(LogConfigName),
 	).Build(),
 ).Run()
 ```
 
-### Watch & restart
+Result of execution:
 
-Watch config changes and restart the app when they change.
+```
+{"level":"info","msg":"app","name":"demo-app"}
+```
+
+Watch and restart on changes.
 
 ```go
+type AppConfig struct {
+	Name string
+	Port int
+}
+
+func PrintWatchConfig(cfg AppConfig) {
+	// Watch emits on changes; this prints current values.
+	log.Println("config", cfg.Name, cfg.Port)
+}
+
+// imports: log
 err := di.App(
 	di.ConfigFile("di/examples/config_watch/config.toml", di.ConfigType("toml")),
 	di.Config[AppConfig]("app", di.ConfigWatch()),
-	di.Invoke(func(cfg AppConfig) {
-		log.Println("config", cfg.Name, cfg.Port)
-	}),
+	di.Invoke(PrintWatchConfig),
 ).Run()
 ```
 
-## Auto-group
+Result of execution:
 
-Automatically collect implementations into a group.
-
-```go
-fx.New(
-	di.App(
-		di.AutoGroup[Handler]("handlers"),
-		di.Provide(NewA),
-		di.Provide(NewB),
-		di.Invoke(func(handlers []Handler) {
-			for _, h := range handlers {
-				h.Handle()
-			}
-		}, di.Group("handlers")),
-	).Build(),
-).Run()
+```
+config demo-app 9000
 ```
 
-## Diagnostics
+== Diagnostics ==
 
 Enable source-aware error diagnostics.
 
 ```go
+func PrintDiagnostics(msg string) {
+	// Diagnostics surfaces source-aware errors.
+	log.Println(msg)
+}
+
+// imports: log
 fx.New(
 	di.App(
 		di.Diagnostics(),
-		di.Invoke(func(msg string) { log.Println(msg) }),
+		di.Invoke(PrintDiagnostics),
 	).Build(),
 ).Run()
 ```
 
-## Populate
+Result of execution:
 
-Populate local variables from the container (supports name/group tags).
-
-```go
-var logger *zap.Logger
-var cfg AppConfig
-
-fx.New(
-	di.App(
-		di.Provide(zap.NewDevelopment, di.Name("dev")),
-		di.Supply(AppConfig{Name: "demo", Port: 9000}),
-		di.Populate(&logger, di.Name("dev")),
-		di.Populate(&cfg),
-	).Build(),
-).Run()
+```
+missing type: string (required by Invoke)
 ```
 
-## Examples
+== API Reference ==
 
-Full examples live under `di/examples`:
+=== App and Graph ===
 
-- `basic`
-- `module`, `module2`
-- `replace`, `replace2`
-- `decorate`
-- `if`, `switch`
-- `plan`
-- `populate`
-- `auto_group`
-- `diagnostics*`
-- `config_*`
+* `App(nodes ...any)` — build a node tree; call `.Build()` to get `fx.Option`.
+* `Run(nodes ...any)` — build and run an app in one call.
+* `Plan(nodes ...any)` — render a plan string for review/debugging.
 
-Run one:
+=== Wiring Nodes ===
 
-Run an example directly.
+* `Provide(constructor any, opts ...any)` — register a constructor.
+* `Supply(value any, opts ...any)` — register a concrete value.
+* `Invoke(function any, opts ...Option)` — run a function on app start.
+* `Decorate(function any, opts ...Option)` — transform an existing value.
+* `Populate(args ...any)` — fill local variables from the container.
+* `Module(name string, nodes ...any)` — create a named module.
+* `Options(items ...any)` — group nodes without a name, or group options inside providers.
+* `Replace(value any, opts ...any)` — override a value/provider.
+* `ReplaceBefore(value any, opts ...any)` — override only items declared before.
+* `ReplaceAfter(value any, opts ...any)` — override only items declared after.
+* `Default(value any, opts ...any)` — supply a fallback when missing.
+
+=== Conditionals ===
+
+* `If(cond bool, nodes ...any)` — include nodes when a boolean is true.
+* `When(fn any, nodes ...any)` — include nodes when `fn()` returns true.
+* `Switch(items ...any)` — choose between cases and defaults.
+* `Case(cond bool, nodes ...any)` — static switch case.
+* `WhenCase(fn any, nodes ...any)` — dynamic switch case.
+* `DefaultCase(nodes ...any)` — switch fallback.
+
+=== Lifecycle ===
+
+* `OnStart(fn any)` — register an Fx OnStart hook.
+* `OnStop(fn any)` — register an Fx OnStop hook.
+
+=== Auto-Group / Auto-Inject ===
+
+* `AutoGroup[T](group ...string)` — collect implementations into a group.
+* `AutoGroupFilter(fn func(reflect.Type) bool)` — filter auto-group targets.
+* `AutoGroupAsSelf()` — include the concrete type when auto-grouping.
+* `AutoGroupIgnoreType[T](group ...string)` — ignore auto-group for a type.
+* `AutoGroupIgnore()` — ignore auto-group for a specific provider.
+* `AutoInject()` — enable auto field injection for the scope.
+* `AutoInjectIgnore()` — disable auto field injection for a provider.
+
+=== Tagging and Exports ===
+
+* `As[T](tags ...string)` — export a provider as interface/type.
+* `Name(name string)` — name a value.
+* `Group(name string)` — group a value.
+* `ToGroup(name string)` — send the most recent `As` to a group.
+* `Self()` / `AsSelf()` — export the concrete type alongside others.
+* `Private()` / `Public()` — hide or expose providers across modules.
+* `Params(items ...any)` — apply positional param tags.
+* `InTag(tag string)` — raw param tag.
+* `InGroup(name string)` — param group tag.
+* `Optional()` — mark a param optional.
+
+=== Config (Viper) ===
+
+* `Config[T](pathOrKey string, opts ...any)` — load config into a struct.
+* `ConfigFile(path string, opts ...any)` — register a config file source.
+* `ConfigBind[T](key string, opts ...any)` — bind a key into a struct.
+* `ConfigType(kind string)` — set file type (toml/json/yaml).
+* `ConfigName(name string)` — name a config source.
+* `ConfigPath(path string)` — add search paths.
+* `ConfigOptional()` — do not error on missing config.
+* `ConfigEnvPrefix(prefix string)` — environment prefix.
+* `ConfigEnvKeyReplacer(replacer *strings.Replacer)` — env key mapping.
+* `ConfigEnvOverride(prefix ...string)` — enable env overrides.
+* `ConfigAutomaticEnv()` — viper automatic env.
+* `ConfigNoEnv()` — disable env handling.
+* `ConfigDefault(key string, value any)` — set default.
+* `ConfigWithViper(fn func(*viper.Viper) error)` — customize viper instance.
+* `ConfigWatch(opts ...ConfigWatchOption)` — watch config changes.
+* `ConfigWatchDebounce(d time.Duration)` — debounce watch events.
+* `ConfigWatchKeys(keys ...string)` — watch specific keys.
+* `ConfigDisableWatch()` — disable watching for a scope.
+
+=== Diagnostics ===
+
+* `Diagnostics()` — enable source-aware diagnostics.
+
+=== Utilities ===
+
+* `ConvertAnys(nodes []Node)` — convert a list of nodes into `[]any`.
+
+=== Exported Types ===
+
+* `Node` — interface implemented by all nodes.
+* `Option` — interface for provider/invoke options.
+* `ConfigWatchOption` — interface for config watch options.
+
+== Examples ==
+
+Look in `di/examples` for runnable programs:
+
+* `basic`
+* `module`, `module2`
+* `replace`, `replace2`
+* `decorate`
+* `if`, `switch`
+* `plan`
+* `populate`
+* `auto_group`
+* `diagnostics*`
+* `config_*`
 
 ```
 go run ./di/examples/basic/main.go
