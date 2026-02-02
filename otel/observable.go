@@ -1,8 +1,6 @@
 package otel
 
 import (
-	"log"
-
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -42,7 +40,6 @@ func NopObserver() *Observer {
 }
 
 func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) Attached {
-	log.Println("attaching telemetry to observables", len(observables))
 	for _, observable := range observables {
 		meta, ok := di.ReflectMetadata[[]any](observable)
 		if !ok || len(meta) == 0 {

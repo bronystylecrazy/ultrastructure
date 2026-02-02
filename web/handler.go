@@ -1,7 +1,6 @@
 package web
 
 import (
-	"log"
 	"sort"
 
 	"github.com/bronystylecrazy/ultrastructure/otel"
@@ -13,7 +12,6 @@ type Handler interface {
 }
 
 func SetupHandlers(_ otel.Attached, app *fiber.App, handlers ...Handler) {
-	log.Println("attaching telemetry to handlers", len(handlers))
 	ordered := append([]Handler(nil), handlers...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return resolvePriority(ordered[i]) < resolvePriority(ordered[j])
