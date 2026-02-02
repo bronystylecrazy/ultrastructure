@@ -12,10 +12,8 @@ const (
 	Latest   PriorityLevel = 200
 )
 
-type priorityMetadata int
-
 func Priority(value PriorityLevel) di.Option {
-	return di.Metadata(priorityMetadata(value))
+	return di.Metadata(value)
 }
 
 func Between(lower, upper PriorityLevel) PriorityLevel {
@@ -28,7 +26,7 @@ func Between(lower, upper PriorityLevel) PriorityLevel {
 	return PriorityLevel(int(lower) + (int(upper)-int(lower))/2)
 }
 
-func handlerPriority(handler Handler) PriorityLevel {
+func resolvePriority(handler Handler) PriorityLevel {
 	meta, ok := di.ReflectMetadata[[]any](handler)
 	if !ok {
 		return Normal
@@ -38,7 +36,7 @@ func handlerPriority(handler Handler) PriorityLevel {
 		switch v := item.(type) {
 		case PriorityLevel:
 			priority = v
-		case priorityMetadata:
+		case int:
 			priority = PriorityLevel(v)
 		}
 	}

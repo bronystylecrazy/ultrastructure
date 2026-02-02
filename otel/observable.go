@@ -1,6 +1,8 @@
 package otel
 
 import (
+	"log"
+
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -19,29 +21,28 @@ type Telemetry struct {
 	Obs *Observer
 }
 
+// Attached is a marker indicating telemetry has been wired.
+type Attached struct{}
+
 // apply stores the shared Observability instance.
 func (o *Telemetry) apply(obs *Observer) {
 	if obs == nil {
-		o.Obs = NewNopObserver()
+		o.Obs = NopObserver()
 		return
 	}
 	o.Obs = obs
 }
 
 func Nop() Telemetry {
-	return Telemetry{Obs: NewNopObserver()}
+	return Telemetry{Obs: NopObserver()}
 }
 
-func NewNopObserver() *Observer {
+func NopObserver() *Observer {
 	return NewObserver(zap.NewNop(), noop.NewTracerProvider().Tracer(""))
 }
 
-// NewDefaultObserver creates an Observability using the app logger and tracer provider.
-func NewDefaultObserver(logger *zap.Logger, tp *TracerProvider) *Observer {
-	return NewObserver(logger, tp.Tracer(""))
-}
-
-func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) {
+func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) Attached {
+	log.Println("attaching telemetry to observables", len(observables))
 	for _, observable := range observables {
 		meta, ok := di.ReflectMetadata[[]any](observable)
 		if !ok || len(meta) == 0 {
@@ -51,6 +52,10 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observ
 		if !ok {
 			continue
 		}
-		observable.apply(NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name)))
+
+		obs := NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name))
+		obs.layerName = layer.Name
+		observable.apply(obs)
 	}
+	return Attached{}
 }

@@ -132,8 +132,8 @@ func main() {
 			web.UseSpa(&assets),
 			web.UseSwagger(),
 
-			di.Provide(NewAPIService, otel.Layer("hello1")),
-			di.Provide(NewWorkerService, otel.Layer("hello2")),
+			di.Provide(NewAPIService),
+			di.Provide(NewWorkerService),
 		),
 		di.Invoke(func(db *gorm.DB, logger *zap.Logger) {
 			sqdb, err := db.DB()
@@ -146,6 +146,7 @@ func main() {
 			}
 			logger.Info("Database connection successful", zap.Int("result", r))
 		}),
+		fx.NopLogger,
 	).Build()
 
 	fx.New(options).Run()

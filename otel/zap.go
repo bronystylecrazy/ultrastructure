@@ -18,9 +18,9 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 	wrapped := base.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
 		return FilterFieldsCore(
 			c,
+			"app.layer",
 			"trace.id",
 			"span.id",
-			"span.name",
 			"trace.sampled",
 		)
 	}))

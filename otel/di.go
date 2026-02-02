@@ -21,7 +21,7 @@ func Module() di.Node {
 		di.Provide(NewLoggerProvider),
 		di.Provide(NewTraceExporter),
 		di.Provide(NewTracerProvider),
-		di.Invoke(AttachTelemetryToObservables, di.Params(``, ``, di.Group(ObservablesGroupName))),
+		di.Provide(AttachTelemetryToObservables, di.Params(``, ``, di.Group(ObservablesGroupName))),
 
 		// fx options
 		fx.WithLogger(NewEventLogger),

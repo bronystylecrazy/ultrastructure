@@ -8,27 +8,37 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	zapgorm "moul.io/zapgorm2"
 )
 
 func UseOtelTraceMetrics(opts ...di.Option) di.Node {
-	return di.Invoke(func(db *gorm.DB, config otel.Config, tp *otel.TracerProvider) error {
-		if !config.Disabled {
-			if err := db.Use(otelgorm.NewPlugin(otelgorm.WithTracerProvider(tp))); err != nil {
-				return fmt.Errorf("gorm otel plugin: %w", err)
-			}
+	return di.Invoke(attachOtelTraceMetricsToGorm, opts...)
+}
+
+func attachOtelTraceMetricsToGorm(db *gorm.DB, config otel.Config, tp *otel.TracerProvider) error {
+	if !config.Disabled {
+		if err := db.Use(
+			otelgorm.NewPlugin(
+				otelgorm.WithTracerProvider(tp),
+				otelgorm.WithoutQueryVariables(),
+			),
+		); err != nil {
+			return fmt.Errorf("gorm otel plugin: %w", err)
 		}
-		return nil
-	}, opts...)
+	}
+	return nil
 }
 
 func UseOtelLogger(opts ...di.Option) di.Node {
-	return di.Invoke(func(db *gorm.DB, config otel.Config, log *zap.Logger) error {
-		if !config.Disabled {
-			logger := zapgorm.New(log)
-			logger.SetAsDefault()
-			db.Logger = logger
-		}
-		return nil
-	}, opts...)
+	return di.Invoke(attachOtelLoggerToGorm, opts...)
+}
+
+func attachOtelLoggerToGorm(db *gorm.DB, config otel.Config, log *zap.Logger) error {
+	if !config.Disabled {
+		logger := NewGormLogger(log)
+		logger.Context = otel.ContextFunc
+		logger.SetAsDefault()
+		logger.IgnoreRecordNotFoundError = true
+		db.Logger = logger
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -20,9 +21,9 @@ func Module(extends ...di.Node) di.Node {
 		// auto discovery for handlers
 		di.AutoGroup[Handler](HandlersGroupName),
 
-		di.Provide(NewZapMiddleware),
+		di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest)),
 		di.Options(di.ConvertAnys(extends)...),
-		di.Invoke(SetupHandlers, di.Params(``, di.Group(HandlersGroupName))),
+		di.Invoke(SetupHandlers, di.Params(``, ``, di.Group(HandlersGroupName))),
 		di.Invoke(RegisterFiberApp),
 	)
 }

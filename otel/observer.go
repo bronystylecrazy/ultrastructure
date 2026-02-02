@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type obsKey struct{}
@@ -15,6 +16,7 @@ type tracerKey struct{}
 type Observer struct {
 	*zap.Logger
 	trace.Tracer
+	layerName string
 }
 
 type Span struct {
@@ -68,6 +70,41 @@ func From(ctx context.Context) *Observer {
 	return NewObserver(logger, tracer)
 }
 
+// ZapFieldsFromContext appends fields into the provided buffer and returns a slice
+// of the populated entries. It avoids heap allocations when the caller reuses buf.
+func ZapFieldsFromContext(ctx context.Context, buf *[4]zap.Field) []zap.Field {
+	if ctx == nil || buf == nil {
+		return nil
+	}
+	n := 0
+	span := trace.SpanFromContext(ctx)
+	if span == nil {
+		if n == 0 {
+			return nil
+		}
+		return buf[:n]
+	}
+	spanCtx := span.SpanContext()
+	if !spanCtx.IsValid() {
+		if n == 0 {
+			return nil
+		}
+		return buf[:n]
+	}
+	buf[n] = zap.String("trace.id", spanCtx.TraceID().String())
+	n++
+	buf[n] = zap.String("span.id", spanCtx.SpanID().String())
+	n++
+	buf[n] = zap.Bool("trace.sampled", spanCtx.IsSampled())
+	n++
+	return buf[:n]
+}
+
+func ContextFunc(ctx context.Context) []zapcore.Field {
+	var buf [4]zap.Field
+	return ZapFieldsFromContext(ctx, &buf)
+}
+
 // HasContext returns true if ctx contains observer, logger, or tracer overrides.
 func HasContext(ctx context.Context) bool {
 	if ctx == nil {
@@ -95,24 +132,25 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 	if o == nil || o.Tracer == nil || o.Logger == nil {
 		return From(ctx).Span(ctx, name, opts...)
 	}
+	ctx = o.With(ctx)
 	ctx, span := o.Tracer.Start(ctx, name, opts...)
 
 	// Enrich logger with trace context
 	enrichedLogger := o.Logger
 	if span.IsRecording() {
-		spanCtx := span.SpanContext()
-		enrichedLogger = o.Logger.With(
-			zap.String("trace.id", spanCtx.TraceID().String()),
-			zap.Bool("trace.sampled", spanCtx.IsSampled()),
-			zap.String("span.name", name),
-			zap.String("span.id", spanCtx.SpanID().String()),
-		)
+		fields := []zap.Field{
+			zap.String("trace.id", span.SpanContext().TraceID().String()),
+			zap.String("span.id", span.SpanContext().SpanID().String()),
+			zap.Bool("trace.sampled", span.SpanContext().IsSampled()),
+		}
+		enrichedLogger = o.Logger.With(fields...)
 	}
 
 	// Store enriched obs back in context
 	enrichedObs := &Observer{
-		Logger: enrichedLogger,
-		Tracer: o.Tracer,
+		Logger:    enrichedLogger,
+		Tracer:    o.Tracer,
+		layerName: o.layerName,
 	}
 	ctx = enrichedObs.With(ctx)
 
