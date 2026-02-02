@@ -39,7 +39,7 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 }
 
 func NewBaseLogger(cfg Config) (*zap.Logger, error) {
-	if !us.IsProduction() {
+	if cfg.Env == "dev" && !us.IsProduction() {
 		zapConfig := zap.NewDevelopmentConfig()
 		zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder

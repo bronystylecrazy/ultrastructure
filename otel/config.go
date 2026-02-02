@@ -3,6 +3,7 @@ package otel
 import "time"
 
 type Config struct {
+	Env        string        `mapstructure:"env"`
 	Level      string        `mapstructure:"level"`
 	Disabled   bool          `mapstructure:"disabled"`
 	Compressor string        `mapstructure:"compressor"` // or OTEL_EXPORTER_OTLP_COMPRESSION

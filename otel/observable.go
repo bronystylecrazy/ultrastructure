@@ -41,17 +41,14 @@ func NopObserver() *Observer {
 
 func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) Attached {
 	for _, observable := range observables {
-		meta, ok := di.ReflectMetadata[[]any](observable)
-		if !ok || len(meta) == 0 {
-			continue
+		layerName := "service"
+		if meta, ok := di.ReflectMetadata[[]any](observable); ok && len(meta) > 0 {
+			if layer, ok := meta[0].(LayerMetadata); ok && layer.Name != "" {
+				layerName = layer.Name
+			}
 		}
-		layer, ok := meta[0].(LayerMetadata)
-		if !ok {
-			continue
-		}
-
-		obs := NewObserver(logger.With(zap.String("app.layer", layer.Name)), tp.Tracer(layer.Name))
-		obs.layerName = layer.Name
+		obs := NewObserver(logger.With(zap.String("app.layer", layerName)), tp.Tracer(layerName))
+		obs.layerName = layerName
 		observable.apply(obs)
 	}
 	return Attached{}
