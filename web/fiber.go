@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 type FiberConfig struct {
@@ -18,10 +19,15 @@ func NewFiberApp(config FiberConfig) *fiber.App {
 	})
 }
 
-func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, config Config) {
+func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			go app.Listen(fmt.Sprintf("%s:%d", config.Host, config.Port))
+			go func() {
+				err := app.Listen(fmt.Sprintf("%s:%d", config.Host, config.Port))
+				if err != nil {
+					logger.Error("failed to start fiber app", zap.Error(err))
+				}
+			}()
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
