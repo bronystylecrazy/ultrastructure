@@ -12,6 +12,8 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	web "github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -22,10 +24,11 @@ type apiService struct {
 
 	name          string
 	workerService *workerService
+	db            *gorm.DB
 }
 
-func NewAPIService(workerService *workerService) *apiService {
-	return &apiService{Telemetry: otel.Nop(), name: "api", workerService: workerService}
+func NewAPIService(workerService *workerService, db *gorm.DB) *apiService {
+	return &apiService{Telemetry: otel.Nop(), db: db, name: "api", workerService: workerService}
 }
 
 func (s *apiService) Start(ctx context.Context) error {
@@ -36,6 +39,39 @@ func (s *apiService) Start(ctx context.Context) error {
 	time.Sleep(20 * time.Millisecond)
 
 	return s.workerService.Foo(ctx, "from api service")
+}
+
+type User struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Email     string    `gorm:"type:varchar(255);not null;uniqueIndex" json:"email"`
+	Name      string    `gorm:"type:varchar(255);not null" json:"name"`
+	CreatedAt time.Time `gorm:"type:timestamp;not null;default:now()" json:"created_at"`
+	UpdatedAt time.Time `gorm:"type:timestamp;not null;default:now()" json:"updated_at"`
+}
+
+func (User) TableName() string {
+	return "users"
+}
+
+func (h *apiService) Handle(r fiber.Router) {
+	r.Get("/api", func(c fiber.Ctx) error {
+		ctx, obs := h.Obs.Start(c.Context(), "api called")
+		defer obs.End()
+
+		newUser := &User{
+			Email: uuid.NewString() + "test@example.com",
+			Name:  "Test User",
+		}
+
+		tx := h.db.WithContext(ctx).Create(newUser)
+		if tx.Error != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": tx.Error.Error(),
+			})
+		}
+
+		return c.JSON(newUser)
+	})
 }
 
 func (s *apiService) Stop(ctx context.Context) error {
@@ -95,6 +131,7 @@ func main() {
 			web.UseMqttWebsocket(),
 			web.UseSpa(&assets),
 			web.UseSwagger(),
+
 			di.Provide(NewAPIService, otel.Layer("hello1")),
 			di.Provide(NewWorkerService, otel.Layer("hello2")),
 		),

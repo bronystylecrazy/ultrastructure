@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
@@ -15,7 +16,10 @@ type FiberConfig struct {
 
 func NewFiberApp(config FiberConfig) *fiber.App {
 	return fiber.New(fiber.Config{
-		AppName: config.Name,
+		AppName:      config.Name,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
+		IdleTimeout:  2 * time.Second,
 	})
 }
 

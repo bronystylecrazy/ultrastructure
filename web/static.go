@@ -14,8 +14,7 @@ import (
 func UseSpa(assets *embed.FS) di.Node {
 	return di.Options(
 		di.Supply(assets, di.Private()),
-		di.Provide(NewSpaMiddleware, di.AutoGroupIgnore(), di.Params(di.Optional())),
-		di.Invoke(HandleSpa),
+		di.Provide(NewSpaMiddleware, di.Params(di.Optional()), Priority(Latest)),
 	)
 }
 

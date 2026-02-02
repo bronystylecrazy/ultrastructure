@@ -1,13 +1,21 @@
 package web
 
-import "github.com/gofiber/fiber/v3"
+import (
+	"sort"
+
+	"github.com/gofiber/fiber/v3"
+)
 
 type Handler interface {
 	Handle(r fiber.Router)
 }
 
 func SetupHandlers(app *fiber.App, handlers ...Handler) {
-	for _, handler := range handlers {
+	ordered := append([]Handler(nil), handlers...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return handlerPriority(ordered[i]) < handlerPriority(ordered[j])
+	})
+	for _, handler := range ordered {
 		handler.Handle(app)
 	}
 }
