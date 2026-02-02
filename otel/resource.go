@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/bronystylecrazy/ultrastructure/build"
+	us "github.com/bronystylecrazy/ultrastructure"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
@@ -12,7 +12,7 @@ import (
 func NewResource(ctx context.Context, config Config) (*resource.Resource, error) {
 
 	var environment string
-	if build.IsProduction() {
+	if us.IsProduction() {
 		environment = "development"
 	} else {
 		environment = "production"

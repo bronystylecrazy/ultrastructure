@@ -5,6 +5,7 @@ import (
 	"embed"
 	"time"
 
+	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
@@ -13,6 +14,7 @@ import (
 	web "github.com/bronystylecrazy/ultrastructure/web"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type apiService struct {
@@ -75,12 +77,20 @@ func (s *workerService) Bar(ctx context.Context, arg string) error {
 //go:embed all:web/dist
 var assets embed.FS
 
+//go:embed all:db/migrations
+var migrations embed.FS
+
 func main() {
 
 	options := di.App(
 		otel.Module(),
 		lifecycle.Module(),
 		realtime.Module(),
+		database.Module(
+			database.UseOtelLogger(),
+			database.UseOtelTraceMetrics(),
+			database.UseMigrations(&migrations),
+		),
 		web.Module(
 			web.UseMqttWebsocket(),
 			web.UseSpa(&assets),
@@ -88,6 +98,17 @@ func main() {
 			di.Provide(NewAPIService, otel.Layer("hello1")),
 			di.Provide(NewWorkerService, otel.Layer("hello2")),
 		),
+		di.Invoke(func(db *gorm.DB, logger *zap.Logger) {
+			sqdb, err := db.DB()
+			if err != nil {
+				panic(err)
+			}
+			var r int
+			if err := sqdb.QueryRow(`SELECT 1 * 1 as result;`).Scan(&r); err != nil {
+				panic(err)
+			}
+			logger.Info("Database connection successful", zap.Int("result", r))
+		}),
 	).Build()
 
 	fx.New(options).Run()
