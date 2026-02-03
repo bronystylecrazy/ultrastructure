@@ -11,7 +11,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
-	web "github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/fx"
