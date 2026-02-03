@@ -1,32 +1,19 @@
 package web
 
 import (
-	"fmt"
-
-	"github.com/arsmn/fiber-swagger/example/docs"
-	"github.com/bronystylecrazy/flexinfra/build"
-	fiberSwagger "github.com/swaggo/fiber-swagger"
+	"github.com/Flussen/swagger-fiber-v3"
+	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
+	"github.com/gofiber/fiber/v3"
 )
 
-type SwaggerHandler interface {
-	Handler
-}
-
-var NopSwaggerHandler SwaggerHandler = &NopHandler{}
-
-type swaggerHandler struct {
+type SwaggerHandler struct {
 	config Config
 }
 
-func NewSwaggerHandler(config Config) (SwaggerHandler, error) {
-	return &swaggerHandler{config: config}, nil
+func NewSwaggerHandler(config Config) (*SwaggerHandler, error) {
+	return &SwaggerHandler{config: config}, nil
 }
 
-func (h *swaggerHandler) Handle(app App) {
-	docs.SwaggerInfo.Title = h.config.Name
-	docs.SwaggerInfo.Description = h.config.Description
-	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%v", h.config.Port)
-	docs.SwaggerInfo.BasePath = "/"
-	docs.SwaggerInfo.Version = build.Version
-	app.Get("/swagger/*", fiberSwagger.WrapHandler)
+func (h *SwaggerHandler) Handle(r fiber.Router) {
+	r.Get("/docs/*", swagger.HandlerDefault)
 }

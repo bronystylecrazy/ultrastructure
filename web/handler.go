@@ -1,23 +1,27 @@
 package web
 
 import (
-	"go.uber.org/fx"
+	"sort"
+
+	"github.com/bronystylecrazy/ultrastructure/otel"
+	"github.com/gofiber/fiber/v3"
+	"go.uber.org/zap"
 )
 
-func AsHandler(f any) any {
-	return fx.Annotate(
-		f,
-		fx.As(new(Handler)),
-		fx.ResultTags(`group:"web.handlers"`),
-	)
+type Handler interface {
+	Handle(r fiber.Router)
 }
 
-func WithHandlers(f any) any {
-	return fx.Annotate(f, fx.ParamTags(`group:"routes"`))
-}
+func SetupHandlers(attached otel.Attached, app *fiber.App, handlers ...Handler) {
 
-func SetupHandlers(handlers []Handler, app App) {
-	for _, handler := range handlers {
+	ordered := append([]Handler(nil), handlers...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return resolvePriority(ordered[i]) < resolvePriority(ordered[j])
+	})
+
+	for _, handler := range ordered {
 		handler.Handle(app)
 	}
+
+	attached.Logger.Info("auto setup handlers", zap.Int("count", len(handlers)))
 }

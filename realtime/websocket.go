@@ -9,8 +9,8 @@ import (
 
 	"log/slog"
 
-	"github.com/gofiber/adaptor/v2"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gorilla/websocket"
 	"github.com/mochi-mqtt/server/v2/listeners"
 )
@@ -66,8 +66,15 @@ func (l *Websocket) Protocol() string {
 // Init initializes the listener.
 func (l *Websocket) Init(log *slog.Logger) error {
 	l.log = log
-	l.app.All("/realtime", l.authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.handler))
 	return nil
+}
+
+func (l *Websocket) Handle(r fiber.Router) {
+	if l.authorizer == nil {
+		l.app.All("/realtime", adaptor.HTTPHandlerFunc(l.handler))
+	} else {
+		l.app.All("/realtime", l.authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.handler))
+	}
 }
 
 // handler upgrades and handles an incoming websocket connection.

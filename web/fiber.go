@@ -3,58 +3,39 @@ package web
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/bronystylecrazy/flexinfra/build"
-	"github.com/bronystylecrazy/flexinfra/logging"
-	"github.com/bronystylecrazy/flexinfra/realtime"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
-type FiberApp struct {
-	*logging.Log
-	*fiber.App
-
-	rs     realtime.Server
-	config Config
+type FiberConfig struct {
+	Name string `mapstructure:"name"`
 }
 
-func NewFiberApp(config Config) App {
-	return &FiberApp{
-		App: fiber.New(fiber.Config{
-			AppName:      build.Name,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 5 * time.Second,
-			IdleTimeout:  5 * time.Second,
-			Network:      "tcp",
-		}),
-		config: config,
-	}
+func NewFiberApp(config FiberConfig) *fiber.App {
+	return fiber.New(fiber.Config{
+		AppName:      config.Name,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
+		IdleTimeout:  2 * time.Second,
+	})
 }
 
-func (f *FiberApp) Start(ctx context.Context) error {
-	if f.rs != nil {
-		if err := f.rs.Start(ctx); err != nil {
-			return err
-		}
-	}
-
-	go func() {
-		if err := f.Listen(fmt.Sprintf(":%v", f.config.Port)); err != nil {
-			log.Fatal("Failed to start server", zap.Error(err))
-		}
-	}()
-
-	return nil
-}
-
-func (f *FiberApp) Stop(ctx context.Context) error {
-	if f.rs != nil {
-		if err := f.rs.Stop(ctx); err != nil {
-			return err
-		}
-	}
-	return f.ShutdownWithContext(ctx)
+func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				err := app.Listen(fmt.Sprintf("%s:%d", config.Host, config.Port))
+				if err != nil {
+					logger.Error("failed to start fiber app", zap.Error(err))
+				}
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return app.ShutdownWithContext(ctx)
+		},
+	})
 }
