@@ -1,0 +1,100 @@
+
+[web]
+host = "localhost"
+port = 8080
+
+[db]
+dialect = "postgres"
+migrate = true
+datasource = "postgres://user:pass@localhost:5432/app?sslmode=disable"
+
+[jwt]
+secret = "change-me"
+access_token_ttl = "15m"
+refresh_token_ttl = "720h"
+
+
+[otel]
+enabled = true
+service_name = "Ultrastructure"
+log_level = "info"
+
+[otel.resource_attributes]
+"service.namespace" = "test"
+"deployment.environment" = "dev"
+
+[otel.otlp]
+endpoint = "http://otel-collector:4317"
+protocol = "grpc"
+compression = "gzip"
+timeout_ms = 10000
+headers = { authorization = "Bearer xxx" }
+insecure = false
+
+[otel.otlp.tls]
+ca_file = "/path/ca.pem"
+cert_file = "/path/client.crt"
+key_file = "/path/client.key"
+server_name = "otel-collector"
+insecure_skip_verify = false
+
+[otel.traces]
+exporter = "otlp"
+sampler = "parentbased_traceidratio"
+sampler_arg = 1
+
+[otel.traces.otlp]
+endpoint = "http://otel-collector:4318/v1/traces"
+protocol = "http/protobuf"
+compression = "gzip"
+timeout_ms = 10000
+headers = { authorization = "Bearer xxx" }
+insecure = false
+
+[otel.traces.otlp.tls]
+ca_file = "/path/ca.pem"
+cert_file = "/path/client.crt"
+key_file = "/path/client.key"
+server_name = "otel-collector"
+insecure_skip_verify = false
+
+[otel.logs]
+exporter = "otlp"
+
+[otel.logs.otlp]
+endpoint = "http://otel-collector:4318/v1/logs"
+protocol = "http/protobuf"
+compression = "gzip"
+timeout_ms = 10000
+headers = { authorization = "Bearer xxx" }
+insecure = false
+
+[otel.logs.otlp.tls]
+ca_file = "/path/ca.pem"
+cert_file = "/path/client.crt"
+key_file = "/path/client.key"
+server_name = "otel-collector"
+insecure_skip_verify = false
+
+[otel.metrics]
+exporter = "otlp"
+
+[otel.metrics.tuning]
+export_interval_ms = 10000
+temporality = "cumulative"
+histogram_aggregation = "explicit_bucket_histogram"
+
+[otel.metrics.otlp]
+endpoint = "http://otel-collector:4318/v1/metrics"
+protocol = "http/protobuf"
+compression = "gzip"
+timeout_ms = 10000
+headers = { authorization = "Bearer xxx" }
+insecure = false
+
+[otel.metrics.otlp.tls]
+ca_file = "/path/ca.pem"
+cert_file = "/path/client.crt"
+key_file = "/path/client.key"
+server_name = "otel-collector"
+insecure_skip_verify = false
