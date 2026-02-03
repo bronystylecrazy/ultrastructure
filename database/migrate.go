@@ -25,10 +25,14 @@ func UseMigrations(migrationsDirFS *embed.FS, paths ...string) di.Node {
 			if len(paths) > 0 && paths[0] != "" {
 				path = paths[0]
 			}
-			if sub, err := fs.Sub(migrationsDirFS, path); err == nil {
-				base = sub
-				path = "."
+
+			sub, err := fs.Sub(migrationsDirFS, path)
+			if err != nil {
+				return err
 			}
+
+			base = sub
+			path = "."
 			goose.SetBaseFS(base)
 
 			if err := goose.SetDialect(config.Dialect); err != nil {
