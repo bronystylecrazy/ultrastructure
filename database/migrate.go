@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var defaultMigrationPath = "db/migrations"
+var defaultMigrationPath = "migrations"
 
 func UseMigrations(migrationsDirFS *embed.FS, paths ...string) di.Node {
 	return di.Options(
