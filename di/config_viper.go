@@ -3,6 +3,7 @@ package di
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -607,7 +608,7 @@ func loadViper(cfg configConfig, path string) (*viper.Viper, error) {
 		// Read config from file if a file path or name is configured.
 		if err := v.ReadInConfig(); err != nil {
 			var nf viper.ConfigFileNotFoundError
-			if cfg.optional && errors.As(err, &nf) {
+			if cfg.optional && (errors.As(err, &nf) || errors.Is(err, os.ErrNotExist)) {
 				return v, nil
 			}
 			return nil, err

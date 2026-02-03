@@ -12,10 +12,10 @@ func Module(extends ...di.Node) di.Node {
 	return di.Module(
 		"us/web",
 		di.Config[Config]("web"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 
 		di.Config[FiberConfig]("web"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 		di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
 
 		// auto discovery for handlers

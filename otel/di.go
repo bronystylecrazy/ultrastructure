@@ -12,7 +12,7 @@ func Module() di.Node {
 
 		// config
 		di.Config[Config]("otel"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 
 		// observables
 		di.Provide(NewLogger),
