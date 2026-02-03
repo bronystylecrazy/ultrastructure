@@ -113,7 +113,7 @@ func (s *workerService) Bar(ctx context.Context, arg string) error {
 //go:embed all:web/dist
 var assets embed.FS
 
-//go:embed all:db/migrations
+//go:embed all:migrations
 var migrations embed.FS
 
 type handler struct {
@@ -170,6 +170,17 @@ func main() {
 				panic(err)
 			}
 			logger.Info("database connection successful", zap.Int("result", r))
+		}),
+		di.Invoke(func(cfg otel.Config, logger *zap.Logger) {
+			logger.Info("otel resolved config",
+				zap.String("service_name", cfg.ServiceName),
+				zap.String("sampler", cfg.Traces.Sampler),
+				zap.Float64("sampler_arg", cfg.Traces.SamplerArg),
+				zap.String("otlp.endpoint", cfg.OTLP.Endpoint),
+				zap.String("traces.endpoint", cfg.OTLPForTraces().Endpoint),
+				zap.String("logs.endpoint", cfg.OTLPForLogs().Endpoint),
+				zap.String("metrics.endpoint", cfg.OTLPForMetrics().Endpoint),
+			)
 		}),
 	).Build()
 

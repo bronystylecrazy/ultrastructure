@@ -11,7 +11,7 @@ func Module() di.Node {
 		di.AutoGroup[Observable](ObservablesGroupName),
 
 		// config
-		di.Config[Config]("otel"),
+		di.Config[Config]("otel", di.ConfigWithViper(applyOTELenv)),
 		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 
 		// observables
@@ -21,6 +21,8 @@ func Module() di.Node {
 		di.Provide(NewLoggerProvider),
 		di.Provide(NewTraceExporter),
 		di.Provide(NewTracerProvider),
+		di.Provide(NewMetricExporter),
+		di.Provide(NewMeterProvider),
 		di.Provide(AttachTelemetryToObservables, di.Params(``, ``, di.Group(ObservablesGroupName))),
 
 		// fx options

@@ -1,6 +1,7 @@
 package di
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -616,10 +617,50 @@ func loadViper(cfg configConfig, path string) (*viper.Viper, error) {
 			if cfg.optional && (errors.As(err, &nf) || errors.Is(err, os.ErrNotExist)) {
 				return v, nil
 			}
+			if path != "" {
+				if cleaned, ok := sanitizeConfigBytes(path); ok {
+					if cfg.configType == "" {
+						if ext := strings.TrimPrefix(filepath.Ext(path), "."); ext != "" {
+							v.SetConfigType(ext)
+						}
+					}
+					if rerr := v.ReadConfig(bytes.NewReader(cleaned)); rerr == nil {
+						return v, nil
+					}
+				}
+			}
 			return nil, err
 		}
 	}
 	return v, nil
+}
+
+func sanitizeConfigBytes(path string) ([]byte, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	changed := false
+	out := make([]byte, 0, len(data))
+	for i := 0; i < len(data); i++ {
+		// Strip UTF-8 BOM (EF BB BF)
+		if i+2 < len(data) && data[i] == 0xEF && data[i+1] == 0xBB && data[i+2] == 0xBF {
+			i += 2
+			changed = true
+			continue
+		}
+		// Strip zero-width space (E2 80 8B)
+		if i+2 < len(data) && data[i] == 0xE2 && data[i+1] == 0x80 && data[i+2] == 0x8B {
+			i += 2
+			changed = true
+			continue
+		}
+		out = append(out, data[i])
+	}
+	if changed {
+		return out, true
+	}
+	return nil, false
 }
 
 func resolveConfigTarget(pathOrKey string) (string, string) {
