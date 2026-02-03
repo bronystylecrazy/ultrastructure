@@ -7,7 +7,7 @@ import (
 	"go.uber.org/fx"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Name string `mapstructure:"name"`
 	Port int    `mapstructure:"port"`
 }
@@ -20,8 +20,8 @@ type DbConfig struct {
 func main() {
 	fx.New(
 		di.App(
-			di.ConfigBind[AppConfig](
-				"app",
+			di.ConfigBind[ServiceConfig](
+				"service",
 				di.ConfigType("toml"),
 				di.ConfigPath("di/examples/config_toml"),
 				di.ConfigName("config"),
@@ -32,8 +32,8 @@ func main() {
 				di.ConfigPath("di/examples/config_toml"),
 				di.ConfigName("config"),
 			),
-			di.Invoke(func(app AppConfig, db DbConfig) {
-				log.Println("app", app.Name, app.Port)
+			di.Invoke(func(service ServiceConfig, db DbConfig) {
+				log.Println("service", service.Name, service.Port)
 				log.Println("db", db.Host, db.Port)
 			}),
 		).Build(),

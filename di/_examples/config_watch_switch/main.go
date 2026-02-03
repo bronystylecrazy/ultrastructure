@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Log string `mapstructure:"log"`
 }
 
@@ -23,13 +23,13 @@ func main() {
 			return &fxevent.ZapLogger{Logger: logger}
 		}),
 		di.ConfigFile("di/examples/config_watch_switch/config.toml", di.ConfigType("toml")),
-		di.Config[AppConfig]("app", di.ConfigWatch()),
+		di.Config[ServiceConfig]("service", di.ConfigWatch()),
 		di.Config[DbConfig]("db", di.ConfigWatch()),
 		di.Switch(
-			di.WhenCase(func(cfg AppConfig) bool { return cfg.Log == "prod" },
+			di.WhenCase(func(cfg ServiceConfig) bool { return cfg.Log == "prod" },
 				di.Provide(zap.NewProduction),
 			),
-			di.WhenCase(func(cfg AppConfig, dbCfg DbConfig) bool {
+			di.WhenCase(func(cfg ServiceConfig, dbCfg DbConfig) bool {
 				return cfg.Log == "dev"
 			}, di.Provide(zap.NewDevelopment)),
 			di.DefaultCase(

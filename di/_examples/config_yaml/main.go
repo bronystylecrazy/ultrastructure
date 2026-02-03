@@ -7,7 +7,7 @@ import (
 	"go.uber.org/fx"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Name string `mapstructure:"name"`
 	Port int    `mapstructure:"port"`
 }
@@ -18,8 +18,8 @@ type DbConfig struct {
 }
 
 type Config struct {
-	App AppConfig `mapstructure:"app"`
-	Db  DbConfig  `mapstructure:"db"`
+	Service ServiceConfig `mapstructure:"service"`
+	Db      DbConfig      `mapstructure:"db"`
 }
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 		di.App(
 			di.Config[Config]("di/examples/config_yaml/config.yaml", di.ConfigType("yaml")),
 			di.Invoke(func(cfg Config) {
-				log.Println("app", cfg.App.Name, cfg.App.Port)
+				log.Println("service", cfg.Service.Name, cfg.Service.Port)
 				log.Println("db", cfg.Db.Host, cfg.Db.Port)
 			}),
 		).Build(),

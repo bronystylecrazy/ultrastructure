@@ -28,7 +28,7 @@ type OTLPConfig struct {
 }
 
 const (
-	defaultOTLPEndpoint    = "http://otel-collector:4317"
+	defaultOTLPEndpoint    = "http://127.0.0.1:4317"
 	defaultOTLPProtocol    = "grpc"
 	defaultOTLPTimeoutMS   = 10000
 	defaultOTLPCompression = "gzip"

@@ -6,13 +6,13 @@ import (
 	"go.uber.org/zap"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Name string `mapstructure:"name"`
 	Port int    `mapstructure:"port"`
 }
 
 type Config struct {
-	App AppConfig `mapstructure:"app"`
+	Service ServiceConfig `mapstructure:"service"`
 }
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 				di.ConfigEnvOverride(),
 			),
 			di.Invoke(func(cfg Config, logger *zap.Logger) {
-				logger.Info("app", zap.String("app.name", cfg.App.Name), zap.Int("app.port", cfg.App.Port))
+				logger.Info("service", zap.String("service.name", cfg.Service.Name), zap.Int("service.port", cfg.Service.Port))
 			}),
 		).Build(),
 	).Run()

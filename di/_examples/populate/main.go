@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Name string
 	Port int
 }
@@ -17,13 +17,13 @@ type AppConfig struct {
 func main() {
 	var (
 		logger *zap.Logger
-		cfg    AppConfig
+		cfg    ServiceConfig
 	)
 
 	app := fx.New(
 		di.App(
 			di.Provide(zap.NewDevelopment, di.Name("dev")),
-			di.Supply(AppConfig{Name: "demo", Port: 9000}),
+			di.Supply(ServiceConfig{Name: "demo", Port: 9000}),
 			di.Populate(&logger, di.Name("dev")),
 			di.Populate(&cfg),
 		).Build(),

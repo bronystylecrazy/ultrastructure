@@ -6,7 +6,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
-type AppConfig struct {
+type ServiceConfig struct {
 	Name string `mapstructure:"name"`
 	Port int    `mapstructure:"port"`
 }
@@ -14,8 +14,8 @@ type AppConfig struct {
 func main() {
 	err := di.App(
 		di.ConfigFile("di/examples/config_watch/config.toml", di.ConfigType("toml")),
-		di.Config[AppConfig]("app", di.ConfigWatch()),
-		di.Invoke(func(cfg AppConfig) {
+		di.Config[ServiceConfig]("service", di.ConfigWatch()),
+		di.Invoke(func(cfg ServiceConfig) {
 			log.Println("config", cfg.Name, cfg.Port)
 		}),
 	).Run()
