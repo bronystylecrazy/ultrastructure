@@ -20,7 +20,10 @@ type Telemetry struct {
 }
 
 // Attached is a marker indicating telemetry has been wired.
-type Attached struct{}
+type Attached struct {
+	Logger         *zap.Logger
+	TracerProvider *TracerProvider
+}
 
 // apply stores the shared Observability instance.
 func (o *Telemetry) apply(obs *Observer) {
@@ -51,5 +54,11 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observ
 		obs.layerName = layerName
 		observable.apply(obs)
 	}
-	return Attached{}
+
+	logger.Info("auto injected telemetry to observables", zap.Int("count", len(observables)))
+
+	return Attached{
+		Logger:         logger,
+		TracerProvider: tp,
+	}
 }

@@ -16,7 +16,7 @@ func Module(extends ...di.Node) di.Node {
 
 		di.Config[FiberConfig]("web"),
 		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride()),
-		di.Provide(NewFiberApp, di.As[fiber.Router](), di.AsSelf()),
+		di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
 
 		// auto discovery for handlers
 		di.AutoGroup[Handler](HandlersGroupName),

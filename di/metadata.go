@@ -57,6 +57,15 @@ func registerMetadata(value any, metadata []any) {
 	}
 }
 
+// RegisterMetadata attaches metadata to an instance programmatically.
+// Note: only pointer-like values can be registered (same as ReflectMetadata).
+func RegisterMetadata(value any, metadata ...any) {
+	if len(metadata) == 0 {
+		return
+	}
+	registerMetadata(value, metadata)
+}
+
 // ReflectMetadataAny returns metadata for a provided value, if registered.
 func ReflectMetadataAny(value any) (any, bool) {
 	key, ok := metadataKeyFromValue(value)

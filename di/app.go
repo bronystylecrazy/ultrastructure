@@ -34,9 +34,6 @@ func (a *appNode) Build() fx.Option {
 	nextScopeID := 1
 	// Apply graph-wide transformations before building.
 	nodes := applyAutoGroups(a.nodes, nil)
-	orderCounter := 0
-	nodes = applyAutoGroupOrderMetadata(nodes, &orderCounter)
-	nodes = appendAutoGroupOrderDecorators(nodes)
 	nodes = applyConfigScopes(nodes)
 	nodes = applyAutoInjectFields(nodes, false)
 	// Expand global config watch settings into each config node.

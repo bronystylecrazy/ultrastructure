@@ -33,7 +33,7 @@ func TestSetupHandlersPriorityOrder(t *testing.T) {
 		di.Supply(h2, di.As[Handler](`group:"us.handlers"`), Priority(Later)),
 		di.Supply(h3, di.As[Handler](`group:"us.handlers"`), Priority(Earlier)),
 		di.Supply(h4, di.As[Handler](`group:"us.handlers"`), Priority(Later)),
-		di.Invoke(SetupHandlers, di.Params("", di.Group(HandlersGroupName))),
+		di.Invoke(SetupHandlers, di.Params(``, di.Group(HandlersGroupName))),
 	).Build())
 	if err := fxApp.Start(context.Background()); err != nil {
 		t.Fatalf("start app: %v", err)

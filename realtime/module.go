@@ -13,8 +13,7 @@ func Module(opts ...di.Node) di.Node {
 	return di.Options(
 		di.AutoGroup[mqtt.Hook](HooksGroupName),
 		di.AutoGroup[listeners.Listener](ListenersGroupName),
-		di.Provide(NewMqttServer, di.As[Server](), di.AsSelf()),
-		di.Provide(NewAuthorizer),
+		di.Provide(NewMqttServer, di.AsSelf[Server]()),
 		di.Options(di.ConvertAnys(opts)...),
 		di.Invoke(AppendHooks, di.Params(``, di.Group(HooksGroupName))),
 		di.Invoke(AppendListeners, di.Params(``, di.Group(ListenersGroupName))),

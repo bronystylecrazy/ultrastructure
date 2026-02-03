@@ -116,9 +116,34 @@ var assets embed.FS
 //go:embed all:db/migrations
 var migrations embed.FS
 
+type handler struct {
+	otel.Telemetry
+}
+
+func NewHandler() *handler {
+	return &handler{
+		Telemetry: otel.Nop(),
+	}
+}
+
+func (h *handler) Authorize() fiber.Handler {
+	return func(c fiber.Ctx) error {
+		ctx, obs := h.Obs.Start(c.Context(), "realtime.authorize")
+		defer obs.End()
+
+		obs.Info("Authorize called")
+		time.Sleep(5 * time.Millisecond)
+
+		c.SetContext(ctx)
+
+		return c.Next()
+	}
+}
+
 func main() {
 
 	options := di.App(
+		di.Diagnostics(),
 		otel.Module(),
 		lifecycle.Module(),
 		realtime.Module(),
@@ -131,9 +156,9 @@ func main() {
 			web.UseMqttWebsocket(),
 			web.UseSpa(&assets),
 			web.UseSwagger(),
-
-			di.Provide(NewAPIService),
 			di.Provide(NewWorkerService),
+			di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
+			di.Provide(NewAPIService),
 		),
 		di.Invoke(func(db *gorm.DB, logger *zap.Logger) {
 			sqdb, err := db.DB()
@@ -144,9 +169,8 @@ func main() {
 			if err := sqdb.QueryRow(`SELECT 1 * 1 as result;`).Scan(&r); err != nil {
 				panic(err)
 			}
-			logger.Info("Database connection successful", zap.Int("result", r))
+			logger.Info("database connection successful", zap.Int("result", r))
 		}),
-		fx.NopLogger,
 	).Build()
 
 	fx.New(options).Run()

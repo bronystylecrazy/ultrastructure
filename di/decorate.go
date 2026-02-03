@@ -178,6 +178,18 @@ func explicitTagSets(dec decorateNode, fnType reflect.Type) ([]tagSet, bool, err
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
 		return nil, false, err
 	}
+	if len(cfg.tags) > 0 && fnType != nil && fnType.NumIn() == 1 {
+		if len(cfg.tags) > 1 {
+			return nil, false, fmt.Errorf(errDecorateNameGroupSingle)
+		}
+		name, group := parseTagNameGroup(cfg.tags[0])
+		if name != "" {
+			return []tagSet{{name: name}}, true, nil
+		}
+		if group != "" {
+			return []tagSet{{group: group}}, true, nil
+		}
+	}
 	if !shouldUseResultTags(cfg, fnType) {
 		return nil, false, nil
 	}

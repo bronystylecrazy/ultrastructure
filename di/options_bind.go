@@ -242,11 +242,6 @@ func Self() Option {
 	})
 }
 
-// AsSelf is an alias for Self.
-func AsSelf() Option {
-	return Self()
-}
-
 // Private hides this constructor from other modules.
 func Private() Option {
 	return bindOptionFunc(func(cfg *bindConfig) {
