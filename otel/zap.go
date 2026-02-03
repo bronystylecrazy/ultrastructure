@@ -27,7 +27,7 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 		)
 	}))
 
-	if config.Disabled {
+	if !config.Enabled {
 		return wrapped, nil
 	}
 

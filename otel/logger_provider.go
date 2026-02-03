@@ -12,6 +12,11 @@ type LoggerProvider struct {
 }
 
 func NewLoggerProvider(ctx context.Context, resource *resource.Resource, exporter sdklog.Exporter) (*LoggerProvider, error) {
+	if exporter == nil {
+		return &LoggerProvider{sdklog.NewLoggerProvider(
+			sdklog.WithResource(resource),
+		)}, nil
+	}
 	return &LoggerProvider{sdklog.NewLoggerProvider(
 		sdklog.WithResource(resource),
 		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),

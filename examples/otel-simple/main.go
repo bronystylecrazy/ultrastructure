@@ -173,6 +173,8 @@ func main() {
 		}),
 		di.Invoke(func(cfg otel.Config, logger *zap.Logger) {
 			logger.Info("otel resolved config",
+				zap.Bool("enabled", cfg.Enabled),
+				zap.String("traces.exporter", cfg.Traces.Exporter),
 				zap.String("service_name", cfg.ServiceName),
 				zap.String("sampler", cfg.Traces.Sampler),
 				zap.Float64("sampler_arg", cfg.Traces.SamplerArg),

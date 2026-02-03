@@ -20,6 +20,9 @@ func httpLogCompression(value string) otlploghttp.Compression {
 }
 
 func NewLogExporter(ctx context.Context, config Config, opts ...otlploggrpc.Option) (sdklog.Exporter, error) {
+	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Logs.Exporter), "none") {
+		return nil, nil
+	}
 	otlpCfg := config.otlpForLogs()
 	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
 		endpoint, path := otlpCfg.EndpointForHTTP()

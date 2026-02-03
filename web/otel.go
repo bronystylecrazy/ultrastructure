@@ -31,7 +31,8 @@ func NewOtelMiddleware(config otel.Config, lp *otel.LoggerProvider) *OtelMiddlew
 }
 
 func (h *OtelMiddleware) Handle(r fiber.Router) {
-	r.Use(h.provideTracer, fiberzap.New(fiberzap.Config{
+	r.Use(h.provideTracer)
+	r.Use(fiberzap.New(fiberzap.Config{
 		Logger: h.Obs.Logger,
 		FieldsFunc: func(c fiber.Ctx) []zap.Field {
 			return otel.ContextFunc(c.Context())

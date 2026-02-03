@@ -22,7 +22,7 @@ func httpMetricCompression(value string) otlpmetrichttp.Compression {
 }
 
 func NewMetricExporter(ctx context.Context, config Config) (sdkmetric.Exporter, error) {
-	if strings.EqualFold(strings.TrimSpace(config.Metrics.Exporter), "none") {
+	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Metrics.Exporter), "none") {
 		return &noopMetricExporter{}, nil
 	}
 	otlpCfg := config.otlpForMetrics()

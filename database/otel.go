@@ -15,7 +15,7 @@ func UseOtelTraceMetrics(opts ...di.Option) di.Node {
 }
 
 func attachOtelTraceMetricsToGorm(db *gorm.DB, config otel.Config, tp *otel.TracerProvider) error {
-	if !config.Disabled {
+	if config.Enabled {
 		if err := db.Use(
 			otelgorm.NewPlugin(
 				otelgorm.WithTracerProvider(tp),
@@ -33,7 +33,7 @@ func UseOtelLogger(opts ...di.Option) di.Node {
 }
 
 func attachOtelLoggerToGorm(db *gorm.DB, config otel.Config, log *zap.Logger) error {
-	if !config.Disabled {
+	if config.Enabled {
 		logger := NewGormLogger(log)
 		logger.Context = otel.ContextFunc
 		logger.SetAsDefault()

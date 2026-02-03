@@ -18,20 +18,44 @@ type Config struct {
 }
 
 type OTLPConfig struct {
-	Endpoint    string            `mapstructure:"endpoint" default:"http://otel-collector:4317"`
-	Protocol    string            `mapstructure:"protocol" default:"grpc"`
+	Endpoint    string            `mapstructure:"endpoint"`
+	Protocol    string            `mapstructure:"protocol"`
 	Headers     map[string]string `mapstructure:"headers"`
-	TimeoutMS   int               `mapstructure:"timeout_ms" default:"10000"`
-	Compression string            `mapstructure:"compression" default:"gzip"`
+	TimeoutMS   int               `mapstructure:"timeout_ms"`
+	Compression string            `mapstructure:"compression"`
 	Insecure    bool              `mapstructure:"insecure"`
 	TLS         TLSConfig         `mapstructure:"tls"`
 }
+
+const (
+	defaultOTLPEndpoint    = "http://otel-collector:4317"
+	defaultOTLPProtocol    = "grpc"
+	defaultOTLPTimeoutMS   = 10000
+	defaultOTLPCompression = "gzip"
+)
 
 func (c OTLPConfig) Timeout() time.Duration {
 	if c.TimeoutMS <= 0 {
 		return 0
 	}
 	return time.Duration(c.TimeoutMS) * time.Millisecond
+}
+
+func (c OTLPConfig) withDefaults() OTLPConfig {
+	out := c
+	if out.Endpoint == "" {
+		out.Endpoint = defaultOTLPEndpoint
+	}
+	if out.Protocol == "" {
+		out.Protocol = defaultOTLPProtocol
+	}
+	if out.TimeoutMS <= 0 {
+		out.TimeoutMS = defaultOTLPTimeoutMS
+	}
+	if out.Compression == "" {
+		out.Compression = defaultOTLPCompression
+	}
+	return out
 }
 
 func (c OTLPConfig) EndpointForGRPC() string {
@@ -127,15 +151,18 @@ func mergeOTLP(base, override OTLPConfig) OTLPConfig {
 }
 
 func (c Config) otlpForTraces() OTLPConfig {
-	return mergeOTLP(c.OTLP, c.Traces.OTLP)
+	base := c.OTLP.withDefaults()
+	return mergeOTLP(base, c.Traces.OTLP)
 }
 
 func (c Config) otlpForLogs() OTLPConfig {
-	return mergeOTLP(c.OTLP, c.Logs.OTLP)
+	base := c.OTLP.withDefaults()
+	return mergeOTLP(base, c.Logs.OTLP)
 }
 
 func (c Config) otlpForMetrics() OTLPConfig {
-	return mergeOTLP(c.OTLP, c.Metrics.OTLP)
+	base := c.OTLP.withDefaults()
+	return mergeOTLP(base, c.Metrics.OTLP)
 }
 
 // OTLPForTraces returns the merged OTLP config for traces.

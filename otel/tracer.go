@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -20,7 +20,10 @@ func httpTraceCompression(value string) otlptracehttp.Compression {
 	}
 }
 
-func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.Option) (*otlptrace.Exporter, error) {
+func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Traces.Exporter), "none") {
+		return nil, nil
+	}
 	otlpCfg := config.otlpForTraces()
 	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
 		endpoint, path := otlpCfg.EndpointForHTTP()
@@ -42,11 +45,7 @@ func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.
 		if tlsCfg != nil {
 			options = append(options, otlptracehttp.WithTLSClientConfig(tlsCfg))
 		}
-		exp, err := otlptracehttp.New(ctx, options...)
-		if err != nil {
-			return nil, err
-		}
-		return exp, nil
+		return otlptracehttp.New(ctx, options...)
 	}
 
 	tlsCfg, err := otlpCfg.TLS.Load()
@@ -71,8 +70,5 @@ func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.
 		options = append(options, option)
 	}
 
-	// use Unstarted as the AutoGroup will handle the Start(ctx).
-	return otlptracegrpc.NewUnstarted(
-		options...,
-	), nil
+	return otlptracegrpc.New(ctx, options...)
 }
