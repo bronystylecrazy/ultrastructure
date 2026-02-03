@@ -10,8 +10,15 @@ const DefaultPath = "/api"
 type Option func(*Handler)
 
 type Handler struct {
-	name        string
 	defaultPath string
+}
+
+type BuildInfoResponse struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+	Commit      string `json:"commit"`
+	BuildDate   string `json:"buildDate"`
 }
 
 func New(opts ...Option) *Handler {
@@ -25,12 +32,6 @@ func WithDefaultPath(path ...string) Option {
 			return
 		}
 		h.defaultPath = path[0]
-	}
-}
-
-func WithName(name string) Option {
-	return func(h *Handler) {
-		h.name = name
 	}
 }
 
@@ -48,16 +49,12 @@ func NewHandler(opts ...Option) *Handler {
 
 func (h *Handler) Handle(r fiber.Router) {
 	r.Get(h.defaultPath, func(c fiber.Ctx) error {
-		resp := struct {
-			Name      string `json:"name"`
-			Version   string `json:"version"`
-			Commit    string `json:"commit"`
-			BuildDate string `json:"buildDate"`
-		}{
-			Name:      h.name,
-			Version:   us.Version,
-			Commit:    us.Commit,
-			BuildDate: us.BuildDate,
+		resp := BuildInfoResponse{
+			Name:        us.Name,
+			Description: us.Description,
+			Version:     us.Version,
+			Commit:      us.Commit,
+			BuildDate:   us.BuildDate,
 		}
 		return c.JSON(resp)
 	})

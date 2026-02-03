@@ -10,13 +10,8 @@ type BuildInfoOption = buildinfo.Option
 type BuildInfoHandler = buildinfo.Handler
 
 func UseBuildInfo(opts ...BuildInfoOption) di.Node {
-	return di.Provide(func(cfg FiberConfig) *buildinfo.Handler {
-		merged := make([]buildinfo.Option, 0, len(opts)+1)
-		merged = append(merged, opts...)
-		if cfg.Name != "" {
-			merged = append(merged, buildinfo.WithName(cfg.Name))
-		}
-		return buildinfo.NewHandler(merged...)
+	return di.Provide(func() *buildinfo.Handler {
+		return buildinfo.NewHandler(opts...)
 	})
 }
 
