@@ -81,6 +81,11 @@ func (n configNode[T]) Build() (fx.Option, error) {
 		var v *viper.Viper
 		if store != nil && store.v != nil {
 			v = store.v
+			for _, hook := range cfg.hooks {
+				if err := hook(v); err != nil {
+					return out, err
+				}
+			}
 		} else {
 			if path == "" && !hasConfigSource(cfg) {
 				return out, fmt.Errorf(errConfigSourceMissing)
@@ -663,6 +668,7 @@ func decodeConfig(v *viper.Viper, key string, out any) error {
 		}
 		return v.UnmarshalKey(key, out)
 	}
+	applyDefaultTags(v, key, elem)
 	data := buildConfigMap(v, key, elem)
 	if len(data) == 0 {
 		if key == "" {
@@ -727,6 +733,54 @@ func buildConfigMap(v *viper.Viper, prefix string, t reflect.Type) map[string]an
 		}
 	}
 	return out
+}
+
+func applyDefaultTags(v *viper.Viper, prefix string, t reflect.Type) {
+	if v == nil || t == nil {
+		return
+	}
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		tag := field.Tag.Get("mapstructure")
+		name, opts := parseMapstructureTag(tag)
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		defaultVal := field.Tag.Get("default")
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Pointer {
+			fieldType = fieldType.Elem()
+		}
+		if fieldType.Kind() == reflect.Struct && !isTimeType(fieldType) && !hasTagOption(opts, "squash") {
+			nextPrefix := name
+			if prefix != "" {
+				nextPrefix = prefix + "." + name
+			}
+			applyDefaultTags(v, nextPrefix, fieldType)
+			continue
+		}
+		fullKey := name
+		if prefix != "" && !hasTagOption(opts, "squash") {
+			fullKey = prefix + "." + name
+		} else if prefix != "" && hasTagOption(opts, "squash") {
+			fullKey = prefix
+		}
+		if defaultVal != "" && !v.IsSet(fullKey) {
+			v.SetDefault(fullKey, defaultVal)
+		}
+	}
 }
 
 func parseMapstructureTag(tag string) (string, []string) {
