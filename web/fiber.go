@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	us "github.com/bronystylecrazy/ultrastructure"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -16,11 +17,18 @@ type FiberConfig struct {
 
 func NewFiberApp(config FiberConfig) *fiber.App {
 	return fiber.New(fiber.Config{
-		AppName:      config.Name,
+		AppName:      buildAppName(config.Name),
 		ReadTimeout:  2 * time.Second,
 		WriteTimeout: 2 * time.Second,
 		IdleTimeout:  2 * time.Second,
 	})
+}
+
+func buildAppName(name string) string {
+	if name == "" {
+		name = "app"
+	}
+	return fmt.Sprintf("%s (%s %s %s)", name, us.Version, us.Commit, us.BuildDate)
 }
 
 func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
