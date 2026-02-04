@@ -23,6 +23,14 @@ func (a *appNode) Plan() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	priorityGroups, hasPriority := collectPriorityGroups(nodes)
+	if hasPriority {
+		orderCounter := 0
+		nodes = applyAutoGroupOrderMetadata(nodes, &orderCounter, true)
+		if len(priorityGroups) > 0 {
+			nodes = appendAutoGroupOrderDecorators(nodes, priorityGroups)
+		}
+	}
 	var b strings.Builder
 	for i, n := range nodes {
 		writePlanNode(&b, n, "", i == len(nodes)-1)

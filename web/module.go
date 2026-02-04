@@ -23,7 +23,7 @@ func Module(extends ...di.Node) di.Node {
 
 		di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest)),
 		di.Options(di.ConvertAnys(extends)...),
-		di.Invoke(SetupHandlers, di.Params(``, ``, di.Group(HandlersGroupName))),
+		di.Invoke(SetupHandlers),
 		di.Invoke(RegisterFiberApp),
 	)
 }

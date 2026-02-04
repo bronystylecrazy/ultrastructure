@@ -71,6 +71,7 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 			}
 			fn := entry.dec.function
 			fnSig := fnType
+			bucketTarget := targetType
 			if ts.group != "" && !isSliceParam {
 				if ts.name != "" {
 					// fall back to name-only for non-slice decorators
@@ -85,13 +86,16 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 					}
 					fn = wrapped
 					fnSig = reflect.TypeOf(fn)
+					if wrappedTarget, _ := decoratorTargetType(fnSig); wrappedTarget != nil {
+						bucketTarget = wrappedTarget
+					}
 				}
 			}
 			extraTags, err := buildDecorateExtraTags(entry.dec, fnSig)
 			if err != nil {
 				return nil, err
 			}
-			key := tagSetKey(ts) + "|t:" + targetType.String()
+			key := tagSetKey(ts) + "|t:" + bucketTarget.String()
 			b := buckets[key]
 			if b == nil {
 				b = &decorateBucket{ts: ts, targetTyp: fnSig.In(0)}

@@ -48,6 +48,14 @@ func (a *appNode) Build() fx.Option {
 	if err != nil {
 		return fx.Error(err)
 	}
+	priorityGroups, hasPriority := collectPriorityGroups(nodes)
+	if hasPriority {
+		orderCounter := 0
+		nodes = applyAutoGroupOrderMetadata(nodes, &orderCounter, true)
+		if len(priorityGroups) > 0 {
+			nodes = appendAutoGroupOrderDecorators(nodes, priorityGroups)
+		}
+	}
 	// Detect diagnostics nodes to enable panic recovery.
 	hasDiagnostics := false
 	for _, n := range nodes {

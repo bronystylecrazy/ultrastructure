@@ -15,6 +15,9 @@ func UseSpa(assets *embed.FS) di.Node {
 	return di.Options(
 		di.Supply(assets, di.Private()),
 		di.Provide(NewSpaMiddleware, di.Params(di.Optional()), Priority(Latest)),
+		di.Invoke(func(log *zap.Logger) {
+			log.Debug("use spa middleware")
+		}),
 	)
 }
 
@@ -47,9 +50,8 @@ func NewSpaMiddleware(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error)
 }
 
 func (s *SpaMiddleware) Handle(r fiber.Router) {
-	s.log.Info("initialize static middleware")
 	if s.fs == nil {
-		s.log.Info("skip static middleware, assets(*embed.FS) is not provided/supplied")
+		s.log.Debug("skip static middleware, assets(*embed.FS) is not provided/supplied")
 		return
 	}
 

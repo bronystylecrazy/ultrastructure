@@ -2,43 +2,41 @@ package web
 
 import "github.com/bronystylecrazy/ultrastructure/di"
 
-type PriorityLevel int
+type PriorityLevel = di.PriorityLevel
 
 const (
-	Earliest PriorityLevel = -200
-	Earlier  PriorityLevel = -100
-	Normal   PriorityLevel = 0
-	Later    PriorityLevel = 100
-	Latest   PriorityLevel = 200
+	Earliest = di.Earliest
+	Earlier  = di.Earlier
+	Normal   = di.Normal
+	Later    = di.Later
+	Latest   = di.Latest
 )
 
 func Priority(value PriorityLevel) di.Option {
-	return di.Metadata(value)
+	return di.Priority(value)
 }
 
 func Between(lower, upper PriorityLevel) PriorityLevel {
-	if lower == upper {
-		return lower
-	}
-	if lower > upper {
-		lower, upper = upper, lower
-	}
-	return PriorityLevel(int(lower) + (int(upper)-int(lower))/2)
+	return di.Between(lower, upper)
 }
 
-func resolvePriority(handler Handler) PriorityLevel {
-	meta, ok := di.ReflectMetadata[[]any](handler)
-	if !ok {
-		return Normal
-	}
-	priority := Normal
-	for _, item := range meta {
-		switch v := item.(type) {
-		case PriorityLevel:
-			priority = v
-		case int:
-			priority = PriorityLevel(v)
+func resolvePriority(handler Handler) int {
+	priority := int(Normal)
+	if p, ok := di.PriorityIndex(handler); ok {
+		priority = p
+	} else if meta, ok := di.ReflectMetadata[[]any](handler); ok {
+		for _, item := range meta {
+			switch v := item.(type) {
+			case PriorityLevel:
+				priority = int(v)
+			case int:
+				priority = v
+			}
 		}
 	}
-	return priority
+	order := 0
+	if o, ok := di.OrderIndex(handler); ok {
+		order = o
+	}
+	return priority*1_000_000 + order
 }

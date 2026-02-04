@@ -160,17 +160,6 @@ func main() {
 			di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
 			di.Provide(NewAPIService),
 		),
-		di.Invoke(func(db *gorm.DB, logger *zap.Logger) {
-			sqdb, err := db.DB()
-			if err != nil {
-				panic(err)
-			}
-			var r int
-			if err := sqdb.QueryRow(`SELECT 1 * 1 as result;`).Scan(&r); err != nil {
-				panic(err)
-			}
-			logger.Info("database connection successful", zap.Int("result", r))
-		}),
 		di.Invoke(func(cfg otel.Config, logger *zap.Logger) {
 			logger.Info("otel resolved config",
 				zap.Bool("enabled", cfg.Enabled),

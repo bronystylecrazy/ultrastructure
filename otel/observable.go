@@ -55,7 +55,7 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observ
 		observable.apply(obs)
 	}
 
-	logger.Info("auto injected telemetry to observables", zap.Int("count", len(observables)))
+	logger.Debug("auto injected telemetry to observables", zap.Int("count", len(observables)))
 
 	return Attached{
 		Logger:         logger,
