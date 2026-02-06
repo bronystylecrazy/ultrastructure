@@ -19,6 +19,7 @@ endpoint = "https://s3.amazonaws.com"
 access_key_id = "YOUR_ACCESS_KEY_ID"
 secret_access_key = "YOUR_SECRET_ACCESS_KEY"
 use_path_style = false
+bucket = "your-bucket"
 
 
 [otel]

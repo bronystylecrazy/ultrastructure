@@ -7,15 +7,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type Config struct {
-	Region          string
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-	UsePathStyle    bool
+	Region          string `mapstructure:"region"`
+	Endpoint        string `mapstructure:"endpoint"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+	UsePathStyle    bool   `mapstructure:"use_path_style"`
+	Bucket          string `mapstructure:"bucket"`
 }
 
 func LoadAWSConfig(ctx context.Context, cfg Config) (aws.Config, error) {
@@ -35,23 +35,12 @@ func LoadAWSConfig(ctx context.Context, cfg Config) (aws.Config, error) {
 	}
 
 	if cfg.Endpoint != "" {
-		opts = append(opts, config.WithEndpointResolverWithOptions(
-			aws.EndpointResolverWithOptionsFunc(func(service, region string, _ ...interface{}) (aws.Endpoint, error) {
-				if service != s3.ServiceID {
-					return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-				}
-				signingRegion := region
-				if cfg.Region != "" {
-					signingRegion = cfg.Region
-				}
-				return aws.Endpoint{
-					URL:               cfg.Endpoint,
-					SigningRegion:     signingRegion,
-					HostnameImmutable: true,
-				}, nil
-			}),
-		))
+		opts = append(opts, config.WithBaseEndpoint(cfg.Endpoint))
 	}
 
 	return config.LoadDefaultConfig(ctx, opts...)
+}
+
+func NewAWSConfig(ctx context.Context, cfg Config) (aws.Config, error) {
+	return LoadAWSConfig(ctx, cfg)
 }
