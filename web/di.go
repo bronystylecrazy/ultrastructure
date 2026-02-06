@@ -1,15 +1,54 @@
 package web
 
 import (
+	"embed"
+
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/realtime"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
-func UseSwagger() di.Node {
+func UseMqttWebsocket(opts ...realtime.Option) di.Node {
 	return di.Options(
-		di.Provide(NewSwaggerHandler),
+		di.Provide(func(app fiber.Router, auth realtime.Authorizer) *realtime.Websocket {
+			base := []realtime.Option{
+				realtime.WithApp(app),
+				realtime.WithAuthorizer(auth),
+			}
+			return realtime.NewWebsocketWithOptions(append(base, opts...)...)
+		}, Priority(Later), di.Params(``, di.Optional())),
+		di.Invoke(func(log *zap.Logger) {
+			log.Debug("use mqtt websocket")
+		}),
+	)
+}
+
+func UseSwagger(opts ...SwaggerOption) di.Node {
+	return di.Options(
+		di.Provide(func(config Config) (*SwaggerHandler, error) {
+			base := []SwaggerOption{
+				WithSwaggerConfig(config),
+			}
+			return NewSwaggerHandlerWithOptions(append(base, opts...)...)
+		}),
 		di.Invoke(func(log *zap.Logger) {
 			log.Debug("use swagger")
 		}),
+	)
+}
+
+func UseSpa(opts ...SpaOption) di.Node {
+	return di.Options(
+		di.Provide(func(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error) {
+			log.Debug("use spa middleware")
+
+			base := []SpaOption{
+				WithSpaAssets(assets),
+				WithSpaLogger(log),
+			}
+
+			return NewSpaMiddlewareWithOptions(append(base, opts...)...)
+		}, di.Params(di.Optional()), Priority(Latest)),
 	)
 }

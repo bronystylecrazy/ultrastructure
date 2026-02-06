@@ -2,7 +2,6 @@ package otel
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 )
 
@@ -28,18 +27,14 @@ type Attached struct {
 // apply stores the shared Observability instance.
 func (o *Telemetry) apply(obs *Observer) {
 	if obs == nil {
-		o.Obs = NopObserver()
+		o.Obs = NewNopObserver()
 		return
 	}
 	o.Obs = obs
 }
 
 func Nop() Telemetry {
-	return Telemetry{Obs: NopObserver()}
-}
-
-func NopObserver() *Observer {
-	return NewObserver(zap.NewNop(), noop.NewTracerProvider().Tracer(""))
+	return Telemetry{Obs: NewNopObserver()}
 }
 
 func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) Attached {

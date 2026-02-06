@@ -6,28 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
-func UseSpa(assets *embed.FS) di.Node {
-	return di.Options(
-		di.Supply(assets, di.Private()),
-		di.Provide(NewSpaMiddleware, di.Params(di.Optional()), Priority(Latest)),
-		di.Invoke(func(log *zap.Logger) {
-			log.Debug("use spa middleware")
-		}),
-	)
-}
+const DefaultSpaDistPath = "web/dist"
 
-func HandleSpa(r fiber.Router, s *SpaMiddleware) {
-	s.Handle(r)
-}
-
-func NopSpa() di.Node {
-	return di.Replace(&SpaMiddleware{fs: nil, log: zap.NewNop()})
-}
+type SpaOption func(*spaOptions)
 
 type SpaMiddleware struct {
 	fs         fs.FS
@@ -36,17 +21,59 @@ type SpaMiddleware struct {
 	indexGzip  []byte
 }
 
+type spaOptions struct {
+	assets   *embed.FS
+	log      *zap.Logger
+	distPath string
+}
+
+func WithSpaAssets(assets *embed.FS) SpaOption {
+	return func(o *spaOptions) {
+		o.assets = assets
+	}
+}
+
+func WithSpaLogger(log *zap.Logger) SpaOption {
+	return func(o *spaOptions) {
+		o.log = log
+	}
+}
+
+func WithSpaDistPath(path string) SpaOption {
+	return func(o *spaOptions) {
+		o.distPath = path
+	}
+}
+
 func NewSpaMiddleware(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error) {
-	if assets == nil {
-		return &SpaMiddleware{fs: nil, log: log}, nil
+	return NewSpaMiddlewareWithOptions(WithSpaAssets(assets), WithSpaLogger(log))
+}
+
+func NewSpaMiddlewareWithOptions(opts ...SpaOption) (*SpaMiddleware, error) {
+	cfg := spaOptions{distPath: DefaultSpaDistPath}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
 	}
 
-	subbedDist, err := fs.Sub(assets, "web/dist")
+	return newSpaMiddlewareWithOptions(cfg)
+}
+
+func newSpaMiddlewareWithOptions(cfg spaOptions) (*SpaMiddleware, error) {
+	if cfg.log == nil {
+		cfg.log = zap.NewNop()
+	}
+	if cfg.assets == nil {
+		return &SpaMiddleware{fs: nil, log: cfg.log}, nil
+	}
+
+	subbedDist, err := fs.Sub(cfg.assets, cfg.distPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &SpaMiddleware{fs: subbedDist, log: log}, nil
+	return &SpaMiddleware{fs: subbedDist, log: cfg.log}, nil
 }
 
 func (s *SpaMiddleware) Handle(r fiber.Router) {

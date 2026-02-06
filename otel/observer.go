@@ -17,6 +17,7 @@ type Observer struct {
 	*zap.Logger
 	trace.Tracer
 	layerName string
+	isNop     bool
 }
 
 type Span struct {
@@ -28,6 +29,14 @@ func NewObserver(logger *zap.Logger, tracer trace.Tracer) *Observer {
 	return &Observer{
 		Logger: logger,
 		Tracer: tracer,
+	}
+}
+
+func NewNopObserver() *Observer {
+	return &Observer{
+		Logger: zap.NewNop(),
+		Tracer: noop.NewTracerProvider().Tracer(""),
+		isNop:  true,
 	}
 }
 
