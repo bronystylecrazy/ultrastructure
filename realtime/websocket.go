@@ -25,21 +25,23 @@ var (
 // Websocket is a listener for establishing websocket connections.
 type Websocket struct { // [MQTT-4.2.0-1]
 	sync.RWMutex
-	id         string       // the internal id of the listener
-	app        fiber.Router // the fiber router to register the websocket handler on
-	authorizer Authorizer
-	log        *slog.Logger          // server logging
-	establish  listeners.EstablishFn // the server's establish connection handler
-	upgrader   *websocket.Upgrader   //  upgrade the incoming http/tcp connection to a websocket compliant connection.
+	Id          string       // the internal id of the listener
+	App         fiber.Router // the fiber router to register the websocket handler on
+	Authorizer  Authorizer
+	Path        string
+	Log         *slog.Logger          // server logging
+	EstablishFn listeners.EstablishFn // the server's establish connection handler
+	Upgrader    *websocket.Upgrader   //  upgrade the incoming http/tcp connection to a websocket compliant connection.
 }
 
 // NewWebsocket initializes and returns a new Websocket listener, listening on an address.
 func NewWebsocket(app fiber.Router, authorizer Authorizer) *Websocket {
 	return &Websocket{
-		id:         "ws1",
-		app:        app,
-		authorizer: authorizer,
-		upgrader: &websocket.Upgrader{
+		Id:         "ws1",
+		App:        app,
+		Authorizer: authorizer,
+		Path:       "/realtime",
+		Upgrader: &websocket.Upgrader{
 			Subprotocols: []string{"mqtt"},
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -48,9 +50,58 @@ func NewWebsocket(app fiber.Router, authorizer Authorizer) *Websocket {
 	}
 }
 
+// Option customizes a Websocket instance.
+type Option func(*Websocket)
+
+// NewWebsocketWithOptions initializes a Websocket with defaults and applies options.
+func NewWebsocketWithOptions(opts ...Option) *Websocket {
+	ws := NewWebsocket(nil, nil)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(ws)
+		}
+	}
+	return ws
+}
+
+// WithId sets the Websocket listener id.
+func WithId(id string) Option {
+	return func(w *Websocket) {
+		w.Id = id
+	}
+}
+
+// WithApp sets the Fiber router for registering the websocket handler.
+func WithApp(app fiber.Router) Option {
+	return func(w *Websocket) {
+		w.App = app
+	}
+}
+
+// WithPath sets the route path for the websocket handler.
+func WithPath(path string) Option {
+	return func(w *Websocket) {
+		w.Path = path
+	}
+}
+
+// WithAuthorizer sets the authorizer for the websocket handler.
+func WithAuthorizer(authorizer Authorizer) Option {
+	return func(w *Websocket) {
+		w.Authorizer = authorizer
+	}
+}
+
+// WithUpgrader sets the websocket upgrader.
+func WithUpgrader(upgrader *websocket.Upgrader) Option {
+	return func(w *Websocket) {
+		w.Upgrader = upgrader
+	}
+}
+
 // ID returns the id of the listener.
 func (l *Websocket) ID() string {
-	return l.id
+	return l.Id
 }
 
 // Address returns the address of the listener.
@@ -65,35 +116,35 @@ func (l *Websocket) Protocol() string {
 
 // Init initializes the listener.
 func (l *Websocket) Init(log *slog.Logger) error {
-	l.log = log
+	l.Log = log
 	return nil
 }
 
 func (l *Websocket) Handle(r fiber.Router) {
-	if l.authorizer == nil {
-		l.app.All("/realtime", adaptor.HTTPHandlerFunc(l.handler))
+	if l.Authorizer == nil {
+		l.App.All(l.Path, adaptor.HTTPHandlerFunc(l.Handler))
 	} else {
-		l.app.All("/realtime", l.authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.handler))
+		l.App.All(l.Path, l.Authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.Handler))
 	}
 }
 
-// handler upgrades and handles an incoming websocket connection.
-func (l *Websocket) handler(w http.ResponseWriter, r *http.Request) {
-	c, err := l.upgrader.Upgrade(w, r, nil)
+// Handler upgrades and handles an incoming websocket connection.
+func (l *Websocket) Handler(w http.ResponseWriter, r *http.Request) {
+	c, err := l.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	defer c.Close()
-	err = l.establish(l.id, &wsConn{Conn: c.UnderlyingConn(), c: c})
+	err = l.EstablishFn(l.Id, &wsConn{Conn: c.UnderlyingConn(), c: c})
 	if err != nil {
-		l.log.Warn("", "error", err)
+		l.Log.Warn("", "error", err)
 	}
 }
 
 // Serve starts waiting for new Websocket connections, and calls the connection
 // establishment callback for any received.
 func (l *Websocket) Serve(establish listeners.EstablishFn) {
-	l.establish = establish
+	l.EstablishFn = establish
 }
 
 // Close closes the listener and any client connections.
@@ -101,7 +152,7 @@ func (l *Websocket) Close(closeClients listeners.CloseFn) {
 	l.Lock()
 	defer l.Unlock()
 
-	closeClients(l.id)
+	closeClients(l.Id)
 }
 
 // wsConn is a websocket connection which satisfies the net.Conn interface.

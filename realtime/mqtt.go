@@ -29,7 +29,7 @@ func NewMqttServer() (*MqttServer, error) {
 	return server, nil
 }
 
-func (m *MqttServer) Send(topic string, payload any, retain bool, qos byte) error {
+func (m *MqttServer) Publish(topic string, payload any, retain bool, qos byte) error {
 
 	p, err := json.Marshal(payload)
 	if err != nil {
