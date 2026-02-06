@@ -13,6 +13,13 @@ secret = "change-me"
 access_token_ttl = "15m"
 refresh_token_ttl = "720h"
 
+[storage.s3]
+region = "us-east-1"
+endpoint = "https://s3.amazonaws.com"
+access_key_id = "YOUR_ACCESS_KEY_ID"
+secret_access_key = "YOUR_SECRET_ACCESS_KEY"
+use_path_style = false
+
 
 [otel]
 enabled = true
