@@ -4,10 +4,15 @@ import (
 	"embed"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
+
+func UseOtel() di.Node {
+	return di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest))
+}
 
 func UseMqttWebsocket(opts ...realtime.Option) di.Node {
 	return di.Options(
