@@ -154,7 +154,7 @@ func main() {
 		),
 		web.Module(
 			web.UseMqttWebsocket(),
-			web.UseSpa(&assets),
+			web.UseSpa(web.WithSpaAssets(&assets)),
 			web.UseSwagger(),
 			di.Provide(NewWorkerService),
 			di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
