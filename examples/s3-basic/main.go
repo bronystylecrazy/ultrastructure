@@ -21,8 +21,9 @@ func main() {
 	app := fx.New(di.App(
 		otel.Module(),
 		lifecycle.Module(),
-		di.ConfigFile("config.toml", di.ConfigType("toml")),
-		s3.Module(),
+		s3.Module(
+			s3.UseInterfaces(),
+		),
 		di.Provide(NewServer),
 		di.Invoke(RunServer),
 	).Build())
@@ -30,7 +31,7 @@ func main() {
 	app.Run()
 }
 
-func NewServer(cfg s3.Config, client *s3.Client) (*http.Server, error) {
+func NewServer(cfg s3.Config, uploader s3.Uploader, downloader s3.Downloader, presigner s3.Presigner) (*http.Server, error) {
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("storage.s3.bucket is required")
 	}
@@ -60,7 +61,7 @@ func NewServer(cfg s3.Config, client *s3.Client) (*http.Server, error) {
 		}
 		file.Close()
 
-		out, err := s3.UploadFileHeader(r.Context(), client.S3, cfg.Bucket, key, fh)
+		out, err := s3.UploadFileHeader(r.Context(), uploader, cfg.Bucket, key, fh)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("upload failed: %v", err), http.StatusInternalServerError)
 			return
@@ -87,7 +88,7 @@ func NewServer(cfg s3.Config, client *s3.Client) (*http.Server, error) {
 			return
 		}
 
-		out, err := client.S3.GetObject(r.Context(), &s3sdk.GetObjectInput{
+		out, err := downloader.GetObject(r.Context(), &s3sdk.GetObjectInput{
 			Bucket: aws.String(cfg.Bucket),
 			Key:    aws.String(key),
 		})
@@ -105,6 +106,33 @@ func NewServer(cfg s3.Config, client *s3.Client) (*http.Server, error) {
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, out.Body)
+	})
+
+	mux.HandleFunc("/presign", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "missing key", http.StatusBadRequest)
+			return
+		}
+
+		req, err := presigner.PresignGetObject(r.Context(), &s3sdk.GetObjectInput{
+			Bucket: aws.String(cfg.Bucket),
+			Key:    aws.String(key),
+		}, func(opts *s3sdk.PresignOptions) {
+			opts.Expires = 15 * time.Minute
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("presign failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, req.URL)
 	})
 
 	server := &http.Server{
