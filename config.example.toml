@@ -38,6 +38,24 @@ use_path_style = false
 bucket = "your-bucket"
 otel_enabled = false
 
+[caching.redis]
+in_memory = false
+network = "tcp"
+addr = "127.0.0.1:6379"
+protocol = 3
+username = ""
+password = ""
+db = 0
+dial_timeout = "5s"
+read_timeout = "3s"
+write_timeout = "3s"
+pool_size = 10
+min_idle_conns = 0
+max_idle_conns = 0
+max_active_conns = 0
+pool_timeout = "4s"
+conn_max_idle_time = "30m"
+conn_max_lifetime = "0s"
 
 [otel]
 enabled = true
