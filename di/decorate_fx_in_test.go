@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type fxDecoDep struct {
@@ -15,7 +15,7 @@ type fxDecoDep struct {
 
 func TestDecorateWithFxInDeps(t *testing.T) {
 	var got *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing),
 			Supply(&fxDecoDep{val: "dep"}, Name("dep")),
@@ -29,12 +29,7 @@ func TestDecorateWithFxInDeps(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.value != "provided-dep" {
 		t.Fatalf("unexpected decorated value: %#v", got)
@@ -42,7 +37,7 @@ func TestDecorateWithFxInDeps(t *testing.T) {
 }
 
 func TestDecorateMixedFxInAndParams(t *testing.T) {
-	app := fx.New(
+	app := NewFxtestAppAllowErr(t,
 		App(
 			Provide(newBasicThing),
 			Supply(&fxDecoDep{val: "-fxin"}, Name("dep")),
@@ -69,7 +64,7 @@ func TestDecorateMixedFxInAndParams(t *testing.T) {
 }
 
 func TestDecorateRejectsFxInAsOnlyParam(t *testing.T) {
-	app := fx.New(
+	app := NewFxtestAppAllowErr(t,
 		App(
 			Provide(newBasicThing),
 			Decorate(func(in struct {
@@ -90,7 +85,7 @@ func TestDecorateRejectsFxInAsOnlyParam(t *testing.T) {
 }
 
 func TestDecorateRejectsFxInWithParamTags(t *testing.T) {
-	app := fx.New(
+	app := NewFxtestAppAllowErr(t,
 		App(
 			Provide(newBasicThing),
 			Supply(&fxDecoDep{val: "-fxin"}, Name("dep")),
@@ -112,7 +107,7 @@ func TestDecorateRejectsFxInWithParamTags(t *testing.T) {
 }
 
 func TestDecorateRejectsMultipleFxInDecorators(t *testing.T) {
-	app := fx.New(
+	app := NewFxtestAppAllowErr(t,
 		App(
 			Provide(newBasicThing),
 			Supply(&fxDecoDep{val: "-one"}, Name("dep1")),

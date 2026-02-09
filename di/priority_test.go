@@ -1,11 +1,9 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type priorityThing interface {
@@ -44,7 +42,7 @@ func newPriorityThingLater(name string) *priorityThingLater {
 
 func TestPriorityOrdersAutoGroup(t *testing.T) {
 	var things []priorityThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[priorityThing]("priority-things"),
 			Provide(func() *priorityThingEarly { return newPriorityThingEarly("earliest") }, Priority(Earliest)),
@@ -53,12 +51,7 @@ func TestPriorityOrdersAutoGroup(t *testing.T) {
 			Populate(&things, Group("priority-things")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 3 {
 		t.Fatalf("expected 3 things, got %d", len(things))

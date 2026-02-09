@@ -1,13 +1,13 @@
 package di
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ func TestConfigDefaultsMerge(t *testing.T) {
 	writeFile(t, path, "[app]\nport = 9000\n")
 
 	ch := make(chan testAppConfig, 1)
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Config[testAppConfig](
 				"app",
@@ -53,12 +53,7 @@ func TestConfigDefaultsMerge(t *testing.T) {
 			}),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	select {
 	case cfg := <-ch:
@@ -77,7 +72,7 @@ func TestConfigEnvOverride(t *testing.T) {
 
 	t.Setenv("APP_NAME", "env")
 	ch := make(chan testAppConfig, 1)
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Config[testAppConfig](
 				"app",
@@ -90,12 +85,7 @@ func TestConfigEnvOverride(t *testing.T) {
 			}),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	select {
 	case cfg := <-ch:
@@ -114,7 +104,7 @@ func TestConfigBindSharedFile(t *testing.T) {
 
 	appCh := make(chan testAppConfig, 1)
 	dbCh := make(chan testDbConfig, 1)
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			ConfigFile(path, ConfigType("toml")),
 			Config[testAppConfig]("app"),
@@ -123,12 +113,7 @@ func TestConfigBindSharedFile(t *testing.T) {
 			Invoke(func(cfg testDbConfig) { dbCh <- cfg }),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	select {
 	case cfg := <-appCh:
@@ -154,7 +139,7 @@ func TestConfigBindWithOptions(t *testing.T) {
 	writeFile(t, path, "[app]\nname = \"demo\"\nport = 8080\n")
 
 	ch := make(chan testAppConfig, 1)
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Config[testAppConfig](
 				"app",
@@ -165,12 +150,7 @@ func TestConfigBindWithOptions(t *testing.T) {
 			Invoke(func(cfg testAppConfig) { ch <- cfg }),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	select {
 	case cfg := <-ch:
@@ -188,7 +168,7 @@ func TestConfigWatchRestart(t *testing.T) {
 	writeFile(t, path, "[app]\nname = \"demo\"\nport = 8080\n")
 
 	restart := make(restartSignal, 1)
-	app := fx.New(
+	app := fxtest.New(t,
 		fx.Supply(restart),
 		App(
 			Provide(zap.NewNop),
@@ -196,12 +176,7 @@ func TestConfigWatchRestart(t *testing.T) {
 			Config[testAppConfig]("app", ConfigWatch()),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	writeFile(t, path, "[app]\nname = \"changed\"\nport = 8081\n")
 

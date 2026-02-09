@@ -1,28 +1,21 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestReplaceOverridesProvide(t *testing.T) {
 	var got *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing),
 			Replace(&basicThing{value: "replaced"}),
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.value != "replaced" {
 		t.Fatalf("unexpected replaced value: %#v", got)
@@ -38,7 +31,7 @@ func TestReplaceBeforeAfterOrder(t *testing.T) {
 	}
 	var first *firstThing
 	var second *secondThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(func() *firstThing { return &firstThing{value: "orig"} }),
 			Populate(&first),
@@ -48,12 +41,7 @@ func TestReplaceBeforeAfterOrder(t *testing.T) {
 			Populate(&second),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if first == nil || first.value != "before" {
 		t.Fatalf("unexpected first: %#v", first)
@@ -66,7 +54,7 @@ func TestReplaceBeforeAfterOrder(t *testing.T) {
 func TestReplaceBeforeModuleScope(t *testing.T) {
 	var outside *basicThing
 	var inside *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(func() *basicThing { return &basicThing{value: "outside"} }),
 			Populate(&outside),
@@ -77,12 +65,7 @@ func TestReplaceBeforeModuleScope(t *testing.T) {
 			),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if outside == nil || outside.value != "before-outside" {
 		t.Fatalf("unexpected outside: %#v", outside)
@@ -93,16 +76,14 @@ func TestReplaceBeforeModuleScope(t *testing.T) {
 }
 
 func TestReplaceAfterRejectsGroup(t *testing.T) {
-	app := fx.New(
+	app := NewFxtestAppAllowErr(t,
 		App(
 			ReplaceAfter(depThing{id: 99}, Group("deps")),
 			Supply(depThing{id: 1}, Group("deps")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err == nil {
-		_ = app.Stop(ctx)
+	if err := app.Start(t.Context()); err == nil {
+		_ = app.Stop(t.Context())
 		t.Fatal("expected start to fail")
 	}
 }

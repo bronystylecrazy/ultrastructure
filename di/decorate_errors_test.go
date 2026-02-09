@@ -1,12 +1,8 @@
 package di
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
-
-	"go.uber.org/fx"
 )
 
 type decoGroupDep interface {
@@ -21,13 +17,11 @@ func (g *decoGroupDepImpl) ID() int { return g.id }
 
 func startAppError(t *testing.T, nodes ...any) error {
 	t.Helper()
-	app := fx.New(App(nodes...).Build())
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
+	app := NewFxtestAppAllowErr(t, App(nodes...).Build())
+	if err := app.Start(t.Context()); err != nil {
 		return err
 	}
-	_ = app.Stop(ctx)
+	_ = app.Stop(t.Context())
 	return nil
 }
 

@@ -1,12 +1,10 @@
 package di
 
 import (
-	"context"
 	"reflect"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type provideIface interface {
@@ -165,7 +163,7 @@ func TestProvideMultipleNamesAndGroupsIntegration(t *testing.T) {
 	var a *namedItem
 	var b *namedItem
 	var items []*namedItem
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(func() *namedItem { return &namedItem{value: "thing"} },
 				Name("a"),
@@ -177,12 +175,7 @@ func TestProvideMultipleNamesAndGroupsIntegration(t *testing.T) {
 			Populate(&items, Group("items")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if a == nil || a.value != "thing" {
 		t.Fatalf("unexpected a: %#v", a)

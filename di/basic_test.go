@@ -1,17 +1,15 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestProvideAndSupplyBasic(t *testing.T) {
 	var provided *basicThing
 	var supplied *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing),
 			Supply(&basicThing{value: "supplied"}, Name("supplied")),
@@ -19,12 +17,7 @@ func TestProvideAndSupplyBasic(t *testing.T) {
 			Populate(&supplied, Name("supplied")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if provided == nil || provided.value != "provided" {
 		t.Fatalf("unexpected provided: %#v", provided)
@@ -36,18 +29,13 @@ func TestProvideAndSupplyBasic(t *testing.T) {
 
 func TestDefaultProvidesWhenMissing(t *testing.T) {
 	var got *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Default(&basicThing{value: "default"}),
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.value != "default" {
 		t.Fatalf("unexpected default value: %#v", got)
@@ -56,7 +44,7 @@ func TestDefaultProvidesWhenMissing(t *testing.T) {
 
 func TestParamsGroupTagOnProvide(t *testing.T) {
 	var collector *depCollector
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Supply(depThing{id: 1}, Group("deps")),
 			Supply(depThing{id: 2}, Group("deps")),
@@ -64,12 +52,7 @@ func TestParamsGroupTagOnProvide(t *testing.T) {
 			Populate(&collector),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if collector == nil || len(collector.ids) != 2 {
 		t.Fatalf("unexpected collector: %#v", collector)

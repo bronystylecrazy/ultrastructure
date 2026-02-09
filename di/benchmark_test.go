@@ -1,10 +1,10 @@
 package di
 
 import (
-	"context"
 	"testing"
 
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type benchA struct{}
@@ -36,8 +36,8 @@ type benchStressHandler interface {
 }
 type benchStressHandlerImpl struct{ id int }
 
-func newBenchA() *benchA { return &benchA{} }
-func newBenchB(a *benchA) *benchB { return &benchB{} }
+func newBenchA() *benchA                     { return &benchA{} }
+func newBenchB(a *benchA) *benchB            { return &benchB{} }
 func newBenchC(a *benchA, b *benchB) *benchC { return &benchC{} }
 func newBenchD(a *benchA, c *benchC) *benchD { return &benchD{} }
 func newBenchE(b *benchB, d *benchD) *benchE { return &benchE{} }
@@ -48,45 +48,41 @@ func newBenchI(f *benchF, h *benchH) *benchI { return &benchI{} }
 func newBenchJ(g *benchG, i *benchI) *benchJ { return &benchJ{} }
 func newBenchK(h *benchH, j *benchJ) *benchK { return &benchK{} }
 func newBenchL(i *benchI, k *benchK) *benchL { return &benchL{} }
-func newBenchDecorate() *benchDecorate { return &benchDecorate{Value: 1} }
+func newBenchDecorate() *benchDecorate       { return &benchDecorate{Value: 1} }
 func decorateBench(d *benchDecorate) *benchDecorate {
 	d.Value++
 	return d
 }
-func newBenchReplace() *benchReplace { return &benchReplace{Value: 1} }
-func newBenchReplaceAlt() *benchReplace { return &benchReplace{Value: 2} }
-func newBenchAutoInjectDep() *benchAutoInjectDep { return &benchAutoInjectDep{} }
+func newBenchReplace() *benchReplace                   { return &benchReplace{Value: 1} }
+func newBenchReplaceAlt() *benchReplace                { return &benchReplace{Value: 2} }
+func newBenchAutoInjectDep() *benchAutoInjectDep       { return &benchAutoInjectDep{} }
 func newBenchAutoInjectTarget() *benchAutoInjectTarget { return &benchAutoInjectTarget{} }
-func newBenchGroupImpl() *benchGroupImpl { return &benchGroupImpl{id: "g"} }
-func (b *benchGroupImpl) ID() string { return b.id }
-func invokeStress(_ []benchStressItem) {}
-func (b *benchStressHandlerImpl) ID() int { return b.id }
-func invokeStressHandlers(_ []benchStressHandler) {}
+func newBenchGroupImpl() *benchGroupImpl               { return &benchGroupImpl{id: "g"} }
+func (b *benchGroupImpl) ID() string                   { return b.id }
+func invokeStress(_ []benchStressItem)                 {}
+func (b *benchStressHandlerImpl) ID() int              { return b.id }
+func invokeStressHandlers(_ []benchStressHandler)      {}
 
-func invokeBench(_ *benchC) {}
+func invokeBench(_ *benchC)      {}
 func invokeBenchLarge(_ *benchL) {}
 
 func BenchmarkStartupFx(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			fx.Provide(newBenchA, newBenchB, newBenchC),
 			fx.Invoke(invokeBench),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupDi(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				Provide(newBenchA),
@@ -95,18 +91,15 @@ func BenchmarkStartupDi(b *testing.B) {
 				Invoke(invokeBench),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupFxLarge(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			fx.Provide(
 				newBenchA,
@@ -124,18 +117,15 @@ func BenchmarkStartupFxLarge(b *testing.B) {
 			),
 			fx.Invoke(invokeBenchLarge),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupDiLarge(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				Provide(newBenchA),
@@ -153,10 +143,8 @@ func BenchmarkStartupDiLarge(b *testing.B) {
 				Invoke(invokeBenchLarge),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -291,17 +279,14 @@ func BenchmarkStartupFxHuge(b *testing.B) {
 		provider := func() benchHugeItem { return benchHugeItem{ID: id} }
 		providers = append(providers, fx.Annotate(provider, fx.ResultTags(`group:"huge"`)))
 	}
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			fx.Provide(providers...),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -312,17 +297,14 @@ func BenchmarkStartupDiHuge(b *testing.B) {
 		id := i
 		nodes = append(nodes, Provide(func() benchHugeItem { return benchHugeItem{ID: id} }, Group("huge")))
 	}
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(nodes...).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -380,45 +362,38 @@ func BenchmarkBuildPopulate(b *testing.B) {
 
 func BenchmarkStartupDecorate(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				Provide(newBenchDecorate),
 				Decorate(decorateBench),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupAutoGroup(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				AutoGroup[benchGroupIface]("bench"),
 				Provide(newBenchGroupImpl),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupAutoInject(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				AutoInject(),
@@ -426,47 +401,39 @@ func BenchmarkStartupAutoInject(b *testing.B) {
 				Provide(newBenchAutoInjectTarget),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupReplace(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				Provide(newBenchReplace),
 				Replace(newBenchReplaceAlt()),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
 func BenchmarkStartupPopulate(b *testing.B) {
 	b.ReportAllocs()
-	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
 		var target *benchDecorate
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(
 				Provide(newBenchDecorate),
 				Populate(&target),
 			).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -480,18 +447,15 @@ func BenchmarkStartupStressFx(b *testing.B) {
 		providers = append(providers, fx.Annotate(provider, fx.ResultTags(`group:"stress"`)))
 	}
 	invoke := fx.Annotate(invokeStress, fx.ParamTags(`group:"stress"`))
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			fx.Provide(providers...),
 			fx.Invoke(invoke),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -504,17 +468,14 @@ func BenchmarkStartupStressDi(b *testing.B) {
 		nodes = append(nodes, Provide(func() benchStressItem { return benchStressItem{ID: id} }, Group("stress")))
 	}
 	nodes = append(nodes, Invoke(invokeStress, Group("stress")))
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(nodes...).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -528,18 +489,15 @@ func BenchmarkStartupStressFxGroup(b *testing.B) {
 		providers = append(providers, fx.Annotate(provider, fx.ResultTags(`group:"stress"`)))
 	}
 	invoke := fx.Annotate(invokeStressHandlers, fx.ParamTags(`group:"stress"`))
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			fx.Provide(providers...),
 			fx.Invoke(invoke),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }
 
@@ -553,16 +511,13 @@ func BenchmarkStartupStressDiAutoGroup(b *testing.B) {
 		nodes = append(nodes, Provide(func() *benchStressHandlerImpl { return &benchStressHandlerImpl{id: id} }, Group("stress")))
 	}
 	nodes = append(nodes, Invoke(invokeStressHandlers, Group("stress")))
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app := fx.New(
+		app := fxtest.New(b,
 			fx.NopLogger,
 			App(nodes...).Build(),
 		)
-		if err := app.Start(ctx); err != nil {
-			b.Fatalf("start: %v", err)
-		}
-		_ = app.Stop(ctx)
+		app.RequireStart()
+		app.RequireStop()
 	}
 }

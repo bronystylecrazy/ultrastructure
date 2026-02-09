@@ -9,7 +9,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
@@ -17,7 +17,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	var publisher Publisher
 	var subscriber Subscriber
 
-	app := fx.New(
+	app := fxtest.New(t,
 		di.App(
 			Module(),
 			di.Populate(&broker),
@@ -26,13 +26,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 		).Build(),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	var err error
-	if err = app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if broker == nil {
 		t.Fatal("broker is nil")
@@ -72,7 +66,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	}()
 
 	received := make(chan []byte, 1)
-	err = subscriber.Subscribe("test/di", 1, func(_ *mqtt.Client, _ packets.Subscription, pk packets.Packet) {
+	err := subscriber.Subscribe("test/di", 1, func(_ *mqtt.Client, _ packets.Subscription, pk packets.Packet) {
 		select {
 		case received <- pk.Payload:
 		default:

@@ -1,11 +1,9 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestOptionsAsNodeAndOption(t *testing.T) {
@@ -13,7 +11,7 @@ func TestOptionsAsNodeAndOption(t *testing.T) {
 	var grouped []string
 	var invoked string
 
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(func() string { return "value" },
 				Options(
@@ -31,12 +29,7 @@ func TestOptionsAsNodeAndOption(t *testing.T) {
 			Populate(&grouped, Group("items")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if named != "value" {
 		t.Fatalf("unexpected named: %q", named)

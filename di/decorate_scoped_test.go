@@ -1,17 +1,15 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestProvideScopedDecorateOnlyTargetsProvider(t *testing.T) {
 	var primary *basicThing
 	var secondary *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing, Name("primary"), Decorate(func(b *basicThing) *basicThing {
 				b.value = b.value + "-decorated"
@@ -22,12 +20,7 @@ func TestProvideScopedDecorateOnlyTargetsProvider(t *testing.T) {
 			Populate(&secondary, Name("secondary")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if primary == nil || primary.value != "provided-decorated" {
 		t.Fatalf("unexpected primary: %#v", primary)
@@ -40,7 +33,7 @@ func TestProvideScopedDecorateOnlyTargetsProvider(t *testing.T) {
 func TestProvideScopedDecorateGroupOnlyTargetsGroup(t *testing.T) {
 	var deps []depThing
 	var others []depThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Supply(depThing{id: 1}, Group("deps"), Decorate(func(items []depThing) []depThing {
 				for i := range items {
@@ -53,12 +46,7 @@ func TestProvideScopedDecorateGroupOnlyTargetsGroup(t *testing.T) {
 			Populate(&others, Group("other")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(deps) != 1 || deps[0].id != 10 {
 		t.Fatalf("unexpected deps: %#v", deps)
@@ -99,7 +87,7 @@ func newAltHandler() *altHandlerImpl {
 func TestProvideScopedDecorateWithAutoGroup(t *testing.T) {
 	var handlers []scopedHandler
 	var alts []altHandler
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[scopedHandler]("handlers"),
 			AutoGroup[altHandler]("alt-handlers"),
@@ -112,12 +100,7 @@ func TestProvideScopedDecorateWithAutoGroup(t *testing.T) {
 			Populate(&alts, Group("alt-handlers")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(handlers) != 1 || handlers[0].ID() != "scoped-decorated" {
 		t.Fatalf("unexpected handlers: %#v", handlers)
@@ -129,7 +112,7 @@ func TestProvideScopedDecorateWithAutoGroup(t *testing.T) {
 
 func TestModuleScopedDecorateAutoGroupAffectsAllProviders(t *testing.T) {
 	var handlers []scopedHandler
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Module("handlers",
 				AutoGroup[scopedHandler]("handlers"),
@@ -150,12 +133,7 @@ func TestModuleScopedDecorateAutoGroupAffectsAllProviders(t *testing.T) {
 			),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(handlers) != 2 {
 		t.Fatalf("unexpected handlers: %#v", handlers)

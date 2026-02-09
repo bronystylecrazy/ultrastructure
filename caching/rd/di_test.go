@@ -1,9 +1,7 @@
 package rd_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/di"
@@ -52,9 +50,7 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 		t.Fatal("redis client interface does not point to the same client instance")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := raw.Ping(ctx).Err(); err != nil {
+	if err := raw.Ping(t.Context()).Err(); err != nil {
 		t.Fatalf("ping redis: %v", err)
 	}
 }

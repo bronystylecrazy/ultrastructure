@@ -1,12 +1,11 @@
 package web
 
 import (
-	"context"
 	"testing"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/gofiber/fiber/v3"
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type recordHandler struct {
@@ -27,7 +26,7 @@ func TestSetupHandlersPriorityOrder(t *testing.T) {
 	h3 := &recordHandler{id: "h3", order: &order}
 	h4 := &recordHandler{id: "h4", order: &order}
 
-	fxApp := fx.New(di.App(
+	fxApp := fxtest.New(t, di.App(
 		di.Supply(app),
 		di.Supply(h1, di.As[Handler](`group:"us.handlers"`)),
 		di.Supply(h2, di.As[Handler](`group:"us.handlers"`), Priority(Later)),
@@ -35,12 +34,7 @@ func TestSetupHandlersPriorityOrder(t *testing.T) {
 		di.Supply(h4, di.As[Handler](`group:"us.handlers"`), Priority(Later)),
 		di.Invoke(SetupHandlers),
 	).Build())
-	if err := fxApp.Start(context.Background()); err != nil {
-		t.Fatalf("start app: %v", err)
-	}
-	if err := fxApp.Stop(context.Background()); err != nil {
-		t.Fatalf("stop app: %v", err)
-	}
+	defer fxApp.RequireStart().RequireStop()
 
 	want := []string{"h3", "h1", "h2", "h4"}
 	if len(order) != len(want) {

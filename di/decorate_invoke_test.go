@@ -1,16 +1,14 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestDecorateRunsBeforeInvoke(t *testing.T) {
 	var got string
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing),
 			Decorate(func(b *basicThing) *basicThing {
@@ -22,12 +20,7 @@ func TestDecorateRunsBeforeInvoke(t *testing.T) {
 			}),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got != "provided-decorated" {
 		t.Fatalf("unexpected invoke value: %q", got)

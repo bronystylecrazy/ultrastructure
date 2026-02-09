@@ -1,17 +1,15 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestDecorateWithNameTag(t *testing.T) {
 	var primary *namedThing
 	var secondary *namedThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newNamedPrimary, Name("primary")),
 			Provide(newNamedSecondary, Name("secondary")),
@@ -23,12 +21,7 @@ func TestDecorateWithNameTag(t *testing.T) {
 			Populate(&secondary, Name("secondary")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if primary == nil || primary.value != "primary-decorated" {
 		t.Fatalf("unexpected primary: %#v", primary)
@@ -40,7 +33,7 @@ func TestDecorateWithNameTag(t *testing.T) {
 
 func TestDecorateGroupSlice(t *testing.T) {
 	var got []depThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Supply(depThing{id: 1}, Group("deps")),
 			Supply(depThing{id: 2}, Group("deps")),
@@ -53,12 +46,7 @@ func TestDecorateGroupSlice(t *testing.T) {
 			Populate(&got, Group("deps")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(got) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(got))
@@ -74,7 +62,7 @@ func TestDecorateGroupSlice(t *testing.T) {
 
 func TestDecorateMultipleTimesOrder(t *testing.T) {
 	var got *basicThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(newBasicThing),
 			Decorate(func(b *basicThing) *basicThing {
@@ -88,12 +76,7 @@ func TestDecorateMultipleTimesOrder(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.value != "provided-one-two" {
 		t.Fatalf("unexpected decorated value: %#v", got)

@@ -1,11 +1,10 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type fxInDep struct {
@@ -27,7 +26,7 @@ type fxOutResult struct {
 
 func TestFxInStructInjection(t *testing.T) {
 	var got *fxInTarget
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Supply(&fxInDep{val: "dep"}),
 			Provide(func(in struct {
@@ -39,12 +38,7 @@ func TestFxInStructInjection(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.Dep == nil || got.Dep.val != "dep" {
 		t.Fatalf("unexpected target: %#v", got)
@@ -53,7 +47,7 @@ func TestFxInStructInjection(t *testing.T) {
 
 func TestFxOutProvidesNamedValue(t *testing.T) {
 	var got *fxOutThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Provide(func() fxOutResult {
 				return fxOutResult{Thing: &fxOutThing{val: "ok"}}
@@ -61,12 +55,7 @@ func TestFxOutProvidesNamedValue(t *testing.T) {
 			Populate(&got, Name("thing")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.val != "ok" {
 		t.Fatalf("unexpected thing: %#v", got)
@@ -85,7 +74,7 @@ func (h *fxAutoHandlerImpl) Name() string { return h.name }
 
 func TestFxInWithAutoGroup(t *testing.T) {
 	var count int
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[fxAutoHandler]("handlers"),
 			Supply(&fxAutoHandlerImpl{name: "h1"}),
@@ -97,12 +86,7 @@ func TestFxInWithAutoGroup(t *testing.T) {
 			}),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if count != 1 {
 		t.Fatalf("expected 1 handler, got %d", count)
@@ -116,7 +100,7 @@ type fxOutHandlerResult struct {
 
 func TestFxOutWithAutoGroup(t *testing.T) {
 	var count int
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[fxAutoHandler]("handlers"),
 			Provide(func() fxOutHandlerResult {
@@ -130,12 +114,7 @@ func TestFxOutWithAutoGroup(t *testing.T) {
 			}),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if count != 1 {
 		t.Fatalf("expected 1 handler, got %d", count)

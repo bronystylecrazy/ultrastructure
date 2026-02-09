@@ -1,11 +1,10 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type aiDep struct {
@@ -29,7 +28,7 @@ type aiGroupItem struct {
 }
 
 type aiTargetTags struct {
-	Named *aiNamed     `di:"name=prod"`
+	Named *aiNamed      `di:"name=prod"`
 	Group []aiGroupItem `di:"group=items"`
 }
 
@@ -39,7 +38,7 @@ type aiOptional struct {
 
 func TestAutoInjectProvideStruct(t *testing.T) {
 	var got aiTarget
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(aiDep{val: "dep"}),
@@ -47,12 +46,7 @@ func TestAutoInjectProvideStruct(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.Dep.val != "dep" {
 		t.Fatalf("unexpected dep: %#v", got.Dep)
@@ -61,7 +55,7 @@ func TestAutoInjectProvideStruct(t *testing.T) {
 
 func TestAutoInjectProvidePointer(t *testing.T) {
 	var got *aiTargetPtr
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(&aiDep{val: "dep"}),
@@ -69,12 +63,7 @@ func TestAutoInjectProvidePointer(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.Dep == nil || got.Dep.val != "dep" {
 		t.Fatalf("unexpected dep: %#v", got)
@@ -83,7 +72,7 @@ func TestAutoInjectProvidePointer(t *testing.T) {
 
 func TestAutoInjectTagsNameAndGroup(t *testing.T) {
 	var got aiTargetTags
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(&aiNamed{val: "prod"}, Name("prod")),
@@ -93,12 +82,7 @@ func TestAutoInjectTagsNameAndGroup(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.Named == nil || got.Named.val != "prod" {
 		t.Fatalf("unexpected named: %#v", got.Named)
@@ -110,19 +94,14 @@ func TestAutoInjectTagsNameAndGroup(t *testing.T) {
 
 func TestAutoInjectOptionalMissing(t *testing.T) {
 	var got aiOptional
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Provide(func() aiOptional { return aiOptional{} }),
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.Dep != nil {
 		t.Fatalf("expected nil optional dep, got %#v", got.Dep)
@@ -131,7 +110,7 @@ func TestAutoInjectOptionalMissing(t *testing.T) {
 
 func TestAutoInjectIgnoreOption(t *testing.T) {
 	var got aiTarget
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(aiDep{val: "dep"}),
@@ -139,12 +118,7 @@ func TestAutoInjectIgnoreOption(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.Dep.val != "" {
 		t.Fatalf("expected ignored inject, got %#v", got.Dep)
@@ -153,7 +127,7 @@ func TestAutoInjectIgnoreOption(t *testing.T) {
 
 func TestAutoInjectSupply(t *testing.T) {
 	var got *aiTargetPtr
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(&aiDep{val: "dep"}),
@@ -161,12 +135,7 @@ func TestAutoInjectSupply(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got == nil || got.Dep == nil || got.Dep.val != "dep" {
 		t.Fatalf("unexpected dep: %#v", got)
@@ -189,7 +158,7 @@ type aiTargetGroup struct {
 
 func TestAutoInjectWithAutoGroup(t *testing.T) {
 	var got aiTargetGroup
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			AutoGroup[aiHandler]("handlers"),
@@ -198,12 +167,7 @@ func TestAutoInjectWithAutoGroup(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(got.Handlers) != 1 || got.Handlers[0].Name() != "h1" {
 		t.Fatalf("unexpected handlers: %#v", got.Handlers)
@@ -217,7 +181,7 @@ type aiOutResult struct {
 
 func TestAutoInjectWithFxOut(t *testing.T) {
 	var got aiDep
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(aiDep{val: "dep"}),
@@ -227,12 +191,7 @@ func TestAutoInjectWithFxOut(t *testing.T) {
 			Populate(&got, Name("out")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.val != "dep" {
 		t.Fatalf("unexpected dep: %#v", got)
@@ -249,7 +208,7 @@ type aiModuleTarget2 struct {
 
 func TestAutoInjectModuleInheritance(t *testing.T) {
 	var got aiModuleTarget
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoInject(),
 			Supply(aiDep{val: "dep"}),
@@ -259,12 +218,7 @@ func TestAutoInjectModuleInheritance(t *testing.T) {
 			Populate(&got),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if got.Dep.val != "dep" {
 		t.Fatalf("unexpected dep: %#v", got.Dep)
@@ -274,7 +228,7 @@ func TestAutoInjectModuleInheritance(t *testing.T) {
 func TestAutoInjectModuleDoesNotLeak(t *testing.T) {
 	var inModule aiModuleTarget
 	var outside aiModuleTarget2
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Supply(aiDep{val: "dep"}),
 			Module("child",
@@ -286,12 +240,7 @@ func TestAutoInjectModuleDoesNotLeak(t *testing.T) {
 			Populate(&outside),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if inModule.Dep.val != "dep" {
 		t.Fatalf("unexpected in-module dep: %#v", inModule.Dep)

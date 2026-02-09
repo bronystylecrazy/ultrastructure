@@ -1,11 +1,9 @@
 package di
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 type autoGroupThing interface {
@@ -34,19 +32,14 @@ func newAutoGroupThingAlt() *autoGroupThingAlt {
 
 func TestAutoGroupDefaultName(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[autoGroupThing](),
 			Provide(newAutoGroupThing),
 			Populate(&things, Group("autogroupthing")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 1 {
 		t.Fatalf("expected 1 thing, got %d", len(things))
@@ -58,19 +51,14 @@ func TestAutoGroupDefaultName(t *testing.T) {
 
 func TestAutoGroupIgnore(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[autoGroupThing](),
 			Provide(newAutoGroupThing, AutoGroupIgnore()),
 			Populate(&things, Group("autogroupthing")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 0 {
 		t.Fatalf("expected 0 things, got %d", len(things))
@@ -79,7 +67,7 @@ func TestAutoGroupIgnore(t *testing.T) {
 
 func TestAutoGroupModuleInheritance(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[autoGroupThing]("things"),
 			Module("child",
@@ -88,12 +76,7 @@ func TestAutoGroupModuleInheritance(t *testing.T) {
 			Populate(&things, Group("things")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 1 {
 		t.Fatalf("expected 1 thing, got %d", len(things))
@@ -105,7 +88,7 @@ func TestAutoGroupModuleInheritance(t *testing.T) {
 
 func TestAutoGroupModuleLocalRule(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Module("child",
 				AutoGroup[autoGroupThing]("child-things"),
@@ -114,12 +97,7 @@ func TestAutoGroupModuleLocalRule(t *testing.T) {
 			Populate(&things, Group("child-things")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 1 {
 		t.Fatalf("expected 1 thing, got %d", len(things))
@@ -131,7 +109,7 @@ func TestAutoGroupModuleLocalRule(t *testing.T) {
 
 func TestAutoGroupModuleDoesNotLeakToParent(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			Module("child",
 				AutoGroup[autoGroupThing]("child-things"),
@@ -141,12 +119,7 @@ func TestAutoGroupModuleDoesNotLeakToParent(t *testing.T) {
 			Populate(&things, Group("child-things")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 1 {
 		t.Fatalf("expected 1 thing, got %d", len(things))
@@ -158,7 +131,7 @@ func TestAutoGroupModuleDoesNotLeakToParent(t *testing.T) {
 
 func TestAutoGroupModuleOverrideGroup(t *testing.T) {
 	var things []autoGroupThing
-	app := fx.New(
+	app := fxtest.New(t,
 		App(
 			AutoGroup[autoGroupThing]("parent-things"),
 			Module("child",
@@ -168,12 +141,7 @@ func TestAutoGroupModuleOverrideGroup(t *testing.T) {
 			Populate(&things, Group("child-things")),
 		).Build(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	defer app.RequireStart().RequireStop()
 
 	if len(things) != 1 {
 		t.Fatalf("expected 1 thing, got %d", len(things))
