@@ -2,7 +2,6 @@ package web
 
 import (
 	"github.com/Flussen/swagger-fiber-v3"
-	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
 	"github.com/gofiber/fiber/v3"
 )
 
