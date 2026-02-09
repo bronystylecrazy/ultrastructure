@@ -11,7 +11,7 @@ require (
 	github.com/bronystylecrazy/gx v1.4.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gofiber/contrib/v3/zap v1.0.0-rc.1
-	github.com/gofiber/fiber/v3 v3.0.0-rc.3
+	github.com/gofiber/fiber/v3 v3.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/mitchellh/mapstructure v1.5.0
