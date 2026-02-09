@@ -1,8 +1,6 @@
 package database
 
 import (
-	"fmt"
-
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
@@ -16,14 +14,12 @@ func UseOtelTraceMetrics(opts ...di.Option) di.Node {
 
 func attachOtelTraceMetricsToGorm(db *gorm.DB, config otel.Config, tp *otel.TracerProvider) error {
 	if config.Enabled {
-		if err := db.Use(
+		return db.Use(
 			otelgorm.NewPlugin(
 				otelgorm.WithTracerProvider(tp),
 				otelgorm.WithoutQueryVariables(),
 			),
-		); err != nil {
-			return fmt.Errorf("gorm otel plugin: %w", err)
-		}
+		)
 	}
 	return nil
 }

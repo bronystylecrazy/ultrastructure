@@ -146,14 +146,16 @@ func main() {
 		di.Diagnostics(),
 		otel.Module(),
 		lifecycle.Module(),
-		realtime.Module(),
+		realtime.Module(
+			realtime.UseAllowHook(),
+			realtime.UseWebsocketListener(),
+		),
 		database.Module(
 			database.UseOtelLogger(),
 			database.UseOtelTraceMetrics(),
 			database.UseMigrations(&migrations),
 		),
 		web.Module(
-			web.UseMqttWebsocket(),
 			web.UseSpa(web.WithSpaAssets(&assets)),
 			web.UseSwagger(),
 			di.Provide(NewWorkerService),

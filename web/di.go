@@ -5,28 +5,11 @@ import (
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/otel"
-	"github.com/bronystylecrazy/ultrastructure/realtime"
-	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
 func UseOtel() di.Node {
 	return di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest))
-}
-
-func UseMqttWebsocket(opts ...realtime.Option) di.Node {
-	return di.Options(
-		di.Provide(func(app fiber.Router, auth realtime.Authorizer) *realtime.Websocket {
-			base := []realtime.Option{
-				realtime.WithApp(app),
-				realtime.WithAuthorizer(auth),
-			}
-			return realtime.NewWebsocketWithOptions(append(base, opts...)...)
-		}, Priority(Later), di.Params(``, di.Optional())),
-		di.Invoke(func(log *zap.Logger) {
-			log.Debug("use mqtt websocket")
-		}),
-	)
 }
 
 func UseSwagger(opts ...SwaggerOption) di.Node {
