@@ -8,7 +8,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	redis "github.com/redis/go-redis/v9"
-	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 )
 
 func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
@@ -18,7 +18,8 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 	var strings rd.StringManager
 	var closer rd.Closer
 
-	app := fx.New(
+	defer fxtest.New(
+		t,
 		di.App(
 			di.Supply(rd.Config{InMemory: true}),
 			di.Provide(rd.NewClient),
@@ -29,14 +30,7 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 			di.Populate(&strings),
 			di.Populate(&closer),
 		).Build(),
-	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := app.Start(ctx); err != nil {
-		t.Fatalf("start app: %v", err)
-	}
-	defer func() { _ = app.Stop(ctx) }()
+	).RequireStart().RequireStop()
 
 	if raw == nil {
 		t.Fatal("raw redis client is nil")
@@ -58,6 +52,8 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 		t.Fatal("redis client interface does not point to the same client instance")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	if err := raw.Ping(ctx).Err(); err != nil {
 		t.Fatalf("ping redis: %v", err)
 	}
