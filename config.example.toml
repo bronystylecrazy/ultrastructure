@@ -8,6 +8,22 @@ dialect = "postgres"
 migrate = true
 datasource = "postgres://user:pass@localhost:5432/app?sslmode=disable"
 
+[db.log]
+enabled = true
+level = "warn"
+slow_threshold = "100ms"
+skip_caller_lookup = false
+ignore_record_not_found_error = false
+parameterized_queries = true
+
+[db.trace]
+enabled = true
+db_name = ""
+attributes = {}
+without_query_variables = true
+without_metrics = false
+include_dry_run_spans = false
+
 [jwt]
 secret = "change-me"
 access_token_ttl = "15m"

@@ -13,42 +13,40 @@ import (
 var defaultMigrationPath = "migrations"
 
 func UseMigrations(migrationsDirFS *embed.FS, paths ...string) di.Node {
-	return di.Options(
-		di.Invoke(func(config Config, db *gorm.DB, log *zap.Logger) error {
-			if !config.Migrate || migrationsDirFS == nil {
-				log.Info("Skipping migrations")
-				return nil
-			}
+	return di.Invoke(func(config Config, db *gorm.DB, log *zap.Logger) error {
+		if !config.Migrate || migrationsDirFS == nil {
+			log.Info("Skipping migrations")
+			return nil
+		}
 
-			base := fs.FS(migrationsDirFS)
-			path := defaultMigrationPath
-			if len(paths) > 0 && paths[0] != "" {
-				path = paths[0]
-			}
+		base := fs.FS(migrationsDirFS)
+		path := defaultMigrationPath
+		if len(paths) > 0 && paths[0] != "" {
+			path = paths[0]
+		}
 
-			sub, err := fs.Sub(migrationsDirFS, path)
-			if err != nil {
-				return err
-			}
+		sub, err := fs.Sub(migrationsDirFS, path)
+		if err != nil {
+			return err
+		}
 
-			base = sub
-			path = "."
-			goose.SetBaseFS(base)
+		base = sub
+		path = "."
+		goose.SetBaseFS(base)
 
-			if err := goose.SetDialect(config.Dialect); err != nil {
-				log.Error("Failed to set dialect", zap.Error(err))
-				return err
-			}
+		if err := goose.SetDialect(config.Dialect); err != nil {
+			log.Error("Failed to set dialect", zap.Error(err))
+			return err
+		}
 
-			sqlDB, err := db.DB()
-			if err != nil {
-				log.Error("Failed to get database connection", zap.Error(err))
-				return err
-			}
+		sqlDB, err := db.DB()
+		if err != nil {
+			log.Error("Failed to get database connection", zap.Error(err))
+			return err
+		}
 
-			goose.SetLogger(goose.NopLogger())
+		goose.SetLogger(goose.NopLogger())
 
-			return goose.Up(sqlDB, path)
-		}),
-	)
+		return goose.Up(sqlDB, path)
+	})
 }

@@ -4,11 +4,9 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
-	"go.uber.org/zap"
 )
 
-func NewGormDB(log *zap.Logger, dialecter gorm.Dialector) (*gorm.DB, error) {
-	log.Debug("opening database")
+func NewGormDB(dialecter gorm.Dialector) (*gorm.DB, error) {
 	return gorm.Open(dialecter, &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: false,

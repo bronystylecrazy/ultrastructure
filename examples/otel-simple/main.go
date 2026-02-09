@@ -151,13 +151,14 @@ func main() {
 			realtime.UseWebsocketListener(),
 		),
 		database.Module(
-			database.UseOtelLogger(),
-			database.UseOtelTraceMetrics(),
+			database.UseOtel(),
 			database.UseMigrations(&migrations),
 		),
 		web.Module(
+			web.UseOtel(),
 			web.UseSpa(web.WithSpaAssets(&assets)),
 			web.UseSwagger(),
+
 			di.Provide(NewWorkerService),
 			di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
 			di.Provide(NewAPIService),

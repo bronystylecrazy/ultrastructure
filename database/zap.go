@@ -50,6 +50,23 @@ func NewGormLogger(zapLogger *zap.Logger, opts ...Option) Logger {
 	return l
 }
 
+func parseGormLogLevel(level string) gormlogger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "silent":
+		return gormlogger.Silent
+	case "error":
+		return gormlogger.Error
+	case "warn", "warning":
+		return gormlogger.Warn
+	case "info", "debug":
+		return gormlogger.Info
+	case "":
+		return gormlogger.Warn
+	default:
+		return gormlogger.Warn
+	}
+}
+
 func (l Logger) SetAsDefault() {
 	gormlogger.Default = l
 }
