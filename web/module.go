@@ -21,7 +21,5 @@ func Module(extends ...di.Node) di.Node {
 		di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
 
 		di.Options(di.ConvertAnys(extends)...),
-		di.Invoke(SetupHandlers),
-		di.Invoke(RegisterFiberApp),
 	)
 }

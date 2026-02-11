@@ -3,8 +3,14 @@
 
 package us
 
+const (
+	NilVersion   = "v0.0.0-development"
+	NilCommit    = "unknown"
+	NilBuildDate = "unknown"
+)
+
 var (
-	Version   string = "v0.0.0-development"
-	Commit    string = "unknown"
-	BuildDate string = "unknown"
+	Version   string = NilVersion
+	Commit    string = NilCommit
+	BuildDate string = NilBuildDate
 )

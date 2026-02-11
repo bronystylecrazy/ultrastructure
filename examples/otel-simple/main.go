@@ -3,8 +3,14 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/cmd"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
@@ -14,6 +20,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -140,44 +147,114 @@ func (h *handler) Authorize() fiber.Handler {
 	}
 }
 
+type pingService struct {
+	log *zap.Logger
+}
+
+func NewPingService(log *zap.Logger) *pingService {
+	return &pingService{log: log}
+}
+
+func (p *pingService) Ping(ctx context.Context, target string) error {
+	p.log.Info("ping", zap.String("target", target))
+	fmt.Println("pong:", target)
+	return nil
+}
+
+type serveCommand struct {
+	log *zap.Logger
+}
+
+func NewServeCommand(log *zap.Logger) *serveCommand {
+	return &serveCommand{log: log}
+}
+
+func (s *serveCommand) Command() *cobra.Command {
+	return &cobra.Command{
+		Use:           "serve",
+		Short:         "Run web server (with migrations)",
+		SilenceErrors: true,
+		RunE:          s.Run,
+	}
+}
+
+func (s *serveCommand) Run(cmd *cobra.Command, args []string) error {
+	s.log.Info("serve command started")
+	waitCtx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-waitCtx.Done()
+	s.log.Info("serve command stopped")
+	return nil
+}
+
+type pingCommand struct {
+	ping *pingService
+
+	shutdowner fx.Shutdowner
+}
+
+func NewPingCommand(shutdowner fx.Shutdowner, ping *pingService) *pingCommand {
+	return &pingCommand{ping: ping, shutdowner: shutdowner}
+}
+
+func (p *pingCommand) Command() *cobra.Command {
+	c := &cobra.Command{
+		Use:           "ping",
+		Short:         "Run lightweight ping without migrations",
+		SilenceErrors: true,
+		RunE:          p.Run,
+	}
+	c.Flags().String("target", "local", "ping target label")
+	return c
+}
+
+func (p *pingCommand) Run(cmd *cobra.Command, args []string) error {
+	defer p.shutdowner.Shutdown()
+
+	target, err := cmd.Flags().GetString("target")
+	if err != nil {
+		return err
+	}
+	return p.ping.Ping(cmd.Context(), target)
+}
+
 func main() {
-
-	options := di.App(
-		di.Diagnostics(),
-		otel.Module(),
-		lifecycle.Module(),
-		realtime.Module(
-			realtime.UseAllowHook(),
-			realtime.UseWebsocketListener(),
-		),
-		database.Module(
-			database.UseOtel(),
-			database.UseMigrations(&migrations),
-		),
-		web.Module(
-			web.UseOtel(),
-			web.UseSpa(web.WithSpaAssets(&assets)),
-			web.UseSwagger(),
-
-			di.Provide(NewWorkerService),
-			di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
-			di.Provide(NewAPIService),
-		),
-		di.Invoke(func(cfg otel.Config, logger *zap.Logger) {
-			logger.Info("otel resolved config",
-				zap.Bool("enabled", cfg.Enabled),
-				zap.String("traces.exporter", cfg.Traces.Exporter),
-				zap.String("service_name", cfg.ServiceName),
-				zap.String("sampler", cfg.Traces.Sampler),
-				zap.Float64("sampler_arg", cfg.Traces.SamplerArg),
-				zap.String("otlp.endpoint", cfg.OTLP.Endpoint),
-				zap.String("traces.endpoint", cfg.OTLPForTraces().Endpoint),
-				zap.String("logs.endpoint", cfg.OTLPForLogs().Endpoint),
-				zap.String("metrics.endpoint", cfg.OTLPForMetrics().Endpoint),
-			)
-		}),
-	).Build()
-
-	fx.New(options).Run()
-
+	fx.New(
+		di.App(
+			di.Diagnostics(),
+			otel.Module(),
+			lifecycle.Module(),
+			realtime.Module(
+				realtime.UseAllowHook(),
+				realtime.UseWebsocketListener(),
+			),
+			database.Module(
+				database.UseMigrations(&migrations),
+			),
+			web.Module(
+				web.UseOtel(),
+				web.UseSpa(web.WithSpaAssets(&assets)),
+				web.UseSwagger(),
+			),
+			cmd.Module(
+				cmd.UseBasicCommands(),
+				di.Supply(&cobra.Command{
+					Use: us.Name,
+				}),
+				cmd.Use("run",
+					di.Provide(NewWorkerService),
+					di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
+					di.Provide(NewAPIService),
+					database.UseOtel(),
+					database.RunCheck(),
+					database.RunMigrations(),
+					web.RunFiberApp(),
+				),
+				cmd.Use("ping",
+					di.Provide(NewPingService),
+					di.Provide(NewPingCommand),
+				),
+			),
+		).Build(),
+	).Run()
 }

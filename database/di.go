@@ -12,7 +12,10 @@ func Module(opts ...di.Node) di.Node {
 		di.Provide(NewPostgresDialector),
 		di.Provide(NewGormDB),
 		di.Provide(NewGormOtel),
-		di.Invoke(GormCheck),
 		di.Options(di.ConvertAnys(opts)...),
 	)
+}
+
+func RunCheck() di.Node {
+	return di.Invoke(GormCheck)
 }

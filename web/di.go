@@ -8,6 +8,13 @@ import (
 	"go.uber.org/zap"
 )
 
+func RunFiberApp() di.Node {
+	return di.Options(
+		di.Invoke(SetupHandlers),
+		di.Invoke(RegisterFiberApp),
+	)
+}
+
 func UseOtel() di.Node {
 	return di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest))
 }
@@ -20,22 +27,16 @@ func UseSwagger(opts ...SwaggerOption) di.Node {
 			}
 			return NewSwaggerHandlerWithOptions(append(base, opts...)...)
 		}),
-		di.Invoke(func(log *zap.Logger) {
-			log.Debug("use swagger")
-		}),
 	)
 }
 
 func UseSpa(opts ...SpaOption) di.Node {
 	return di.Options(
 		di.Provide(func(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error) {
-			log.Debug("use spa middleware")
-
 			base := []SpaOption{
 				WithSpaAssets(assets),
 				WithSpaLogger(log),
 			}
-
 			return NewSpaMiddlewareWithOptions(append(base, opts...)...)
 		}, di.Params(di.Optional()), Priority(Latest)),
 	)
