@@ -223,6 +223,7 @@ func main() {
 		di.App(
 			di.Diagnostics(),
 			otel.Module(),
+			otel.UseRuntimeMetrics(),
 			lifecycle.Module(),
 			realtime.Module(
 				realtime.UseAllowHook(),

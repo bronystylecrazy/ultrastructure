@@ -16,7 +16,9 @@ func RunFiberApp() di.Node {
 }
 
 func UseOtel() di.Node {
-	return di.Provide(NewOtelMiddleware, otel.Layer("http"), Priority(Earliest))
+	return di.Options(
+		di.Provide(NewOtelMiddleware, otel.Layer("web.http"), Priority(Earliest)),
+	)
 }
 
 func UseSwagger(opts ...SwaggerOption) di.Node {

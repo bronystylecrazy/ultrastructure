@@ -2,7 +2,11 @@ package otel
 
 import (
 	"context"
+	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -16,8 +20,10 @@ type tracerKey struct{}
 type Observer struct {
 	*zap.Logger
 	trace.Tracer
-	layerName string
-	isNop     bool
+	otelmetric.Meter
+	layerName   string
+	isNop       bool
+	instruments *sync.Map
 }
 
 type Span struct {
@@ -25,18 +31,27 @@ type Span struct {
 	end func(options ...trace.SpanEndOption)
 }
 
-func NewObserver(logger *zap.Logger, tracer trace.Tracer) *Observer {
+func NewObserver(logger *zap.Logger, tracer trace.Tracer, meter ...otelmetric.Meter) *Observer {
+	m := metricnoop.NewMeterProvider().Meter("")
+	if len(meter) > 0 && meter[0] != nil {
+		m = meter[0]
+	}
 	return &Observer{
-		Logger: logger,
-		Tracer: tracer,
+		Logger:      logger,
+		Tracer:      tracer,
+		Meter:       m,
+		instruments: &sync.Map{},
 	}
 }
 
 func NewNopObserver() *Observer {
+	mp := metricnoop.NewMeterProvider()
 	return &Observer{
-		Logger: zap.NewNop(),
-		Tracer: noop.NewTracerProvider().Tracer(""),
-		isNop:  true,
+		Logger:      zap.NewNop(),
+		Tracer:      noop.NewTracerProvider().Tracer(""),
+		Meter:       mp.Meter(""),
+		isNop:       true,
+		instruments: &sync.Map{},
 	}
 }
 
@@ -157,9 +172,11 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 
 	// Store enriched obs back in context
 	enrichedObs := &Observer{
-		Logger:    enrichedLogger,
-		Tracer:    o.Tracer,
-		layerName: o.layerName,
+		Logger:      enrichedLogger,
+		Tracer:      o.Tracer,
+		Meter:       o.Meter,
+		layerName:   o.layerName,
+		instruments: o.instruments,
 	}
 	ctx = enrichedObs.With(ctx)
 
@@ -181,4 +198,198 @@ func (s *Span) End(options ...trace.SpanEndOption) {
 		return
 	}
 	s.end(options...)
+}
+
+func (o *Observer) AddCounter(ctx context.Context, name string, value int64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	counter, err := o.int64Counter(name)
+	if err != nil || counter == nil {
+		return
+	}
+	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) AddFloatCounter(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	counter, err := o.float64Counter(name)
+	if err != nil || counter == nil {
+		return
+	}
+	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) AddUpDownCounter(ctx context.Context, name string, value int64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	counter, err := o.int64UpDownCounter(name)
+	if err != nil || counter == nil {
+		return
+	}
+	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) AddFloatUpDownCounter(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	counter, err := o.float64UpDownCounter(name)
+	if err != nil || counter == nil {
+		return
+	}
+	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) RecordHistogram(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	h, err := o.float64Histogram(name)
+	if err != nil || h == nil {
+		return
+	}
+	h.Record(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) RecordIntHistogram(ctx context.Context, name string, value int64, attrs ...attribute.KeyValue) {
+	if o == nil || o.Meter == nil || name == "" {
+		return
+	}
+	h, err := o.int64Histogram(name)
+	if err != nil || h == nil {
+		return
+	}
+	h.Record(ctx, value, otelmetric.WithAttributes(attrs...))
+}
+
+func (o *Observer) int64Counter(name string) (otelmetric.Int64Counter, error) {
+	key := "i64counter:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Int64Counter); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Int64Counter(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Int64Counter); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) float64Histogram(name string) (otelmetric.Float64Histogram, error) {
+	key := "f64histogram:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Float64Histogram); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Float64Histogram(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Float64Histogram); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) int64Histogram(name string) (otelmetric.Int64Histogram, error) {
+	key := "i64histogram:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Int64Histogram); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Int64Histogram(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Int64Histogram); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) float64Counter(name string) (otelmetric.Float64Counter, error) {
+	key := "f64counter:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Float64Counter); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Float64Counter(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Float64Counter); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) int64UpDownCounter(name string) (otelmetric.Int64UpDownCounter, error) {
+	key := "i64updown:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Int64UpDownCounter); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Int64UpDownCounter(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Int64UpDownCounter); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) float64UpDownCounter(name string) (otelmetric.Float64UpDownCounter, error) {
+	key := "f64updown:" + name
+	if v, ok := o.loadInstrument(key); ok {
+		if instrument, ok := v.(otelmetric.Float64UpDownCounter); ok {
+			return instrument, nil
+		}
+	}
+	instrument, err := o.Meter.Float64UpDownCounter(name)
+	if err != nil {
+		return nil, err
+	}
+	if actual, loaded := o.storeInstrument(key, instrument); loaded {
+		if cached, ok := actual.(otelmetric.Float64UpDownCounter); ok {
+			return cached, nil
+		}
+	}
+	return instrument, nil
+}
+
+func (o *Observer) loadInstrument(key string) (any, bool) {
+	if o.instruments == nil {
+		o.instruments = &sync.Map{}
+	}
+	return o.instruments.Load(key)
+}
+
+func (o *Observer) storeInstrument(key string, instrument any) (any, bool) {
+	if o.instruments == nil {
+		o.instruments = &sync.Map{}
+	}
+	return o.instruments.LoadOrStore(key, instrument)
 }

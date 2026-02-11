@@ -2,6 +2,7 @@ package otel
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 )
 
@@ -34,10 +35,12 @@ func (o *Telemetry) apply(obs *Observer) {
 }
 
 func Nop() Telemetry {
-	return Telemetry{Obs: NewNopObserver()}
+	return Telemetry{
+		Obs: NewNopObserver(),
+	}
 }
 
-func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observables ...Observable) Attached {
+func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterProvider, observables ...Observable) Attached {
 	for _, observable := range observables {
 		layerName := "service"
 		if meta, ok := di.ReflectMetadata[[]any](observable); ok && len(meta) > 0 {
@@ -45,7 +48,11 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, observ
 				layerName = layer.Name
 			}
 		}
-		obs := NewObserver(logger.With(zap.String("app.layer", layerName)), tp.Tracer(layerName))
+		meter := metricnoop.NewMeterProvider().Meter(layerName)
+		if mp != nil && mp.MeterProvider != nil {
+			meter = mp.Meter(layerName)
+		}
+		obs := NewObserver(logger.With(zap.String("app.layer", layerName)), tp.Tracer(layerName), meter)
 		obs.layerName = layerName
 		observable.apply(obs)
 	}
