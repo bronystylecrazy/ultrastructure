@@ -8,18 +8,20 @@ import (
 var HandlersGroupName = "us.handlers"
 
 func Module(extends ...di.Node) di.Node {
-	return di.Module(
-		"us.web",
+	return di.Options(
 		// auto discovery for handlers
-		di.AutoGroup[Handler](HandlersGroupName), // only available inside this module
+		di.AutoGroup[Handler](HandlersGroupName),
+		di.Module(
+			"us.web",
 
-		di.Config[Config]("web"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+			di.Config[Config]("web"),
+			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 
-		di.Config[FiberConfig]("web"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
-		di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
+			di.Config[FiberConfig]("web"),
+			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+			di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
 
-		di.Options(di.ConvertAnys(extends)...),
+			di.Options(di.ConvertAnys(extends)...),
+		),
 	)
 }
