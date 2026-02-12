@@ -57,6 +57,14 @@ pool_timeout = "4s"
 conn_max_idle_time = "30m"
 conn_max_lifetime = "0s"
 
+[realtime.tcp_listener]
+id = "t1"
+address = ":1883"
+
+[realtime.websocket_listener]
+id = "ws1"
+path = "/realtime"
+
 [otel]
 enabled = true
 service_name = "Ultrastructure"

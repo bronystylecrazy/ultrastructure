@@ -13,6 +13,8 @@ func Module(opts ...di.Node) di.Node {
 	return di.Options(
 		di.AutoGroup[mqtt.Hook](HooksGroupName),
 		di.AutoGroup[listeners.Listener](ListenersGroupName),
+		di.Config[Config]("realtime"),
+		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 		di.Provide(
 			NewMqttServer,
 			di.AsSelf[Broker](),
