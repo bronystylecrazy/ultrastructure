@@ -40,7 +40,8 @@ func Nop() Telemetry {
 	}
 }
 
-func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterProvider, observables ...Observable) Attached {
+func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterProvider, config Config, observables ...Observable) Attached {
+	defaultMetricAttrs := DefaultMetricAttributes(config)
 	for _, observable := range observables {
 		layerName := "service"
 		if meta, ok := di.ReflectMetadata[[]any](observable); ok && len(meta) > 0 {
@@ -54,6 +55,8 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *Me
 		}
 		obs := NewObserver(logger.With(zap.String("app.layer", layerName)), tp.Tracer(layerName), meter)
 		obs.layerName = layerName
+		obs.defaultMetricCtx = defaultMetricAttrs
+		obs.initDefaultMetricOptions()
 		observable.apply(obs)
 	}
 

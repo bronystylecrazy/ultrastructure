@@ -21,9 +21,12 @@ type Observer struct {
 	*zap.Logger
 	trace.Tracer
 	otelmetric.Meter
-	layerName   string
-	isNop       bool
-	instruments *sync.Map
+	layerName              string
+	isNop                  bool
+	defaultMetricCtx       []attribute.KeyValue
+	defaultAddMetricOpts   []otelmetric.AddOption
+	defaultRecordMetricOpts []otelmetric.RecordOption
+	instruments            *sync.Map
 }
 
 type Span struct {
@@ -37,21 +40,27 @@ func NewObserver(logger *zap.Logger, tracer trace.Tracer, meter ...otelmetric.Me
 		m = meter[0]
 	}
 	return &Observer{
-		Logger:      logger,
-		Tracer:      tracer,
-		Meter:       m,
-		instruments: &sync.Map{},
+		Logger:                logger,
+		Tracer:                tracer,
+		Meter:                 m,
+		defaultMetricCtx:      nil,
+		defaultAddMetricOpts:  nil,
+		defaultRecordMetricOpts: nil,
+		instruments:           &sync.Map{},
 	}
 }
 
 func NewNopObserver() *Observer {
 	mp := metricnoop.NewMeterProvider()
 	return &Observer{
-		Logger:      zap.NewNop(),
-		Tracer:      noop.NewTracerProvider().Tracer(""),
-		Meter:       mp.Meter(""),
-		isNop:       true,
-		instruments: &sync.Map{},
+		Logger:                zap.NewNop(),
+		Tracer:                noop.NewTracerProvider().Tracer(""),
+		Meter:                 mp.Meter(""),
+		isNop:                 true,
+		defaultMetricCtx:      nil,
+		defaultAddMetricOpts:  nil,
+		defaultRecordMetricOpts: nil,
+		instruments:           &sync.Map{},
 	}
 }
 
@@ -172,11 +181,14 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 
 	// Store enriched obs back in context
 	enrichedObs := &Observer{
-		Logger:      enrichedLogger,
-		Tracer:      o.Tracer,
-		Meter:       o.Meter,
-		layerName:   o.layerName,
-		instruments: o.instruments,
+		Logger:                 enrichedLogger,
+		Tracer:                 o.Tracer,
+		Meter:                  o.Meter,
+		layerName:              o.layerName,
+		defaultMetricCtx:       o.defaultMetricCtx,
+		defaultAddMetricOpts:   o.defaultAddMetricOpts,
+		defaultRecordMetricOpts: o.defaultRecordMetricOpts,
+		instruments:            o.instruments,
 	}
 	ctx = enrichedObs.With(ctx)
 
@@ -208,7 +220,7 @@ func (o *Observer) AddCounter(ctx context.Context, name string, value int64, att
 	if err != nil || counter == nil {
 		return
 	}
-	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+	counter.Add(ctx, value, o.withAddMetricAttributes(attrs)...)
 }
 
 func (o *Observer) AddFloatCounter(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
@@ -219,7 +231,7 @@ func (o *Observer) AddFloatCounter(ctx context.Context, name string, value float
 	if err != nil || counter == nil {
 		return
 	}
-	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+	counter.Add(ctx, value, o.withAddMetricAttributes(attrs)...)
 }
 
 func (o *Observer) AddUpDownCounter(ctx context.Context, name string, value int64, attrs ...attribute.KeyValue) {
@@ -230,7 +242,7 @@ func (o *Observer) AddUpDownCounter(ctx context.Context, name string, value int6
 	if err != nil || counter == nil {
 		return
 	}
-	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+	counter.Add(ctx, value, o.withAddMetricAttributes(attrs)...)
 }
 
 func (o *Observer) AddFloatUpDownCounter(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
@@ -241,7 +253,7 @@ func (o *Observer) AddFloatUpDownCounter(ctx context.Context, name string, value
 	if err != nil || counter == nil {
 		return
 	}
-	counter.Add(ctx, value, otelmetric.WithAttributes(attrs...))
+	counter.Add(ctx, value, o.withAddMetricAttributes(attrs)...)
 }
 
 func (o *Observer) RecordHistogram(ctx context.Context, name string, value float64, attrs ...attribute.KeyValue) {
@@ -252,7 +264,7 @@ func (o *Observer) RecordHistogram(ctx context.Context, name string, value float
 	if err != nil || h == nil {
 		return
 	}
-	h.Record(ctx, value, otelmetric.WithAttributes(attrs...))
+	h.Record(ctx, value, o.withRecordMetricAttributes(attrs)...)
 }
 
 func (o *Observer) RecordIntHistogram(ctx context.Context, name string, value int64, attrs ...attribute.KeyValue) {
@@ -263,7 +275,47 @@ func (o *Observer) RecordIntHistogram(ctx context.Context, name string, value in
 	if err != nil || h == nil {
 		return
 	}
-	h.Record(ctx, value, otelmetric.WithAttributes(attrs...))
+	h.Record(ctx, value, o.withRecordMetricAttributes(attrs)...)
+}
+
+func (o *Observer) withAddMetricAttributes(attrs []attribute.KeyValue) []otelmetric.AddOption {
+	o.initDefaultMetricOptions()
+	if len(attrs) == 0 {
+		return o.defaultAddMetricOpts
+	}
+	merged := MergeMetricAttributes(o.defaultMetricCtx, attrs)
+	if len(merged) == 0 {
+		return nil
+	}
+	return []otelmetric.AddOption{
+		otelmetric.WithAttributes(merged...),
+	}
+}
+
+func (o *Observer) withRecordMetricAttributes(attrs []attribute.KeyValue) []otelmetric.RecordOption {
+	o.initDefaultMetricOptions()
+	if len(attrs) == 0 {
+		return o.defaultRecordMetricOpts
+	}
+	merged := MergeMetricAttributes(o.defaultMetricCtx, attrs)
+	if len(merged) == 0 {
+		return nil
+	}
+	return []otelmetric.RecordOption{
+		otelmetric.WithAttributes(merged...),
+	}
+}
+
+func (o *Observer) initDefaultMetricOptions() {
+	if o == nil || len(o.defaultMetricCtx) == 0 || o.defaultAddMetricOpts != nil || o.defaultRecordMetricOpts != nil {
+		return
+	}
+	o.defaultAddMetricOpts = []otelmetric.AddOption{
+		otelmetric.WithAttributes(o.defaultMetricCtx...),
+	}
+	o.defaultRecordMetricOpts = []otelmetric.RecordOption{
+		otelmetric.WithAttributes(o.defaultMetricCtx...),
+	}
 }
 
 func (o *Observer) int64Counter(name string) (otelmetric.Int64Counter, error) {

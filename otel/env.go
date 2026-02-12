@@ -14,6 +14,10 @@ func applyOTELenv(v *viper.Viper) error {
 		return nil
 	}
 	applyStringEnv(v, "otel.service_name", "OTEL_SERVICE_NAME")
+	applyBoolEnv(v, "otel.enabled", "OTEL_ENABLED")
+	applyStringEnv(v, "otel.traces.exporter", "OTEL_TRACES_EXPORTER")
+	applyStringEnv(v, "otel.logs.exporter", "OTEL_LOGS_EXPORTER")
+	applyStringEnv(v, "otel.metrics.exporter", "OTEL_METRICS_EXPORTER")
 	applyResourceAttrsEnv(v, "otel.resource_attributes", "OTEL_RESOURCE_ATTRIBUTES")
 
 	applyStringEnv(v, "otel.otlp.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -70,7 +74,7 @@ func applyStringEnv(v *viper.Viper, key string, env string) {
 
 func applyTimeoutEnv(v *viper.Viper, key string, env string) {
 	if val, ok := os.LookupEnv(env); ok {
-		if ms, ok := parseTimeoutMS(val); ok {
+		if ms, ok := ParseTimeoutMS(val); ok {
 			v.Set(key, ms)
 		}
 	}
@@ -94,7 +98,7 @@ func applyBoolEnv(v *viper.Viper, key string, env string) {
 
 func applyHeadersEnv(v *viper.Viper, key string, env string) {
 	if val, ok := os.LookupEnv(env); ok {
-		if headers := parseHeaders(val); len(headers) > 0 {
+		if headers := ParseHeaders(val); len(headers) > 0 {
 			v.Set(key, headers)
 		}
 	}
@@ -108,7 +112,7 @@ func applyResourceAttrsEnv(v *viper.Viper, key string, env string) {
 	if !ok {
 		return
 	}
-	attrs := parseHeaders(val)
+	attrs := ParseHeaders(val)
 	if len(attrs) == 0 {
 		return
 	}
@@ -124,7 +128,7 @@ func applyResourceAttrsEnv(v *viper.Viper, key string, env string) {
 	v.Set(key, existing)
 }
 
-func parseTimeoutMS(value string) (int, bool) {
+func ParseTimeoutMS(value string) (int, bool) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return 0, false
@@ -139,7 +143,7 @@ func parseTimeoutMS(value string) (int, bool) {
 	return int(d / time.Millisecond), true
 }
 
-func parseHeaders(value string) map[string]string {
+func ParseHeaders(value string) map[string]string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return nil

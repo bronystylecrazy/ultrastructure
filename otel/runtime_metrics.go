@@ -228,35 +228,55 @@ func NewRuntimeMetrics(mp *MeterProvider, config Config) (*RuntimeMetrics, error
 		{Name: "/sched/latencies:seconds"},
 	}
 
+	defaultAttrs := DefaultMetricAttributes(config)
+	defaultObserveOpts := []otelmetric.ObserveOption(nil)
+	if len(defaultAttrs) > 0 {
+		defaultObserveOpts = []otelmetric.ObserveOption{
+			otelmetric.WithAttributes(defaultAttrs...),
+		}
+	}
 	reg, err := meter.RegisterCallback(func(ctx context.Context, obs otelmetric.Observer) error {
+		withAttrs := func(attrs ...attribute.KeyValue) []otelmetric.ObserveOption {
+			if len(attrs) == 0 {
+				return defaultObserveOpts
+			}
+			merged := MergeMetricAttributes(defaultAttrs, attrs)
+			if len(merged) == 0 {
+				return nil
+			}
+			return []otelmetric.ObserveOption{
+				otelmetric.WithAttributes(merged...),
+			}
+		}
+
 		state := readRuntimeSampleState(samples)
 
 		cpuValue, ok := metrics.cpu.Observe(state.totalCPU, state.idleCPU)
 		if ok {
-			obs.ObserveFloat64(cpuUtilization, cpuValue)
+			obs.ObserveFloat64(cpuUtilization, cpuValue, withAttrs()...)
 		}
-		obs.ObserveFloat64(cpuTotal, state.totalCPU)
-		obs.ObserveFloat64(cpuGC, state.gcCPU)
+		obs.ObserveFloat64(cpuTotal, state.totalCPU, withAttrs()...)
+		obs.ObserveFloat64(cpuGC, state.gcCPU, withAttrs()...)
 
-		obs.ObserveInt64(heapObjects, int64(state.heapObjectsBytes))
-		obs.ObserveInt64(memTotal, int64(state.totalMemoryBytes))
-		obs.ObserveInt64(heapReleased, int64(state.heapReleasedBytes))
-		obs.ObserveInt64(heapFree, int64(state.heapFreeBytes))
-		obs.ObserveInt64(heapStacks, int64(state.heapStacksBytes))
+		obs.ObserveInt64(heapObjects, int64(state.heapObjectsBytes), withAttrs()...)
+		obs.ObserveInt64(memTotal, int64(state.totalMemoryBytes), withAttrs()...)
+		obs.ObserveInt64(heapReleased, int64(state.heapReleasedBytes), withAttrs()...)
+		obs.ObserveInt64(heapFree, int64(state.heapFreeBytes), withAttrs()...)
+		obs.ObserveInt64(heapStacks, int64(state.heapStacksBytes), withAttrs()...)
 
-		obs.ObserveInt64(gcCycles, int64(state.gcCyclesTotal))
-		obs.ObserveInt64(gcHeapGoal, int64(state.gcHeapGoalBytes))
-		obs.ObserveInt64(goroutines, int64(state.goroutines))
+		obs.ObserveInt64(gcCycles, int64(state.gcCyclesTotal), withAttrs()...)
+		obs.ObserveInt64(gcHeapGoal, int64(state.gcHeapGoalBytes), withAttrs()...)
+		obs.ObserveInt64(goroutines, int64(state.goroutines), withAttrs()...)
 
-		obs.ObserveFloat64(gcPauseP50, state.gcPauseP50)
-		obs.ObserveFloat64(gcPauseP90, state.gcPauseP90)
-		obs.ObserveFloat64(gcPauseP99, state.gcPauseP99)
+		obs.ObserveFloat64(gcPauseP50, state.gcPauseP50, withAttrs()...)
+		obs.ObserveFloat64(gcPauseP90, state.gcPauseP90, withAttrs()...)
+		obs.ObserveFloat64(gcPauseP99, state.gcPauseP99, withAttrs()...)
 
-		obs.ObserveFloat64(schedP50, state.schedLatencyP50)
-		obs.ObserveFloat64(schedP90, state.schedLatencyP90)
-		obs.ObserveFloat64(schedP99, state.schedLatencyP99)
-		observeHistogramBuckets(obs, gcPauseBuckets, samples[11])
-		observeHistogramBuckets(obs, schedLatencyBuckets, samples[12])
+		obs.ObserveFloat64(schedP50, state.schedLatencyP50, withAttrs()...)
+		obs.ObserveFloat64(schedP90, state.schedLatencyP90, withAttrs()...)
+		obs.ObserveFloat64(schedP99, state.schedLatencyP99, withAttrs()...)
+		observeHistogramBuckets(obs, gcPauseBuckets, samples[11], defaultAttrs)
+		observeHistogramBuckets(obs, schedLatencyBuckets, samples[12], defaultAttrs)
 
 		metrics.mu.Lock()
 		metrics.state = state
@@ -394,7 +414,7 @@ func histogramQuantile(h *runtimemetrics.Float64Histogram, q float64) float64 {
 	return last
 }
 
-func observeHistogramBuckets(obs otelmetric.Observer, instrument otelmetric.Int64ObservableGauge, sample runtimemetrics.Sample) {
+func observeHistogramBuckets(obs otelmetric.Observer, instrument otelmetric.Int64ObservableGauge, sample runtimemetrics.Sample, defaultAttrs []attribute.KeyValue) {
 	if sample.Value.Kind() != runtimemetrics.KindFloat64Histogram {
 		return
 	}
@@ -414,10 +434,11 @@ func observeHistogramBuckets(obs otelmetric.Observer, instrument otelmetric.Int6
 		if i < len(h.Buckets) {
 			lower = h.Buckets[i]
 		}
-		obs.ObserveInt64(instrument, int64(count), otelmetric.WithAttributes(
+		attrs := MergeMetricAttributes(defaultAttrs, []attribute.KeyValue{
 			attribute.String("bucket.lower", formatBucketBound(lower)),
 			attribute.String("bucket.upper", formatBucketBound(upper)),
-		))
+		})
+		obs.ObserveInt64(instrument, int64(count), otelmetric.WithAttributes(attrs...))
 	}
 }
 

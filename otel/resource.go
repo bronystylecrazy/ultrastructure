@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"os"
+	"strings"
 
 	us "github.com/bronystylecrazy/ultrastructure"
 	"go.opentelemetry.io/otel/attribute"
@@ -11,12 +12,16 @@ import (
 )
 
 func NewResource(ctx context.Context, config Config) (*resource.Resource, error) {
-
-	var environment string
-	if us.IsProduction() {
-		environment = "development"
-	} else {
-		environment = "production"
+	environment := ""
+	if len(config.ResourceAttrs) > 0 {
+		environment = strings.TrimSpace(config.ResourceAttrs["deployment.environment"])
+	}
+	if environment == "" {
+		if us.IsProduction() {
+			environment = "production"
+		} else {
+			environment = "development"
+		}
 	}
 
 	hostName, err := os.Hostname()
@@ -33,6 +38,10 @@ func NewResource(ctx context.Context, config Config) (*resource.Resource, error)
 	}
 	if len(config.ResourceAttrs) > 0 {
 		for k, v := range config.ResourceAttrs {
+			if k == "deployment.environment" {
+				// Avoid duplicate semconv/resource attribute key; semconv value above is canonical.
+				continue
+			}
 			attrs = append(attrs, attribute.String(k, v))
 		}
 	}
