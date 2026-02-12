@@ -16,6 +16,7 @@ func DefaultMetricAttributes(config Config) []attribute.KeyValue {
 	}
 	return []attribute.KeyValue{
 		attribute.String("deployment.environment", environment),
+		attribute.String("deployment_environment_name", environment),
 	}
 }
 
