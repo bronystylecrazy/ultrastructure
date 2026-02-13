@@ -45,8 +45,8 @@ type newManagedPubSubIn struct {
 	LC       fx.Lifecycle
 	Sub      usmqtt.Subscriber
 	Pub      usmqtt.Publisher `optional:"true"`
-	Attached otel.Attached `optional:"true"`
-	Cfg      *Config       `optional:"true"`
+	Attached otel.Attached    `optional:"true"`
+	Cfg      *Config          `optional:"true"`
 }
 
 func NewManagedPubSub(in newManagedPubSubIn) *ManagedPubSub {
@@ -68,7 +68,7 @@ func NewManagedPubSub(in newManagedPubSubIn) *ManagedPubSub {
 			Enabled:         cfg.TopicACL.Enabled,
 			AllowedPrefixes: append([]string(nil), cfg.TopicACL.AllowedPrefixes...),
 		},
-		log:    log,
+		log: log,
 	}
 	if m.acl.Enabled && len(m.acl.AllowedPrefixes) == 0 {
 		log.Warn("mqtt topic acl is enabled with empty allowed_prefixes; all topic registrations will be denied")
@@ -165,11 +165,13 @@ func (m *ManagedPubSub) Stop(context.Context) error {
 
 type setupTopicSubscribersIn struct {
 	fx.In
+	Log         *zap.Logger
 	Manager     TopicRegistrar
 	Subscribers []usmqtt.TopicSubscriber `group:"mqtt_subscribers"`
 }
 
 func SetupTopicSubscribers(in setupTopicSubscribersIn) error {
+	in.Log.Debug("setting up mqtt topic subscribers", zap.Int("count", len(in.Subscribers)))
 	for _, subscriber := range in.Subscribers {
 		if err := subscriber.Subscribe(in.Manager); err != nil {
 			return err

@@ -17,11 +17,13 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
+	"github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -218,6 +220,23 @@ func (p *pingCommand) Run(cmd *cobra.Command, args []string) error {
 	return p.ping.Ping(cmd.Context(), target)
 }
 
+type testSubscriber struct {
+}
+
+func NewTestSubscriber() *testSubscriber {
+	return &testSubscriber{}
+}
+
+func (t *testSubscriber) Subscribe(r mqtt.TopicRegistrar) error {
+	var err error
+	err = multierr.Append(err, r.Topic("hello", t.print))
+	return nil
+}
+
+func (t *testSubscriber) print(c realtime.Ctx) {
+	fmt.Println("Received message:", string(c.Payload()))
+}
+
 func main() {
 	fx.New(
 		di.App(
@@ -228,6 +247,7 @@ func main() {
 			realtime.Module(
 				realtime.UseAllowHook(),
 				realtime.UseWebsocketListener(),
+				realtime.UseTCPListener(),
 			),
 			database.Module(
 				database.UseMigrations(&migrations),
@@ -237,6 +257,7 @@ func main() {
 				web.UseSpa(web.WithSpaAssets(&assets)),
 				web.UseSwagger(),
 			),
+			di.Provide(NewTestSubscriber),
 			cmd.Module(
 				cmd.UseBasicCommands(),
 				di.Supply(&cobra.Command{
