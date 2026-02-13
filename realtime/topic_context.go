@@ -12,26 +12,61 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
+// Ctx provides per-message topic handler context, including MQTT metadata,
+// payload helpers, publishing helpers, and an overridable base context.
 type Ctx interface {
 	context.Context
 
+	// Client returns the underlying MQTT client.
+	// Example: client := ctx.Client()
 	Client() *mqtt.Client
+	// ClientID returns the MQTT client identifier.
+	// Example: id := ctx.ClientID()
 	ClientID() string
+	// Username returns the authenticated username when available.
+	// Example: user := ctx.Username()
 	Username() string
+	// Subscription returns the matched subscription for this handler invocation.
+	// Example: sub := ctx.Subscription()
 	Subscription() packets.Subscription
+	// Packet returns the raw MQTT packet associated with this invocation.
+	// Example: pk := ctx.Packet()
 	Packet() packets.Packet
+	// Filter returns the matched topic filter from the subscription.
+	// Example: filter := ctx.Filter()
 	Filter() string
+	// Topic returns the packet topic name.
+	// Example: topic := ctx.Topic()
 	Topic() string
+	// Payload returns the raw packet payload bytes.
+	// Example: payload := ctx.Payload()
 	Payload() []byte
+	// DecodeJSON unmarshals the payload as JSON into v.
+	// Example: err := ctx.DecodeJSON(&dst)
 	DecodeJSON(v any) error
-	BindJSON(v any) error
+	// Publish sends raw payload bytes to topic.
+	// Example: err := ctx.Publish("devices/ack", []byte("ok"), false, 1)
 	Publish(topic string, payload []byte, retain bool, qos byte) error
+	// PublishJSON marshals payload as JSON and publishes it to topic.
+	// Example: err := ctx.PublishJSON("devices/ack", map[string]any{"ok": true}, false, 1)
 	PublishJSON(topic string, payload any, retain bool, qos byte) error
+	// PublishString publishes a string payload to topic.
+	// Example: err := ctx.PublishString("devices/ack", "ok", false, 1)
 	PublishString(topic string, payload string, retain bool, qos byte) error
+	// Context returns the current base context used by the Ctx implementation.
+	// Example: base := ctx.Context()
 	Context() context.Context
+	// SetContext replaces the base context used by this Ctx.
+	// Example: ctx.SetContext(context.WithValue(ctx.Context(), key, value))
 	SetContext(ctx context.Context)
+	// Identity returns client identity from context when present.
+	// Example: identity, ok := ctx.Identity()
 	Identity() (ClientIdentity, bool)
+	// Disconnect stops the underlying client connection.
+	// Example: err := ctx.Disconnect()
 	Disconnect() error
+	// Reject stops the client and records a rejection reason.
+	// Example: err := ctx.Reject("unauthorized topic")
 	Reject(reason string) error
 }
 
@@ -91,16 +126,6 @@ func (c *topicCtx) Payload() []byte {
 
 func (c *topicCtx) DecodeJSON(v any) error {
 	return json.Unmarshal(c.packet.Payload, v)
-}
-
-func (c *topicCtx) BindJSON(v any) error {
-	return c.DecodeJSON(v)
-}
-
-func BindJSON[T any](ctx Ctx) (T, error) {
-	var out T
-	err := ctx.DecodeJSON(&out)
-	return out, err
 }
 
 func (c *topicCtx) Publish(topic string, payload []byte, retain bool, qos byte) error {

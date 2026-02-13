@@ -603,7 +603,7 @@ func TestCtxPublishWithoutPublisher(t *testing.T) {
 	}
 }
 
-func TestCtxBindJSONAndGenericBindJSON(t *testing.T) {
+func TestCtxDecodeJSON(t *testing.T) {
 	sub := NewMockSubscriber(t)
 	sub.EXPECT().
 		Subscribe("hello/bind", 1, mock.Anything).
@@ -626,30 +626,28 @@ func TestCtxBindJSONAndGenericBindJSON(t *testing.T) {
 	type req struct {
 		Name string `json:"name"`
 	}
-	var methodBound req
-	var genericBound req
+	var first req
+	var second req
 
 	app.RequireStart()
 	err := manager.Topic("hello/bind", func(ctx Ctx) {
-		if bindErr := ctx.BindJSON(&methodBound); bindErr != nil {
-			t.Fatalf("BindJSON: %v", bindErr)
+		if decodeErr := ctx.DecodeJSON(&first); decodeErr != nil {
+			t.Fatalf("DecodeJSON (first): %v", decodeErr)
 		}
-		decoded, bindErr := BindJSON[req](ctx)
-		if bindErr != nil {
-			t.Fatalf("BindJSON[T]: %v", bindErr)
+		if decodeErr := ctx.DecodeJSON(&second); decodeErr != nil {
+			t.Fatalf("DecodeJSON (second): %v", decodeErr)
 		}
-		genericBound = decoded
 	})
 	if err != nil {
 		t.Fatalf("Topic: %v", err)
 	}
 	app.RequireStop()
 
-	if methodBound.Name != "alice" {
-		t.Fatalf("method bind mismatch: got=%q", methodBound.Name)
+	if first.Name != "alice" {
+		t.Fatalf("first decode mismatch: got=%q", first.Name)
 	}
-	if genericBound.Name != "alice" {
-		t.Fatalf("generic bind mismatch: got=%q", genericBound.Name)
+	if second.Name != "alice" {
+		t.Fatalf("second decode mismatch: got=%q", second.Name)
 	}
 }
 

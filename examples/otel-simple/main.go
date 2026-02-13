@@ -230,11 +230,11 @@ func NewTestSubscriber() *testSubscriber {
 func (t *testSubscriber) Subscribe(r mqtt.TopicRegistrar) error {
 	var err error
 	err = multierr.Append(err, r.Topic("hello", t.print))
-	return nil
+	return err
 }
 
 func (t *testSubscriber) print(c realtime.Ctx) {
-	fmt.Println("Received message:", string(c.Payload()))
+	fmt.Println("Received message:", c.Payload())
 }
 
 func main() {
