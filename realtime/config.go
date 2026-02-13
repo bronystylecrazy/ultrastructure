@@ -10,7 +10,13 @@ type WebsocketListenerConfig struct {
 	Path string `mapstructure:"path" default:"/realtime"`
 }
 
+type TopicACLConfig struct {
+	Enabled         bool     `mapstructure:"enabled" default:"false"`
+	AllowedPrefixes []string `mapstructure:"allowed_prefixes"`
+}
+
 type Config struct {
 	TCPListener       TCPListenerConfig       `mapstructure:"tcp_listener"`
 	WebsocketListener WebsocketListenerConfig `mapstructure:"websocket_listener"`
+	TopicACL          TopicACLConfig          `mapstructure:"topic_acl"`
 }

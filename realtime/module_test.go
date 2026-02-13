@@ -7,15 +7,16 @@ import (
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 	"go.uber.org/fx/fxtest"
 )
 
 func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
-	var broker Broker
-	var publisher Publisher
-	var subscriber Subscriber
+	var broker usmqtt.Broker
+	var publisher usmqtt.Publisher
+	var subscriber usmqtt.Subscriber
 
 	app := fxtest.New(t,
 		di.App(
@@ -38,17 +39,17 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 		t.Fatal("subscriber is nil")
 	}
 
-	brokerImpl, ok := broker.(*MqttServer)
+	brokerImpl, ok := broker.(*usmqtt.Server)
 	if !ok {
-		t.Fatalf("broker is %T, want *MqttServer", broker)
+		t.Fatalf("broker is %T, want *mqtt.Server", broker)
 	}
-	publisherImpl, ok := publisher.(*MqttServer)
+	publisherImpl, ok := publisher.(*usmqtt.Server)
 	if !ok {
-		t.Fatalf("publisher is %T, want *MqttServer", publisher)
+		t.Fatalf("publisher is %T, want *mqtt.Server", publisher)
 	}
-	subscriberImpl, ok := subscriber.(*MqttServer)
+	subscriberImpl, ok := subscriber.(*usmqtt.Server)
 	if !ok {
-		t.Fatalf("subscriber is %T, want *MqttServer", subscriber)
+		t.Fatalf("subscriber is %T, want *mqtt.Server", subscriber)
 	}
 
 	if brokerImpl != publisherImpl || brokerImpl != subscriberImpl {
@@ -77,7 +78,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	}
 
 	want := testPayload{Message: "from-di"}
-	if err := publisher.Publish("test/di", want, false, 0); err != nil {
+	if err := publisher.PublishJSON("test/di", want, false, 0); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
 
@@ -98,7 +99,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 		t.Fatalf("Unsubscribe: %v", err)
 	}
 
-	if err := publisher.Publish("test/di", testPayload{Message: "ignored"}, false, 0); err != nil {
+	if err := publisher.PublishJSON("test/di", testPayload{Message: "ignored"}, false, 0); err != nil {
 		t.Fatalf("Publish after unsubscribe: %v", err)
 	}
 

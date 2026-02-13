@@ -111,7 +111,7 @@ func (_m *MockBroker) EXPECT() *MockBroker_Expecter {
 }
 
 // Publish provides a mock function for the type MockBroker
-func (_mock *MockBroker) Publish(topic string, payload any, retain bool, qos byte) error {
+func (_mock *MockBroker) Publish(topic string, payload []byte, retain bool, qos byte) error {
 	ret := _mock.Called(topic, payload, retain, qos)
 
 	if len(ret) == 0 {
@@ -119,7 +119,7 @@ func (_mock *MockBroker) Publish(topic string, payload any, retain bool, qos byt
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, any, bool, byte) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(string, []byte, bool, byte) error); ok {
 		r0 = returnFunc(topic, payload, retain, qos)
 	} else {
 		r0 = ret.Error(0)
@@ -134,22 +134,22 @@ type MockBroker_Publish_Call struct {
 
 // Publish is a helper method to define mock.On call
 //   - topic string
-//   - payload any
+//   - payload []byte
 //   - retain bool
 //   - qos byte
 func (_e *MockBroker_Expecter) Publish(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockBroker_Publish_Call {
 	return &MockBroker_Publish_Call{Call: _e.mock.On("Publish", topic, payload, retain, qos)}
 }
 
-func (_c *MockBroker_Publish_Call) Run(run func(topic string, payload any, retain bool, qos byte)) *MockBroker_Publish_Call {
+func (_c *MockBroker_Publish_Call) Run(run func(topic string, payload []byte, retain bool, qos byte)) *MockBroker_Publish_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
 			arg0 = args[0].(string)
 		}
-		var arg1 any
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(any)
+			arg1 = args[1].([]byte)
 		}
 		var arg2 bool
 		if args[2] != nil {
@@ -174,7 +174,135 @@ func (_c *MockBroker_Publish_Call) Return(err error) *MockBroker_Publish_Call {
 	return _c
 }
 
-func (_c *MockBroker_Publish_Call) RunAndReturn(run func(topic string, payload any, retain bool, qos byte) error) *MockBroker_Publish_Call {
+func (_c *MockBroker_Publish_Call) RunAndReturn(run func(topic string, payload []byte, retain bool, qos byte) error) *MockBroker_Publish_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PublishJSON provides a mock function for the type MockBroker
+func (_mock *MockBroker) PublishJSON(topic string, payload any, retain bool, qos byte) error {
+	ret := _mock.Called(topic, payload, retain, qos)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishJSON")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, any, bool, byte) error); ok {
+		r0 = returnFunc(topic, payload, retain, qos)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBroker_PublishJSON_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishJSON'
+type MockBroker_PublishJSON_Call struct {
+	*mock.Call
+}
+
+// PublishJSON is a helper method to define mock.On call
+//   - topic string
+//   - payload any
+//   - retain bool
+//   - qos byte
+func (_e *MockBroker_Expecter) PublishJSON(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockBroker_PublishJSON_Call {
+	return &MockBroker_PublishJSON_Call{Call: _e.mock.On("PublishJSON", topic, payload, retain, qos)}
+}
+
+func (_c *MockBroker_PublishJSON_Call) Run(run func(topic string, payload any, retain bool, qos byte)) *MockBroker_PublishJSON_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 any
+		if args[1] != nil {
+			arg1 = args[1].(any)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		var arg3 byte
+		if args[3] != nil {
+			arg3 = args[3].(byte)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockBroker_PublishJSON_Call) Return(err error) *MockBroker_PublishJSON_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBroker_PublishJSON_Call) RunAndReturn(run func(topic string, payload any, retain bool, qos byte) error) *MockBroker_PublishJSON_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PublishString provides a mock function for the type MockBroker
+func (_mock *MockBroker) PublishString(topic string, payload string, retain bool, qos byte) error {
+	ret := _mock.Called(topic, payload, retain, qos)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishString")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string, bool, byte) error); ok {
+		r0 = returnFunc(topic, payload, retain, qos)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBroker_PublishString_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishString'
+type MockBroker_PublishString_Call struct {
+	*mock.Call
+}
+
+// PublishString is a helper method to define mock.On call
+//   - topic string
+//   - payload string
+//   - retain bool
+//   - qos byte
+func (_e *MockBroker_Expecter) PublishString(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockBroker_PublishString_Call {
+	return &MockBroker_PublishString_Call{Call: _e.mock.On("PublishString", topic, payload, retain, qos)}
+}
+
+func (_c *MockBroker_PublishString_Call) Run(run func(topic string, payload string, retain bool, qos byte)) *MockBroker_PublishString_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		var arg3 byte
+		if args[3] != nil {
+			arg3 = args[3].(byte)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockBroker_PublishString_Call) Return(err error) *MockBroker_PublishString_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBroker_PublishString_Call) RunAndReturn(run func(topic string, payload string, retain bool, qos byte) error) *MockBroker_PublishString_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -327,7 +455,7 @@ func (_m *MockPublisher) EXPECT() *MockPublisher_Expecter {
 }
 
 // Publish provides a mock function for the type MockPublisher
-func (_mock *MockPublisher) Publish(topic string, payload any, retain bool, qos byte) error {
+func (_mock *MockPublisher) Publish(topic string, payload []byte, retain bool, qos byte) error {
 	ret := _mock.Called(topic, payload, retain, qos)
 
 	if len(ret) == 0 {
@@ -335,7 +463,7 @@ func (_mock *MockPublisher) Publish(topic string, payload any, retain bool, qos 
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, any, bool, byte) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(string, []byte, bool, byte) error); ok {
 		r0 = returnFunc(topic, payload, retain, qos)
 	} else {
 		r0 = ret.Error(0)
@@ -350,22 +478,22 @@ type MockPublisher_Publish_Call struct {
 
 // Publish is a helper method to define mock.On call
 //   - topic string
-//   - payload any
+//   - payload []byte
 //   - retain bool
 //   - qos byte
 func (_e *MockPublisher_Expecter) Publish(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockPublisher_Publish_Call {
 	return &MockPublisher_Publish_Call{Call: _e.mock.On("Publish", topic, payload, retain, qos)}
 }
 
-func (_c *MockPublisher_Publish_Call) Run(run func(topic string, payload any, retain bool, qos byte)) *MockPublisher_Publish_Call {
+func (_c *MockPublisher_Publish_Call) Run(run func(topic string, payload []byte, retain bool, qos byte)) *MockPublisher_Publish_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
 			arg0 = args[0].(string)
 		}
-		var arg1 any
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(any)
+			arg1 = args[1].([]byte)
 		}
 		var arg2 bool
 		if args[2] != nil {
@@ -390,7 +518,135 @@ func (_c *MockPublisher_Publish_Call) Return(err error) *MockPublisher_Publish_C
 	return _c
 }
 
-func (_c *MockPublisher_Publish_Call) RunAndReturn(run func(topic string, payload any, retain bool, qos byte) error) *MockPublisher_Publish_Call {
+func (_c *MockPublisher_Publish_Call) RunAndReturn(run func(topic string, payload []byte, retain bool, qos byte) error) *MockPublisher_Publish_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PublishJSON provides a mock function for the type MockPublisher
+func (_mock *MockPublisher) PublishJSON(topic string, payload any, retain bool, qos byte) error {
+	ret := _mock.Called(topic, payload, retain, qos)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishJSON")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, any, bool, byte) error); ok {
+		r0 = returnFunc(topic, payload, retain, qos)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPublisher_PublishJSON_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishJSON'
+type MockPublisher_PublishJSON_Call struct {
+	*mock.Call
+}
+
+// PublishJSON is a helper method to define mock.On call
+//   - topic string
+//   - payload any
+//   - retain bool
+//   - qos byte
+func (_e *MockPublisher_Expecter) PublishJSON(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockPublisher_PublishJSON_Call {
+	return &MockPublisher_PublishJSON_Call{Call: _e.mock.On("PublishJSON", topic, payload, retain, qos)}
+}
+
+func (_c *MockPublisher_PublishJSON_Call) Run(run func(topic string, payload any, retain bool, qos byte)) *MockPublisher_PublishJSON_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 any
+		if args[1] != nil {
+			arg1 = args[1].(any)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		var arg3 byte
+		if args[3] != nil {
+			arg3 = args[3].(byte)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockPublisher_PublishJSON_Call) Return(err error) *MockPublisher_PublishJSON_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPublisher_PublishJSON_Call) RunAndReturn(run func(topic string, payload any, retain bool, qos byte) error) *MockPublisher_PublishJSON_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PublishString provides a mock function for the type MockPublisher
+func (_mock *MockPublisher) PublishString(topic string, payload string, retain bool, qos byte) error {
+	ret := _mock.Called(topic, payload, retain, qos)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishString")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, string, bool, byte) error); ok {
+		r0 = returnFunc(topic, payload, retain, qos)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPublisher_PublishString_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishString'
+type MockPublisher_PublishString_Call struct {
+	*mock.Call
+}
+
+// PublishString is a helper method to define mock.On call
+//   - topic string
+//   - payload string
+//   - retain bool
+//   - qos byte
+func (_e *MockPublisher_Expecter) PublishString(topic interface{}, payload interface{}, retain interface{}, qos interface{}) *MockPublisher_PublishString_Call {
+	return &MockPublisher_PublishString_Call{Call: _e.mock.On("PublishString", topic, payload, retain, qos)}
+}
+
+func (_c *MockPublisher_PublishString_Call) Run(run func(topic string, payload string, retain bool, qos byte)) *MockPublisher_PublishString_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		var arg3 byte
+		if args[3] != nil {
+			arg3 = args[3].(byte)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockPublisher_PublishString_Call) Return(err error) *MockPublisher_PublishString_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPublisher_PublishString_Call) RunAndReturn(run func(topic string, payload string, retain bool, qos byte) error) *MockPublisher_PublishString_Call {
 	_c.Call.Return(run)
 	return _c
 }

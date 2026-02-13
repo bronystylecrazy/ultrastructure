@@ -65,6 +65,10 @@ address = ":1883"
 id = "ws1"
 path = "/realtime"
 
+[realtime.topic_acl]
+enabled = false
+allowed_prefixes = ["/public/", "/tenant-a/"]
+
 [otel]
 enabled = true
 service_name = "Ultrastructure"

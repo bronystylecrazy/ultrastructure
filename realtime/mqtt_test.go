@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
@@ -15,9 +16,9 @@ type testPayload struct {
 }
 
 func TestMqttServerPublishSubscribeRoundtrip(t *testing.T) {
-	server, err := NewMqttServer()
+	server, err := usmqtt.NewServer()
 	if err != nil {
-		t.Fatalf("NewMqttServer: %v", err)
+		t.Fatalf("NewServer: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,7 +43,7 @@ func TestMqttServerPublishSubscribeRoundtrip(t *testing.T) {
 	}
 
 	want := testPayload{Message: "hello"}
-	if err := server.Publish("test/topic", want, false, 0); err != nil {
+	if err := server.PublishJSON("test/topic", want, false, 0); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
 
@@ -63,7 +64,7 @@ func TestMqttServerPublishSubscribeRoundtrip(t *testing.T) {
 		t.Fatalf("Unsubscribe: %v", err)
 	}
 
-	if err := server.Publish("test/topic", testPayload{Message: "ignored"}, false, 0); err != nil {
+	if err := server.PublishJSON("test/topic", testPayload{Message: "ignored"}, false, 0); err != nil {
 		t.Fatalf("Publish after unsubscribe: %v", err)
 	}
 

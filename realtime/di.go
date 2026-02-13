@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
+	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	mqtt "github.com/mochi-mqtt/server/v2"
@@ -12,13 +13,13 @@ import (
 )
 
 func UseAllowHook() di.Node {
-	return di.Invoke(func(ms *MqttServer, log *zap.Logger) error {
+	return di.Invoke(func(ms *usmqtt.Server, log *zap.Logger) error {
 		return ms.AddHook(new(auth.AllowHook), nil)
 	})
 }
 
 func UseTCPListener() di.Node {
-	return di.Invoke(func(ms *MqttServer, cfg Config, log *zap.Logger) error {
+	return di.Invoke(func(ms *usmqtt.Server, cfg Config, log *zap.Logger) error {
 		id := cfg.TCPListener.ID
 		if id == "" {
 			id = "t1"
@@ -60,7 +61,7 @@ func UseWebsocketListener(opts ...Option) di.Node {
 	)
 }
 
-func AppendHooks(ms *MqttServer, hooks ...mqtt.Hook) error {
+func AppendHooks(ms *usmqtt.Server, hooks ...mqtt.Hook) error {
 	var err error
 	for _, hook := range hooks {
 		err = multierr.Append(err, ms.AddHook(hook, nil))
@@ -68,7 +69,7 @@ func AppendHooks(ms *MqttServer, hooks ...mqtt.Hook) error {
 	return err
 }
 
-func AppendListeners(ms *MqttServer, listeners ...listeners.Listener) error {
+func AppendListeners(ms *usmqtt.Server, listeners ...listeners.Listener) error {
 	var err error
 	for _, listener := range listeners {
 		err = multierr.Append(err, ms.AddListener(listener))
