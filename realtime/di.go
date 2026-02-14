@@ -1,6 +1,8 @@
 package realtime
 
 import (
+	"log/slog"
+
 	"github.com/bronystylecrazy/ultrastructure/di"
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	"github.com/bronystylecrazy/ultrastructure/web"
@@ -11,6 +13,12 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
+
+func UseServerLogger() di.Node {
+	return di.Invoke(func(server *usmqtt.Server, logger *slog.Logger) {
+		server.Log = logger
+	})
+}
 
 func UseAllowHook() di.Node {
 	return di.Invoke(func(ms *usmqtt.Server, log *zap.Logger) error {

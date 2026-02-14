@@ -16,6 +16,7 @@ func Module() di.Node {
 
 		// observables
 		di.Provide(NewLogger),
+		di.Provide(NewSlog),
 		di.Provide(NewResource),
 		di.Provide(NewLogExporter),
 		di.Provide(NewLoggerProvider),

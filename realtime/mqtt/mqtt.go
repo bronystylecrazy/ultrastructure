@@ -3,11 +3,9 @@ package mqtt
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	mqtt "github.com/mochi-mqtt/server/v2"
-	"github.com/mochi-mqtt/server/v2/hooks/auth"
 )
 
 type Broker interface {
@@ -46,12 +44,6 @@ func NewServer() (*Server, error) {
 		InlineClient: true,
 		Logger:       slog.New(slog.DiscardHandler),
 	})}
-
-	err := server.AddHook(new(auth.AllowHook), nil)
-	if err != nil {
-		return nil, fmt.Errorf("hook: %w", err)
-	}
-
 	return server, nil
 }
 
