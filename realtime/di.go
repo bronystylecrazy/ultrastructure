@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
@@ -10,24 +11,41 @@ import (
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/auth"
 	"github.com/mochi-mqtt/server/v2/listeners"
+	"go.uber.org/fx"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
 func UseServerLogger() di.Node {
-	return di.Invoke(func(server *usmqtt.Server, logger *slog.Logger) {
+	return di.Invoke(func(broker usmqtt.Broker, logger *slog.Logger) {
+		server, ok := broker.(*usmqtt.Server)
+		if !ok || server == nil {
+			return
+		}
 		server.Log = logger
 	})
 }
 
 func UseAllowHook() di.Node {
-	return di.Invoke(func(ms *usmqtt.Server, log *zap.Logger) error {
-		return ms.AddHook(new(auth.AllowHook), nil)
+	return di.Invoke(func(ms usmqtt.Broker, log *zap.Logger) error {
+		srv, ok := ms.(*usmqtt.Server)
+		if !ok || srv == nil {
+			log.Debug("skipping mqtt allow hook: broker is not embedded mochi server")
+			return nil
+		}
+
+		return srv.AddHook(new(auth.AllowHook), nil)
 	})
 }
 
 func UseTCPListener() di.Node {
-	return di.Invoke(func(ms *usmqtt.Server, cfg Config, log *zap.Logger) error {
+	return di.Invoke(func(ms usmqtt.Broker, cfg Config, log *zap.Logger) error {
+		srv, ok := ms.(*usmqtt.Server)
+		if !ok || srv == nil {
+			log.Debug("skipping mqtt tcp listener: broker is external")
+			return nil
+		}
+
 		id := cfg.TCPListener.ID
 		if id == "" {
 			id = "t1"
@@ -38,7 +56,7 @@ func UseTCPListener() di.Node {
 			address = ":1883"
 		}
 
-		return ms.AddListener(listeners.NewTCP(listeners.Config{
+		return srv.AddListener(listeners.NewTCP(listeners.Config{
 			ID:      id,
 			Address: address,
 		}))
@@ -47,7 +65,11 @@ func UseTCPListener() di.Node {
 
 func UseWebsocketListener(opts ...Option) di.Node {
 	return di.Options(
-		di.Provide(func(app fiber.Router, auth Authorizer, cfg Config) *Websocket {
+		di.Provide(func(app fiber.Router, auth Authorizer, cfg Config, broker usmqtt.Broker) *Websocket {
+			if _, ok := broker.(*usmqtt.Server); !ok {
+				return nil
+			}
+
 			id := cfg.WebsocketListener.ID
 			if id == "" {
 				id = "ws1"
@@ -69,18 +91,50 @@ func UseWebsocketListener(opts ...Option) di.Node {
 	)
 }
 
-func AppendHooks(ms *usmqtt.Server, hooks ...mqtt.Hook) error {
+func AppendHooks(ms usmqtt.Broker, hooks ...mqtt.Hook) error {
+	srv, ok := ms.(*usmqtt.Server)
+	if !ok || srv == nil {
+		return nil
+	}
+
 	var err error
 	for _, hook := range hooks {
-		err = multierr.Append(err, ms.AddHook(hook, nil))
+		err = multierr.Append(err, srv.AddHook(hook, nil))
 	}
 	return err
 }
 
-func AppendListeners(ms *usmqtt.Server, listeners ...listeners.Listener) error {
+func AppendListeners(ms usmqtt.Broker, listeners ...listeners.Listener) error {
+	srv, ok := ms.(*usmqtt.Server)
+	if !ok || srv == nil {
+		return nil
+	}
+
 	var err error
 	for _, listener := range listeners {
-		err = multierr.Append(err, ms.AddListener(listener))
+		err = multierr.Append(err, srv.AddListener(listener))
 	}
 	return err
+}
+
+type startStopper interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+}
+
+func RegisterBrokerLifecycle(lc fx.Lifecycle, broker usmqtt.Broker) {
+	if _, ok := broker.(*usmqtt.Server); ok {
+		// Embedded server already participates in lifecycle via lifecycle.Module auto-grouping.
+		return
+	}
+
+	ss, ok := broker.(startStopper)
+	if !ok {
+		return
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: ss.Start,
+		OnStop:  ss.Stop,
+	})
 }

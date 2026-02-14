@@ -95,6 +95,39 @@ pool_timeout = "4s"
 conn_max_idle_time = "30m"
 conn_max_lifetime = "0s"
 
+[realtime.broker]
+mode = "embedded"
+endpoint = ""
+client_id = "" # auto-generated when empty
+username = ""
+password = ""
+clean_session = false
+connect_timeout = "10s"
+
+[realtime.broker.tls]
+ca_file = ""
+cert_file = ""
+key_file = ""
+server_name = ""
+insecure_skip_verify = false
+
+[realtime.session_control]
+provider = "" # "", "emqx"
+
+[realtime.session_control.emqx]
+endpoint = "" # ex: https://emqx.example.com:18083
+username = ""
+password = ""
+bearer_token = ""
+timeout = "5s"
+
+[realtime.session_control.emqx.tls]
+ca_file = ""
+cert_file = ""
+key_file = ""
+server_name = ""
+insecure_skip_verify = false
+
 [realtime.tcp_listener]
 id = "t1"
 address = ":1883"

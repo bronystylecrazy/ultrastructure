@@ -3,7 +3,10 @@ package mqtt
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	mqtt "github.com/mochi-mqtt/server/v2"
 )
@@ -70,4 +73,21 @@ func (m *Server) Start(context.Context) error {
 
 func (m *Server) Stop(context.Context) error {
 	return m.Server.Close()
+}
+
+func (m *Server) DisconnectClient(_ context.Context, clientID string, reason string) error {
+	if strings.TrimSpace(clientID) == "" {
+		return errors.New("realtime/mqtt: client id is required")
+	}
+
+	cl, ok := m.Clients.Get(clientID)
+	if !ok || cl == nil {
+		return fmt.Errorf("realtime/mqtt: client %q not found", clientID)
+	}
+
+	if reason == "" {
+		reason = "session disconnected by controller"
+	}
+	cl.Stop(errors.New(reason))
+	return nil
 }

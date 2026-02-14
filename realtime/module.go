@@ -18,8 +18,8 @@ func Module(opts ...di.Node) di.Node {
 		di.Config[Config]("realtime"),
 		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 		di.Provide(
-			usmqtt.NewServer,
-			di.AsSelf[usmqtt.Broker](),
+			NewBroker,
+			di.As[usmqtt.Broker](),
 			di.As[usmqtt.Publisher](),
 			di.As[usmqtt.Subscriber](),
 		),
@@ -48,6 +48,7 @@ func Module(opts ...di.Node) di.Node {
 		di.Options(di.ConvertAnys(opts)...),
 		di.Invoke(AppendHooks, di.Params(``, di.Group(HooksGroupName))),
 		di.Invoke(AppendListeners, di.Params(``, di.Group(ListenersGroupName))),
+		di.Invoke(RegisterBrokerLifecycle),
 		di.Invoke(SetupTopicMiddlewares),
 		di.Invoke(SetupTopicSubscribers),
 	)

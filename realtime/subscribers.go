@@ -29,15 +29,16 @@ type subscriptionEntry struct {
 }
 
 type ManagedPubSub struct {
-	mu      sync.Mutex
-	nextID  int
-	stopped bool
-	items   []subscriptionEntry
-	mws     []TopicMiddleware
-	acl     TopicACLConfig
-	sub     usmqtt.Subscriber
-	pub     usmqtt.Publisher
-	log     *zap.Logger
+	mu         sync.Mutex
+	nextID     int
+	stopped    bool
+	items      []subscriptionEntry
+	mws        []TopicMiddleware
+	acl        TopicACLConfig
+	sub        usmqtt.Subscriber
+	pub        usmqtt.Publisher
+	controller usmqtt.SessionController
+	log        *zap.Logger
 }
 
 type newManagedPubSubIn struct {
@@ -45,11 +46,12 @@ type newManagedPubSubIn struct {
 	LC       fx.Lifecycle
 	Sub      usmqtt.Subscriber
 	Pub      usmqtt.Publisher `optional:"true"`
+	Broker   usmqtt.Broker    `optional:"true"`
 	Attached otel.Attached    `optional:"true"`
 	Cfg      *Config          `optional:"true"`
 }
 
-func NewManagedPubSub(in newManagedPubSubIn) *ManagedPubSub {
+func NewManagedPubSub(in newManagedPubSubIn) (*ManagedPubSub, error) {
 	log := in.Attached.Logger
 	if log == nil {
 		log = zap.NewNop()
@@ -70,6 +72,12 @@ func NewManagedPubSub(in newManagedPubSubIn) *ManagedPubSub {
 		},
 		log: log,
 	}
+
+	controller, err := resolveSessionController(cfg, in.Broker)
+	if err != nil {
+		return nil, err
+	}
+	m.controller = controller
 	if m.acl.Enabled && len(m.acl.AllowedPrefixes) == 0 {
 		log.Warn("mqtt topic acl is enabled with empty allowed_prefixes; all topic registrations will be denied")
 	}
@@ -78,7 +86,33 @@ func NewManagedPubSub(in newManagedPubSubIn) *ManagedPubSub {
 		OnStop: m.Stop,
 	})
 
-	return m
+	return m, nil
+}
+
+func resolveSessionController(cfg Config, broker usmqtt.Broker) (usmqtt.SessionController, error) {
+	provider := strings.ToLower(strings.TrimSpace(cfg.SessionControl.Provider))
+	switch provider {
+	case "":
+		if sc, ok := any(broker).(usmqtt.SessionController); ok {
+			return sc, nil
+		}
+		return nil, nil
+	case "emqx":
+		tlsCfg, err := cfg.SessionControl.EMQX.TLS.Load()
+		if err != nil {
+			return nil, fmt.Errorf("realtime: load emqx session control tls config: %w", err)
+		}
+		return usmqtt.NewEMQXSessionController(usmqtt.EMQXSessionControllerConfig{
+			Endpoint:    cfg.SessionControl.EMQX.Endpoint,
+			Username:    cfg.SessionControl.EMQX.Username,
+			Password:    cfg.SessionControl.EMQX.Password,
+			BearerToken: cfg.SessionControl.EMQX.BearerToken,
+			Timeout:     cfg.SessionControl.EMQX.Timeout,
+			TLSConfig:   tlsCfg,
+		})
+	default:
+		return nil, fmt.Errorf("realtime: unsupported session_control provider %q", cfg.SessionControl.Provider)
+	}
 }
 
 func (m *ManagedPubSub) Topic(filter string, args ...any) error {
@@ -100,7 +134,7 @@ func (m *ManagedPubSub) Topic(filter string, args ...any) error {
 	id := m.nextID
 	m.nextID++
 	wrapped := applyTopicMiddlewares(handler, append(append([]TopicMiddleware(nil), m.mws...), middlewares...))
-	inlineWrapped := topicHandlerToInlineSubFn(wrapped, m.pub, func(err error, ctx Ctx) {
+	inlineWrapped := topicHandlerToInlineSubFn(wrapped, m.pub, m.controller, func(err error, ctx Ctx) {
 		m.log.Error(
 			"mqtt topic handler error",
 			zap.Error(err),
@@ -165,13 +199,15 @@ func (m *ManagedPubSub) Stop(context.Context) error {
 
 type setupTopicSubscribersIn struct {
 	fx.In
-	Log         *zap.Logger
+	Log         *zap.Logger `optional:"true"`
 	Manager     TopicRegistrar
 	Subscribers []usmqtt.TopicSubscriber `group:"mqtt_subscribers"`
 }
 
 func SetupTopicSubscribers(in setupTopicSubscribersIn) error {
-	in.Log.Debug("setting up mqtt topic subscribers", zap.Int("count", len(in.Subscribers)))
+	if in.Log != nil {
+		in.Log.Debug("setting up mqtt topic subscribers", zap.Int("count", len(in.Subscribers)))
+	}
 	for _, subscriber := range in.Subscribers {
 		if err := subscriber.Subscribe(in.Manager); err != nil {
 			return err
@@ -258,14 +294,15 @@ func toTopicHandler(v any) (TopicHandler, bool) {
 	}
 }
 
-func topicHandlerToInlineSubFn(handler TopicHandler, pub usmqtt.Publisher, onError func(error, Ctx)) mqtt.InlineSubFn {
+func topicHandlerToInlineSubFn(handler TopicHandler, pub usmqtt.Publisher, controller usmqtt.SessionController, onError func(error, Ctx)) mqtt.InlineSubFn {
 	return func(cl *mqtt.Client, sub packets.Subscription, pk packets.Packet) {
 		ctx := &topicCtx{
-			client: cl,
-			pub:    pub,
-			sub:    sub,
-			packet: pk,
-			ctx:    context.Background(),
+			client:     cl,
+			pub:        pub,
+			controller: controller,
+			sub:        sub,
+			packet:     pk,
+			ctx:        context.Background(),
 		}
 
 		if err := handler(ctx); err != nil && onError != nil {
@@ -285,7 +322,7 @@ func wrapInlineSubMiddleware(mw func(mqtt.InlineSubFn) mqtt.InlineSubFn) TopicMi
 	return func(next TopicHandler) TopicHandler {
 		return func(ctx Ctx) error {
 			var nextErr error
-			inlineNext := topicHandlerToInlineSubFn(next, nil, func(err error, _ Ctx) {
+			inlineNext := topicHandlerToInlineSubFn(next, nil, nil, func(err error, _ Ctx) {
 				nextErr = err
 			})
 			inlineWrapped := mw(inlineNext)

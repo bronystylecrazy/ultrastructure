@@ -71,15 +71,17 @@ type Ctx interface {
 }
 
 type topicCtx struct {
-	client *mqtt.Client
-	pub    usmqtt.Publisher
-	sub    packets.Subscription
-	packet packets.Packet
-	ctx    context.Context
+	client     *mqtt.Client
+	pub        usmqtt.Publisher
+	controller usmqtt.SessionController
+	sub        packets.Subscription
+	packet     packets.Packet
+	ctx        context.Context
 }
 
 var ErrTopicCtxNoClient = errors.New("realtime: topic context has no client")
 var ErrTopicCtxNoPublisher = errors.New("realtime: topic context has no publisher")
+var ErrTopicCtxSessionControlUnsupported = errors.New("realtime: session control is unsupported")
 var ErrTopicClientDisconnectedByHandler = errors.New("realtime: client disconnected by topic handler")
 var ErrTopicClientRejectedByHandler = errors.New("realtime: client rejected by topic handler")
 
@@ -184,6 +186,15 @@ func (c *topicCtx) Disconnect() error {
 	if c.client == nil {
 		return ErrTopicCtxNoClient
 	}
+	if c.controller != nil {
+		if err := c.controller.DisconnectClient(c.Context(), c.client.ID, "disconnected by topic handler"); err != nil {
+			if errors.Is(err, usmqtt.ErrSessionControlUnsupported) {
+				return fmt.Errorf("%w: %w", ErrTopicCtxSessionControlUnsupported, err)
+			}
+			return err
+		}
+		return nil
+	}
 	c.client.Stop(ErrTopicClientDisconnectedByHandler)
 	return nil
 }
@@ -194,6 +205,15 @@ func (c *topicCtx) Reject(reason string) error {
 	}
 	if reason == "" {
 		reason = "unspecified"
+	}
+	if c.controller != nil {
+		if err := c.controller.DisconnectClient(c.Context(), c.client.ID, reason); err != nil {
+			if errors.Is(err, usmqtt.ErrSessionControlUnsupported) {
+				return fmt.Errorf("%w: %w", ErrTopicCtxSessionControlUnsupported, err)
+			}
+			return err
+		}
+		return nil
 	}
 	c.client.Stop(fmt.Errorf("%w: %s", ErrTopicClientRejectedByHandler, reason))
 	return nil
