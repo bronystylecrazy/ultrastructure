@@ -3,50 +3,25 @@
 package mqtt
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/bronystylecrazy/ultrastructure/testkit"
 )
 
 func TestEMQXSessionControllerWithTestcontainers(t *testing.T) {
-	ctx := context.Background()
+	testkit.RequireIntegration(t)
 
-	req := testcontainers.ContainerRequest{
-		Image:        "emqx/emqx:5.8.4",
-		ExposedPorts: []string{"18083/tcp", "1883/tcp"},
-		Env: map[string]string{
-			"EMQX_DASHBOARD__DEFAULT_USERNAME": "admin",
-			"EMQX_DASHBOARD__DEFAULT_PASSWORD": "public",
-		},
-		WaitingFor: wait.ForListeningPort("18083/tcp").WithStartupTimeout(2 * time.Minute),
-	}
-
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
+	suite := testkit.NewSuite(t)
+	emqx := suite.StartEMQX(testkit.EMQXOptions{
+		StartupTimeout: 2 * time.Minute,
 	})
-	if err != nil {
-		t.Fatalf("start emqx container: %v", err)
-	}
-	defer func() { _ = c.Terminate(ctx) }()
-
-	host, err := c.Host(ctx)
-	if err != nil {
-		t.Fatalf("container host: %v", err)
-	}
-	port, err := c.MappedPort(ctx, "18083/tcp")
-	if err != nil {
-		t.Fatalf("mapped port: %v", err)
-	}
 
 	ctrl, err := NewEMQXSessionController(EMQXSessionControllerConfig{
-		Endpoint: "http://" + host + ":" + port.Port(),
-		Username: "admin",
-		Password: "public",
+		Endpoint: emqx.DashboardEndpoint,
+		Username: emqx.Username,
+		Password: emqx.Password,
 		Timeout:  5 * time.Second,
 	})
 	if err != nil {
@@ -54,7 +29,7 @@ func TestEMQXSessionControllerWithTestcontainers(t *testing.T) {
 	}
 
 	// Kickout for a non-existent client should reach authenticated EMQX API and return a non-2xx business error.
-	err = ctrl.DisconnectClient(ctx, "non-existent-client", "integration")
+	err = ctrl.DisconnectClient(suite.Context(), "non-existent-client", "integration")
 	if err == nil {
 		t.Fatal("expected emqx kickout error for non-existent client, got nil")
 	}
