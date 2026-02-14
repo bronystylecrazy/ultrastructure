@@ -17,7 +17,7 @@ func Module(extends ...di.Node) di.Node {
 			di.Config[Config]("web"),
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 
-			di.Config[FiberConfig]("web"),
+			di.Config[FiberConfig]("web.fiber"),
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 			di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
 

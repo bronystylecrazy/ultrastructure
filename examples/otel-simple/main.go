@@ -233,8 +233,15 @@ func (t *testSubscriber) Subscribe(r mqtt.TopicRegistrar) error {
 	return err
 }
 
-func (t *testSubscriber) print(c realtime.Ctx) {
-	fmt.Println("Received message:", c.Payload())
+func (t *testSubscriber) print(c realtime.Ctx) error {
+	var payload struct {
+		Message *string `json:"message"`
+	}
+	if err := c.DecodeJSON(&payload); err != nil {
+		return err
+	}
+	fmt.Println("Received message:", c.Payload(), *payload.Message)
+	return nil
 }
 
 func main() {
@@ -267,6 +274,7 @@ func main() {
 					di.Provide(NewWorkerService),
 					di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
 					di.Provide(NewAPIService),
+					realtime.UseServerLogger(),
 					database.UseOtel(),
 					database.RunCheck(),
 					database.RunMigrations(),

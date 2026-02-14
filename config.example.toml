@@ -1,7 +1,45 @@
 
-[web]
+[web.server]
 host = "localhost"
 port = 8080
+
+[web.listen]
+listener_network = "tcp"
+shutdown_timeout = "10s"
+disable_startup_message = false
+enable_prefork = false
+enable_print_routes = false
+
+[web.tls]
+cert_file = ""
+cert_key_file = ""
+cert_client_file = ""
+tls_min_version = "1.2"
+
+[web.fiber]
+case_sensitive = false
+strict_routing = false
+
+[web.fiber.app]
+server_header = ""
+body_limit = "4MiB"
+read_timeout = "10s"
+write_timeout = "10s"
+idle_timeout = "60s"
+read_buffer_size = 4096
+write_buffer_size = 4096
+disable_keepalive = false
+enable_ip_validation = true
+
+[web.fiber.proxy]
+trust_proxy = false
+proxy_header = "X-Forwarded-For"
+
+[web.fiber.proxy.trust_proxy_config]
+proxies = []
+link_local = false
+loopback = false
+private = false
 
 [db]
 dialect = "postgres"
