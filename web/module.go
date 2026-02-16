@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -20,7 +21,7 @@ func Module(extends ...di.Node) di.Node {
 			di.Config[FiberConfig]("web.fiber"),
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
 			di.Provide(NewFiberApp, di.AsSelf[fiber.Router]()),
-
+			di.Provide(NewOtelMiddleware, otel.Layer("web.http"), IgnoreAutoGroupHandlers(), Priority(Earliest)),
 			di.Options(di.ConvertAnys(extends)...),
 		),
 	)

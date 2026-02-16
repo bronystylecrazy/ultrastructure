@@ -13,10 +13,11 @@ import (
 	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
-func UseRuntimeMetrics() di.Node {
+func EnableMetrics() di.Node {
 	return di.Options(
-		di.Provide(NewRuntimeMetrics, Layer("runtime")),
-		di.Invoke(func(*RuntimeMetrics) {}),
+		di.Invoke(func(*RuntimeMetrics) {
+			// no-op, just need to force the RuntimeMetrics to be constructed and registered
+		}),
 	)
 }
 
@@ -47,7 +48,7 @@ type runtimeSampleState struct {
 	schedLatencyP99   float64
 }
 
-func NewRuntimeMetrics(mp *MeterProvider, config Config) (*RuntimeMetrics, error) {
+func NewRuntimeMetrics(config Config, mp *MeterProvider) (*RuntimeMetrics, error) {
 	metrics := &RuntimeMetrics{cpu: &runtimeCPUUtilization{}}
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Metrics.Exporter), "none") {
 		return metrics, nil

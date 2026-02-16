@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/listeners"
@@ -17,6 +18,7 @@ func Module(opts ...di.Node) di.Node {
 		di.AutoGroup[usmqtt.TopicSubscriber](SubscribersGroupName),
 		di.Config[Config]("realtime"),
 		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+		di.Provide(usmqtt.NewServer, di.AutoGroupIgnoreType[lifecycle.Starter](), di.AutoGroupIgnoreType[lifecycle.Stopper]()),
 		di.Provide(
 			NewBroker,
 			di.As[usmqtt.Broker](),
@@ -46,10 +48,5 @@ func Module(opts ...di.Node) di.Node {
 			di.AsSelf[TopicRegistrar](),
 		),
 		di.Options(di.ConvertAnys(opts)...),
-		di.Invoke(AppendHooks, di.Params(``, di.Group(HooksGroupName))),
-		di.Invoke(AppendListeners, di.Params(``, di.Group(ListenersGroupName))),
-		di.Invoke(RegisterBrokerLifecycle),
-		di.Invoke(SetupTopicMiddlewares),
-		di.Invoke(SetupTopicSubscribers),
 	)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
+	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -249,36 +250,35 @@ func main() {
 		di.App(
 			di.Diagnostics(),
 			otel.Module(),
-			otel.UseRuntimeMetrics(),
 			lifecycle.Module(),
-			realtime.Module(
-				realtime.UseAllowHook(),
-				realtime.UseWebsocketListener(),
-				realtime.UseTCPListener(),
-			),
-			database.Module(
-				database.UseMigrations(&migrations),
-			),
-			web.Module(
-				web.UseOtel(),
-				web.UseSpa(web.WithSpaAssets(&assets)),
-				web.UseSwagger(),
-			),
+			realtime.Module(),
+			database.Module(),
+			web.Module(),
+			otel.EnableMetrics(),
+			realtime.UseAllowHook(),
+			realtime.UseWebsocketListener(),
+			realtime.UseTCPListener(),
+			database.UseOtel(),
+			database.UseMigrations(&migrations),
+			web.UseOtel(),
+			web.UseSpa(web.WithSpaAssets(&assets)),
+			web.UseSwagger(),
 			di.Provide(NewTestSubscriber),
+			di.Invoke(func(config otel.Config) {
+				fmt.Println(config)
+			}),
 			cmd.Module(
 				cmd.UseBasicCommands(),
 				di.Supply(&cobra.Command{
 					Use: us.Name,
 				}),
 				cmd.Use("run",
+					s3.UseOtel(),
+					web.Init(),
+					database.RunMigrations(),
 					di.Provide(NewWorkerService),
 					di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
 					di.Provide(NewAPIService),
-					realtime.UseServerLogger(),
-					database.UseOtel(),
-					database.RunCheck(),
-					database.RunMigrations(),
-					web.RunFiberApp(),
 				),
 				cmd.Use("ping",
 					di.Provide(NewPingService),

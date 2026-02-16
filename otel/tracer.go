@@ -21,10 +21,11 @@ func httpTraceCompression(value string) otlptracehttp.Compression {
 }
 
 func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+	otlpCfg := config.otlpForTraces()
+	printExporterConfig("traces", config.Enabled, config.Traces.Exporter, otlpCfg)
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Traces.Exporter), "none") {
 		return nil, nil
 	}
-	otlpCfg := config.otlpForTraces()
 	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
 		endpoint, path := otlpCfg.EndpointForHTTP()
 		tlsCfg, err := otlpCfg.TLS.Load()

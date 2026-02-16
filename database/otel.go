@@ -10,9 +10,7 @@ import (
 )
 
 func UseOtel() di.Node {
-	return di.Invoke(func(g *GormOtel, log *zap.Logger) {
-		log.Debug("initialized gorm opentelemetry!")
-	})
+	return di.Provide(NewGormOtel)
 }
 
 type GormOtel struct {

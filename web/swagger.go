@@ -7,13 +7,13 @@ import (
 
 type SwaggerOption func(*swaggerOptions)
 
-type SwaggerHandler struct {
+type SwaggerMiddleware struct {
 	config Config
 	path   string
 }
 
-func NewSwaggerHandler(config Config) (*SwaggerHandler, error) {
-	return NewSwaggerHandlerWithOptions(WithSwaggerConfig(config))
+func NewSwaggerMiddleware(config Config) (*SwaggerMiddleware, error) {
+	return NewSwaggerMiddlewareWithOptions(WithSwaggerConfig(config))
 }
 
 type swaggerOptions struct {
@@ -33,16 +33,16 @@ func WithSwaggerPath(path string) SwaggerOption {
 	}
 }
 
-func NewSwaggerHandlerWithOptions(opts ...SwaggerOption) (*SwaggerHandler, error) {
+func NewSwaggerMiddlewareWithOptions(opts ...SwaggerOption) (*SwaggerMiddleware, error) {
 	cfg := swaggerOptions{path: "/docs/*"}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&cfg)
 		}
 	}
-	return &SwaggerHandler{config: cfg.config, path: cfg.path}, nil
+	return &SwaggerMiddleware{config: cfg.config, path: cfg.path}, nil
 }
 
-func (h *SwaggerHandler) Handle(r fiber.Router) {
+func (h *SwaggerMiddleware) Handle(r fiber.Router) {
 	r.Get(h.path, swagger.HandlerDefault)
 }

@@ -24,7 +24,8 @@ func Module() di.Node {
 		di.Provide(NewTracerProvider),
 		di.Provide(NewMetricExporter),
 		di.Provide(NewMeterProvider),
-		di.Provide(AttachTelemetryToObservables, di.Params(``, ``, ``, ``, di.Group(ObservablesGroupName))),
+		di.Provide(NewRuntimeMetrics, Layer("runtime")),
+		di.Provide(NewAttachedObservables, di.Params(``, ``, ``, ``, di.Group(ObservablesGroupName))),
 
 		// fx options
 		fx.WithLogger(NewEventLogger),

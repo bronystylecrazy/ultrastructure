@@ -1,10 +1,11 @@
 package database
 
 import (
+	"context"
 	"embed"
 	"io/fs"
+	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -12,37 +13,53 @@ import (
 
 var defaultMigrationPath = "migrations"
 
-type migrationSource struct {
+type Migration struct {
 	FS    *embed.FS
 	Paths []string
+
+	config Config
+	db     *gorm.DB
+	logger *zap.Logger
 }
 
-// UseMigrations registers migration files in the DI container.
-func UseMigrations(migrationsDirFS *embed.FS, paths ...string) di.Node {
-	return di.Supply(migrationSource{
-		FS:    migrationsDirFS,
-		Paths: paths,
-	})
+func NewMigration(
+	fs *embed.FS,
+	config Config,
+	db *gorm.DB,
+	logger *zap.Logger,
+	paths ...string,
+) *Migration {
+	return &Migration{
+		FS:     fs,
+		config: config,
+		db:     db,
+		logger: logger,
+		Paths:  paths,
+	}
 }
 
-// RunMigrations runs goose migrations using the source registered by UseMigrations.
-func RunMigrations() di.Node {
-	return di.Invoke(runMigrations)
+func (m *Migration) getLogger() *zap.Logger {
+	if m.logger != nil {
+		return m.logger
+	}
+	return zap.L()
 }
 
-func runMigrations(config Config, db *gorm.DB, log *zap.Logger, source migrationSource) error {
-	if !config.Migrate || source.FS == nil {
-		log.Info("Skipping migrations")
+func (m *Migration) Run() error {
+	logger := m.getLogger()
+
+	if !m.config.Migrate || m.FS == nil {
+		logger.Info("Skipping migrations")
 		return nil
 	}
 
-	base := fs.FS(source.FS)
+	base := fs.FS(m.FS)
 	path := defaultMigrationPath
-	if len(source.Paths) > 0 && source.Paths[0] != "" {
-		path = source.Paths[0]
+	if len(m.Paths) > 0 && m.Paths[0] != "" {
+		path = m.Paths[0]
 	}
 
-	sub, err := fs.Sub(source.FS, path)
+	sub, err := fs.Sub(m.FS, path)
 	if err != nil {
 		return err
 	}
@@ -51,18 +68,27 @@ func runMigrations(config Config, db *gorm.DB, log *zap.Logger, source migration
 	path = "."
 	goose.SetBaseFS(base)
 
-	if err := goose.SetDialect(config.Dialect); err != nil {
-		log.Error("Failed to set dialect", zap.Error(err))
+	if err := goose.SetDialect(ParseDialect(m.config.Dialect)); err != nil {
+		logger.Error("Failed to set dialect", zap.Error(err))
 		return err
 	}
 
-	sqlDB, err := db.DB()
+	sqlDB, err := m.db.DB()
 	if err != nil {
-		log.Error("Failed to get database connection", zap.Error(err))
+		logger.Error("Failed to get database connection", zap.Error(err))
 		return err
 	}
 
-	goose.SetLogger(goose.NopLogger())
+	goose.SetLogger(NewGooseZapLogger(logger))
 
-	return goose.Up(sqlDB, path)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err = goose.UpContext(ctx, sqlDB, path)
+	if err != nil {
+		logger.Error("Failed to run migrations", zap.Error(err))
+		return err
+	}
+
+	return nil
 }

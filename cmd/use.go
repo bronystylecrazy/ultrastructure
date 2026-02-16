@@ -8,7 +8,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
-const defaultCommandName = "run"
+const defaultCommandName = "serve"
 
 var (
 	defaultNameMu     sync.RWMutex
@@ -23,6 +23,10 @@ func Use(name string, nodes ...di.Node) di.Node {
 	selected := currentCommandPathFromArgs(os.Args[1:])
 	want := normalizePath(name)
 	return di.If(matchesPathPrefix(selected, want), di.Options(di.ConvertAnys(nodes)...))
+}
+
+func Serve(nodes ...di.Node) di.Node {
+	return Use("serve", di.Options(di.ConvertAnys(nodes)...))
 }
 
 // WithDefaultName configures the default command used when no subcommand is provided.

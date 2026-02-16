@@ -1,14 +1,16 @@
 package us
 
+import "github.com/bronystylecrazy/ultrastructure/meta"
+
 const (
-	NilVersion   = "v0.0.0-development"
-	NilCommit    = "unknown"
-	NilBuildDate = "unknown"
+	NilVersion   = meta.NilVersion
+	NilCommit    = meta.NilCommit
+	NilBuildDate = meta.NilBuildDate
 )
 
 var (
-	Name        string = "Ultrastructure"
-	Description string = "a lightweight web framework for Go based on UberFX."
+	Name        string = meta.Name
+	Description string = meta.Description
 
 	Version   string = NilVersion
 	Commit    string = NilCommit
@@ -21,4 +23,16 @@ func IsProduction() bool {
 
 func IsDevelopment() bool {
 	return Version == NilVersion
+}
+
+func syncMeta() {
+	meta.Name = Name
+	meta.Description = Description
+	meta.Version = Version
+	meta.Commit = Commit
+	meta.BuildDate = BuildDate
+}
+
+func init() {
+	syncMeta()
 }

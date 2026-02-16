@@ -16,14 +16,27 @@ import (
 	"go.uber.org/zap"
 )
 
-func UseServerLogger() di.Node {
-	return di.Invoke(func(broker usmqtt.Broker, logger *slog.Logger) {
-		server, ok := broker.(*usmqtt.Server)
-		if !ok || server == nil {
-			return
-		}
-		server.Log = logger
-	})
+func Init() di.Node {
+	return di.Options(
+		di.Invoke(AppendHooks, di.Params(``, di.Group(HooksGroupName))),
+		di.Invoke(AppendListeners, di.Params(``, di.Group(ListenersGroupName))),
+		di.Invoke(RegisterBrokerLifecycle),
+		di.Invoke(SetupTopicMiddlewares),
+		di.Invoke(SetupTopicSubscribers),
+		di.Invoke(func(lc fx.Lifecycle, broker usmqtt.Broker, logger *slog.Logger) {
+			server, ok := broker.(*usmqtt.Server)
+			if !ok || server == nil {
+				return
+			}
+
+			server.Log = logger
+
+			lc.Append(fx.Hook{
+				OnStart: server.Start,
+				OnStop:  server.Stop,
+			})
+		}),
+	)
 }
 
 func UseAllowHook() di.Node {

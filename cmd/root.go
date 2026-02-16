@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +15,7 @@ type Root struct {
 
 func New(cmd *cobra.Command) *Root {
 	defaultCmd := &cobra.Command{
-		Use: us.Name,
+		Use: meta.Name,
 	}
 
 	if cmd != nil {

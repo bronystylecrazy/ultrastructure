@@ -42,10 +42,10 @@ type Server struct {
 	*mqtt.Server
 }
 
-func NewServer() (*Server, error) {
+func NewServer(logger *slog.Logger) (*Server, error) {
 	server := &Server{Server: mqtt.New(&mqtt.Options{
 		InlineClient: true,
-		Logger:       slog.New(slog.DiscardHandler),
+		Logger:       logger,
 	})}
 	return server, nil
 }

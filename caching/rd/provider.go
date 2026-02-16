@@ -1,6 +1,7 @@
 package rd
 
 import (
+	"log"
 	"sync"
 
 	"github.com/alicebob/miniredis/v2"
@@ -13,6 +14,7 @@ var (
 )
 
 func NewClient(cfg Config) (*redis.Client, error) {
+	log.Printf("creating Redis client with options: %+v", cfg.Options())
 	options := cfg.Options()
 	if cfg.InMemory {
 		addr, err := ensureInMemoryRedisAddr()

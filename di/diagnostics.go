@@ -20,7 +20,10 @@ import (
 
 // Diagnostics installs a minimal error hook.
 func Diagnostics() Node {
-	return diagnosticsNode{simple: true}
+	if os.Getenv("RUN_DEBUG") == "" {
+		return diagnosticsNode{simple: false}
+	}
+	return nil
 }
 
 type diagnosticsNode struct {

@@ -192,8 +192,6 @@ func (m *ManagedPubSub) Stop(context.Context) error {
 	for _, item := range items {
 		err = multierr.Append(err, m.sub.Unsubscribe(item.filter, item.id))
 	}
-
-	m.log.Debug("mqtt subscriptions cleaned", zap.Int("count", len(items)))
 	return err
 }
 

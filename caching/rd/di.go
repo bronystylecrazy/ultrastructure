@@ -1,8 +1,6 @@
 package rd
 
 import (
-	redis "github.com/redis/go-redis/v9"
-
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
@@ -12,50 +10,41 @@ func Module(extends ...di.Node) di.Node {
 			"us/caching/redis",
 			di.Config[Config]("caching.redis"),
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
-			di.Provide(NewClient),
+			di.Provide(NewClient, interfaces()...),
 			di.Options(di.ConvertAnys(extends)...),
 		),
 	)
 }
 
-func UseInterfaces() di.Node {
-	return di.Provide(
-		func(c *redis.Client) *redis.Client {
-			return c
-		},
-		AsRedisClientInterfaces()...,
-	)
-}
-
-func AsRedisClientInterfaces() []any {
+func interfaces() []any {
 	return []any{
-		di.As[ACLManager](),
-		di.As[BitMapManager](),
-		di.As[ClusterManager](),
-		di.As[GenericManager](),
-		di.As[GeoManager](),
-		di.As[HashManager](),
-		di.As[HyperLogLogManager](),
-		di.As[ListManager](),
-		di.As[ProbabilisticManager](),
-		di.As[PubSubManager](),
-		di.As[ScriptingManager](),
-		di.As[SearchManager](),
-		di.As[SetManager](),
-		di.As[SortedSetManager](),
-		di.As[StringManager](),
-		di.As[StreamManager](),
-		di.As[TimeseriesManager](),
-		di.As[JSONManager](),
-		di.As[VectorSetManager](),
-		di.As[HookAdder](),
-		di.As[Watcher](),
-		di.As[Processor](),
-		di.As[Subscriber](),
-		di.As[Closer](),
-		di.As[PoolStatser](),
-		di.As[Commander](),
-		di.As[RedisManager](),
-		di.As[RedisClient](),
+		di.AsSelf[ACLManager](),
+		di.AsSelf[BitMapManager](),
+		di.AsSelf[ClusterManager](),
+		di.AsSelf[GenericManager](),
+		di.AsSelf[GeoManager](),
+		di.AsSelf[HashManager](),
+		di.AsSelf[HyperLogLogManager](),
+		di.AsSelf[ListManager](),
+		di.AsSelf[ProbabilisticManager](),
+		di.AsSelf[PubSubManager](),
+		di.AsSelf[ScriptingManager](),
+		di.AsSelf[SearchManager](),
+		di.AsSelf[SetManager](),
+		di.AsSelf[SortedSetManager](),
+		di.AsSelf[StringManager](),
+		di.AsSelf[StreamManager](),
+		di.AsSelf[TimeseriesManager](),
+		di.AsSelf[JSONManager](),
+		di.AsSelf[VectorSetManager](),
+		di.AsSelf[HookAdder](),
+		di.AsSelf[Watcher](),
+		di.AsSelf[Processor](),
+		di.AsSelf[Subscriber](),
+		di.AsSelf[Closer](),
+		di.AsSelf[PoolStatser](),
+		di.AsSelf[Commander](),
+		di.AsSelf[RedisManager](),
+		di.AsSelf[RedisClient](),
 	}
 }

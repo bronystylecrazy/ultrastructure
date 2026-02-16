@@ -16,35 +16,27 @@ func Module(extends ...di.Node) di.Node {
 			"us/storage/s3",
 			di.Config[Config]("storage.s3"),
 			di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+			di.Provide(otelaws.NewMiddlewares, otel.Layer(otelaws.ScopeName)),
 			di.Provide(NewAWSConfig),
 			di.Provide(NewS3Client, di.Params(``, ``, di.Group(AppendersGroupName))),
+			di.Provide(
+				func(c *Client) *s3.Client {
+					return c.S3
+				},
+				interfaces()...,
+			),
+			di.Provide(
+				func(c *Client) *s3.PresignClient {
+					return c.Presign
+				},
+				di.AsSelf[Presigner](),
+			),
 			di.Options(di.ConvertAnys(extends)...),
 		),
 	)
 }
 
-func UseOtel() di.Node {
-	return di.Provide(otelaws.NewMiddlewares, otel.Layer(otelaws.ScopeName))
-}
-
-func UseInterfaces() di.Node {
-	return di.Options(
-		di.Provide(
-			func(c *Client) *s3.Client {
-				return c.S3
-			},
-			AsS3ClientInterfaces()...,
-		),
-		di.Provide(
-			func(c *Client) *s3.PresignClient {
-				return c.Presign
-			},
-			di.AsSelf[Presigner](),
-		),
-	)
-}
-
-func AsS3ClientInterfaces() []any {
+func interfaces() []any {
 	return []any{
 		di.AsSelf[S3Manager](),
 		di.AsSelf[Uploader](),

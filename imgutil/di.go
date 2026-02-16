@@ -225,7 +225,7 @@ func (s *Service) GenerateThumbHash(ctx context.Context, fileHeader *multipart.F
 
 func Module(extends ...di.Node) di.Node {
 	return di.Module(
-		"us/imgutil",
+		"us.imgutil",
 		di.Provide(NewService, di.As[ThumbHasher](), di.Self(), otel.Layer("thumbhash")),
 		di.Options(di.ConvertAnys(extends)...),
 	)

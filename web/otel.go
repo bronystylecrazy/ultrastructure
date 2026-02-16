@@ -33,7 +33,7 @@ func NewOtelMiddleware(config otel.Config, lp *otel.LoggerProvider) *OtelMiddlew
 }
 
 func (h *OtelMiddleware) Handle(r fiber.Router) {
-	r.Use(h.provideObserver)
+	r.Use(h.WrapObserver)
 	r.Use(fiberzap.New(fiberzap.Config{
 		Logger: h.Obs.Logger,
 		FieldsFunc: func(c fiber.Ctx) []zap.Field {
@@ -42,7 +42,7 @@ func (h *OtelMiddleware) Handle(r fiber.Router) {
 	}))
 }
 
-func (h *OtelMiddleware) provideObserver(c fiber.Ctx) error {
+func (h *OtelMiddleware) WrapObserver(c fiber.Ctx) error {
 	startedAt := time.Now()
 	ctx, span := h.Obs.Start(c.Context(), fmt.Sprintf("%s %s", c.Method(), c.Path()))
 	defer span.End()

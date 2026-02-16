@@ -3,7 +3,7 @@ package otel
 import (
 	"strings"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/fx/fxevent"
@@ -42,7 +42,7 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 
 func NewBaseLogger(cfg Config) (*zap.Logger, error) {
 	level := parseLogLevel(cfg.LogLevel)
-	if !us.IsProduction() {
+	if !meta.IsProduction() {
 		zapConfig := zap.NewDevelopmentConfig()
 		zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -56,7 +56,7 @@ func NewBaseLogger(cfg Config) (*zap.Logger, error) {
 }
 
 func NewEventLogger(log *zap.Logger) fxevent.Logger {
-	if us.IsProduction() {
+	if meta.IsProduction() {
 		return fxevent.NopLogger
 	}
 	return &fxevent.ZapLogger{Logger: log}

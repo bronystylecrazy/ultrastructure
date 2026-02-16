@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -17,7 +17,7 @@ func NewResource(ctx context.Context, config Config) (*resource.Resource, error)
 		environment = strings.TrimSpace(config.ResourceAttrs["deployment.environment"])
 	}
 	if environment == "" {
-		if us.IsProduction() {
+		if meta.IsProduction() {
 			environment = "production"
 		} else {
 			environment = "development"

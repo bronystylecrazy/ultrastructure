@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -35,10 +35,10 @@ func (s *VersionCommand) Run(cmd *cobra.Command, args []string) error {
 	_, err := fmt.Fprintf(
 		out,
 		"%s\n  Version   %s\n  Commit    %s\n  BuildDate %s\n",
-		us.Name,
-		us.Version,
-		us.Commit,
-		us.BuildDate,
+		meta.Name,
+		meta.Version,
+		meta.Commit,
+		meta.BuildDate,
 	)
 	return err
 }

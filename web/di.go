@@ -4,42 +4,51 @@ import (
 	"embed"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/otel"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
-func RunFiberApp() di.Node {
+func IgnoreAutoGroupHandlers() di.Option {
+	return di.AutoGroupIgnoreType[Handler](HandlersGroupName)
+}
+
+func Init() di.Node {
 	return di.Options(
+		di.Invoke(func(router fiber.Router, otelMiddleware *OtelMiddleware) {
+			otelMiddleware.Handle(router)
+		}, di.Params(di.Optional(), di.Optional())),
+		di.Invoke(func(router fiber.Router, swaggerMiddleware *SwaggerMiddleware) {
+			if swaggerMiddleware == nil {
+				return
+			}
+			swaggerMiddleware.Handle(router)
+		}, di.Params(di.Optional(), di.Optional())),
+		di.Invoke(func(router fiber.Router, spaMiddleware *SpaMiddleware) {
+			if spaMiddleware == nil {
+				return
+			}
+			spaMiddleware.Handle(router)
+		}, di.Params(di.Optional(), di.Optional())),
 		di.Invoke(SetupHandlers),
 		di.Invoke(RegisterFiberApp),
 	)
 }
 
-func UseOtel() di.Node {
-	return di.Options(
-		di.Provide(NewOtelMiddleware, otel.Layer("web.http"), Priority(Earliest)),
-	)
-}
-
 func UseSwagger(opts ...SwaggerOption) di.Node {
-	return di.Options(
-		di.Provide(func(config Config) (*SwaggerHandler, error) {
-			base := []SwaggerOption{
-				WithSwaggerConfig(config),
-			}
-			return NewSwaggerHandlerWithOptions(append(base, opts...)...)
-		}),
-	)
+	return di.Provide(func(config Config) (*SwaggerMiddleware, error) {
+		base := []SwaggerOption{
+			WithSwaggerConfig(config),
+		}
+		return NewSwaggerMiddlewareWithOptions(append(base, opts...)...)
+	}, IgnoreAutoGroupHandlers())
 }
 
 func UseSpa(opts ...SpaOption) di.Node {
-	return di.Options(
-		di.Provide(func(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error) {
-			base := []SpaOption{
-				WithSpaAssets(assets),
-				WithSpaLogger(log),
-			}
-			return NewSpaMiddlewareWithOptions(append(base, opts...)...)
-		}, di.Params(di.Optional()), Priority(Latest)),
-	)
+	return di.Provide(func(assets *embed.FS, log *zap.Logger) (*SpaMiddleware, error) {
+		base := []SpaOption{
+			WithSpaAssets(assets),
+			WithSpaLogger(log),
+		}
+		return NewSpaMiddlewareWithOptions(append(base, opts...)...)
+	}, IgnoreAutoGroupHandlers(), di.Params(di.Optional()), Priority(Latest))
 }

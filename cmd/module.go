@@ -20,12 +20,12 @@ type registerParams struct {
 
 // Module wires root command creation and auto-registration for all Commander implementations.
 func Module(extends ...di.Node) di.Node {
-	return di.Module(
-		"us/cmd",
+	return di.Options(
 		di.AutoGroup[Commander](CommandersGroupName),
-		di.Provide(New, di.Params(di.Optional())),
-		di.Invoke(RegisterCommands),
-		di.Options(di.ConvertAnys(extends)...),
+		di.Module("us.cmd",
+			di.Provide(New, di.Params(di.Optional())),
+			di.Options(di.ConvertAnys(extends)...),
+		),
 	)
 }
 

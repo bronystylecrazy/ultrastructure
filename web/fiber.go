@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/dustin/go-humanize"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
@@ -69,7 +69,7 @@ func NewFiberApp(config FiberConfig) *fiber.App {
 
 func NewFiberAppWithOptions(config FiberConfig, opts ...FiberAppOption) *fiber.App {
 	options := fiberAppOptions{
-		name: us.Name,
+		name: meta.Name,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -102,7 +102,7 @@ func NewFiberAppWithOptions(config FiberConfig, opts ...FiberAppOption) *fiber.A
 }
 
 func buildAppName(name string) string {
-	return fmt.Sprintf("%s (%s %s %s)", name, us.Version, us.Commit, us.BuildDate)
+	return fmt.Sprintf("%s (%s %s %s)", name, meta.Version, meta.Commit, meta.BuildDate)
 }
 
 func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {

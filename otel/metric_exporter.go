@@ -22,10 +22,11 @@ func httpMetricCompression(value string) otlpmetrichttp.Compression {
 }
 
 func NewMetricExporter(ctx context.Context, config Config) (sdkmetric.Exporter, error) {
+	otlpCfg := config.otlpForMetrics()
+	printExporterConfig("metrics", config.Enabled, config.Metrics.Exporter, otlpCfg)
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Metrics.Exporter), "none") {
 		return &noopMetricExporter{}, nil
 	}
-	otlpCfg := config.otlpForMetrics()
 	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
 		endpoint, path := otlpCfg.EndpointForHTTP()
 		tlsCfg, err := otlpCfg.TLS.Load()

@@ -245,6 +245,10 @@ func collectNodes(items []any) []Node {
 		switch v := it.(type) {
 		case nil:
 			continue
+		case []Node:
+			out = append(out, collectNodes(ConvertAnys(v))...)
+		case []any:
+			out = append(out, collectNodes(v)...)
 		case Node:
 			out = append(out, v)
 		case configOption:

@@ -40,7 +40,7 @@ func Nop() Telemetry {
 	}
 }
 
-func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterProvider, config Config, observables ...Observable) Attached {
+func NewAttachedObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterProvider, config Config, observables ...Observable) Attached {
 	defaultMetricAttrs := DefaultMetricAttributes(config)
 	for _, observable := range observables {
 		layerName := "service"
@@ -59,8 +59,6 @@ func AttachTelemetryToObservables(logger *zap.Logger, tp *TracerProvider, mp *Me
 		obs.initDefaultMetricOptions()
 		observable.apply(obs)
 	}
-
-	logger.Debug("auto injected telemetry to observables", zap.Int("count", len(observables)))
 
 	return Attached{
 		Logger:         logger,

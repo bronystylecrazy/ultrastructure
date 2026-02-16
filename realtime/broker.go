@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	us "github.com/bronystylecrazy/ultrastructure"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	"github.com/google/uuid"
 )
@@ -13,7 +13,7 @@ import (
 const BrokerModeEmbedded = "embedded"
 const BrokerModeExternal = "external"
 
-func NewBroker(cfg Config) (usmqtt.Broker, error) {
+func NewBroker(cfg Config, embedServer *usmqtt.Server) (usmqtt.Broker, error) {
 	mode := strings.ToLower(strings.TrimSpace(cfg.Broker.Mode))
 	if mode == "" {
 		mode = BrokerModeEmbedded
@@ -21,7 +21,7 @@ func NewBroker(cfg Config) (usmqtt.Broker, error) {
 
 	switch mode {
 	case BrokerModeEmbedded:
-		return usmqtt.NewServer()
+		return embedServer, nil
 	case BrokerModeExternal:
 		tlsCfg, err := cfg.Broker.TLS.Load()
 		if err != nil {
@@ -50,7 +50,7 @@ func NewBroker(cfg Config) (usmqtt.Broker, error) {
 var invalidClientIDRunes = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 func defaultExternalClientID() string {
-	base := strings.TrimSpace(us.Name)
+	base := strings.TrimSpace(meta.Name)
 	if base == "" {
 		base = "ultrastructure"
 	}
