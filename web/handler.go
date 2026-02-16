@@ -10,7 +10,7 @@ import (
 )
 
 type Handler interface {
-	Handle(r fiber.Router)
+	Handle(r Router)
 }
 
 type setupHandlersIn struct {
@@ -27,8 +27,11 @@ func SetupHandlers(in setupHandlersIn) {
 		return resolvePriority(ordered[i]) < resolvePriority(ordered[j])
 	})
 
+	// Create router wrapper for fluent API
+	router := NewRouter(in.App)
+
 	for _, handler := range ordered {
-		handler.Handle(in.App)
+		handler.Handle(router)
 	}
 
 	logger := in.Attached.Logger

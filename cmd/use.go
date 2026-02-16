@@ -25,7 +25,9 @@ func Use(name string, nodes ...di.Node) di.Node {
 	return di.If(matchesPathPrefix(selected, want), di.Options(di.ConvertAnys(nodes)...))
 }
 
-func Serve(nodes ...di.Node) di.Node {
+// Serve is simply an alias for Use("serve", ...)
+// This is the default command that is run when no command is provided.
+func Run(nodes ...di.Node) di.Node {
 	return Use("serve", di.Options(di.ConvertAnys(nodes)...))
 }
 

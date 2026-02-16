@@ -23,7 +23,7 @@ func main() {
 		web.UseSpa(web.WithSpaAssets(&assets)),
 		database.UseMigrations(&migrations),
 		cmd.UseBasicCommands(),
-		cmd.Serve(
+		cmd.Run(
 			realtime.UseAllowHook(),
 			realtime.UseTCPListener(),
 			realtime.Init(),

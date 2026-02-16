@@ -3,6 +3,7 @@ package web
 import "time"
 
 type Config struct {
+	Name   string       `mapstructure:"name" default:"Ultrastructure API"`
 	Server ServerConfig `mapstructure:"server"`
 	Listen ListenConfig `mapstructure:"listen"`
 	TLS    TLSConfig    `mapstructure:"tls"`

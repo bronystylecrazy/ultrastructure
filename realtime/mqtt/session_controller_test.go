@@ -3,13 +3,14 @@ package mqtt_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 )
 
 func TestServerDisconnectClient(t *testing.T) {
-	srv, err := usmqtt.NewServer()
+	srv, err := usmqtt.NewServer(slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

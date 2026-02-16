@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ type testPayload struct {
 }
 
 func TestMqttServerPublishSubscribeRoundtrip(t *testing.T) {
-	server, err := usmqtt.NewServer()
+	server, err := usmqtt.NewServer(slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
