@@ -70,10 +70,14 @@ type MetadataRegistry struct {
 	routes map[string]*RouteMetadata // "METHOD:path" -> metadata
 }
 
-// Global registry instance
-var globalRegistry = &MetadataRegistry{
-	routes: make(map[string]*RouteMetadata),
+func newMetadataRegistry() *MetadataRegistry {
+	return &MetadataRegistry{
+		routes: make(map[string]*RouteMetadata),
+	}
 }
+
+// Global registry instance
+var globalRegistry = newMetadataRegistry()
 
 // GetGlobalRegistry returns the global metadata registry
 func GetGlobalRegistry() *MetadataRegistry {

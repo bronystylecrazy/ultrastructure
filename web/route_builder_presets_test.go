@@ -160,6 +160,76 @@ func TestRouteBuilder_ApplyComposesRouteOptions(t *testing.T) {
 	}
 }
 
+func TestRouteBuilder_ApplyComposesMetadataRouteOptions(t *testing.T) {
+	GetGlobalRegistry().Clear()
+
+	app := fiber.New()
+	router := NewRouter(app)
+	router.Get("/apply-meta", func(c fiber.Ctx) error { return c.SendStatus(200) }).
+		Apply(
+			Name("GetApplyMeta"),
+			Tag("System"),
+			Tags("Users"),
+			Summary("Get apply metadata"),
+			Description("Demonstrates Name/Tag/Summary/Description route options"),
+		)
+
+	meta := GetGlobalRegistry().GetRoute("GET", "/apply-meta")
+	if meta == nil {
+		t.Fatalf("expected route metadata")
+	}
+	if meta.OperationID != "GetApplyMeta" {
+		t.Fatalf("expected operationId GetApplyMeta, got %q", meta.OperationID)
+	}
+	if meta.Summary != "Get apply metadata" {
+		t.Fatalf("expected summary to be set, got %q", meta.Summary)
+	}
+	if meta.Description != "Demonstrates Name/Tag/Summary/Description route options" {
+		t.Fatalf("expected description to be set, got %q", meta.Description)
+	}
+	if len(meta.Tags) != 2 || meta.Tags[0] != "System" || meta.Tags[1] != "Users" {
+		t.Fatalf("expected tags [System Users], got %v", meta.Tags)
+	}
+}
+
+func TestRouteBuilder_NameWithTagPrefix(t *testing.T) {
+	GetGlobalRegistry().Clear()
+
+	app := fiber.New()
+	router := NewRouter(app)
+	router.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).
+		Tags("Users").
+		NameWithTagPrefix("GetUserByID")
+
+	meta := GetGlobalRegistry().GetRoute("GET", "/users/:id")
+	if meta == nil {
+		t.Fatalf("expected route metadata")
+	}
+	if meta.OperationID != "Users_GetUserByID" {
+		t.Fatalf("expected operationId Users_GetUserByID, got %q", meta.OperationID)
+	}
+}
+
+func TestRouteBuilder_ApplyNameWithTagPrefix(t *testing.T) {
+	GetGlobalRegistry().Clear()
+
+	app := fiber.New()
+	router := NewRouter(app)
+	router.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).
+		Apply(
+			Tag("Users"),
+			NameWithTagPrefix("GetUserByID"),
+		)
+
+	meta := GetGlobalRegistry().GetRoute("GET", "/users/:id")
+	if meta == nil {
+		t.Fatalf("expected route metadata")
+	}
+	if meta.OperationID != "Users_GetUserByID" {
+		t.Fatalf("expected operationId Users_GetUserByID, got %q", meta.OperationID)
+	}
+}
+
 func TestRouteBuilder_HeaderAndCookieExtStoreParameterExtensions(t *testing.T) {
 	GetGlobalRegistry().Clear()
 

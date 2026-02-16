@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"reflect"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,10 @@ import (
 type AutoSwaggerMiddleware struct {
 	config          Config
 	path            string
+	registry        *MetadataRegistry
+	modelRegistry   *SwaggerModelRegistry
+	extraModels     []reflect.Type
+	hook            HookFunc
 	securitySchemes map[string]interface{}
 	defaultSecurity []SecurityRequirement
 	tagDescriptions map[string]string
@@ -27,7 +32,7 @@ type AutoSwaggerMiddleware struct {
 func UseAutoSwagger(opts ...SwaggerOption) di.Node {
 	return di.Options(
 		// Provide the auto-swagger middleware
-		di.Provide(func(config Config, logger *zap.Logger) (*AutoSwaggerMiddleware, error) {
+		di.Provide(func(config Config, logger *zap.Logger, registries *RegistryContainer, modelRegistry *SwaggerModelRegistry) (*AutoSwaggerMiddleware, error) {
 			cfg := swaggerOptions{path: "/docs"}
 			for _, opt := range opts {
 				if opt != nil {
@@ -35,9 +40,18 @@ func UseAutoSwagger(opts ...SwaggerOption) di.Node {
 				}
 			}
 
+			var metadataRegistry *MetadataRegistry
+			if registries != nil {
+				metadataRegistry = registries.Metadata
+			}
+
 			return &AutoSwaggerMiddleware{
 				config:          config,
 				path:            cfg.path,
+				registry:        metadataRegistry,
+				modelRegistry:   modelRegistry,
+				extraModels:     append([]reflect.Type(nil), cfg.extraModels...),
+				hook:            cfg.hook,
 				securitySchemes: cfg.securitySchemes,
 				defaultSecurity: append([]SecurityRequirement(nil), cfg.defaultSecurity...),
 				tagDescriptions: cfg.tagDescriptions,
@@ -49,22 +63,42 @@ func UseAutoSwagger(opts ...SwaggerOption) di.Node {
 		}, IgnoreAutoGroupHandlers()),
 
 		// Hook into app lifecycle to inspect routes after all handlers are registered
-		di.Invoke(func(app *fiber.App, middleware *AutoSwaggerMiddleware, logger *zap.Logger) {
+		di.Invoke(func(
+			app *fiber.App,
+			middleware *AutoSwaggerMiddleware,
+			logger *zap.Logger,
+			customizers []SwaggerCustomizer,
+			preCustomizers []SwaggerPreRun,
+			postCustomizers []SwaggerPostRun,
+		) {
 			// This runs after all handlers are set up
 			// We inspect the Fiber app's routes and build the OpenAPI spec
 			routes := InspectFiberRoutes(app, logger)
-			middleware.spec = BuildOpenAPISpecWithOptions(routes, middleware.config, OpenAPIBuildOptions{
+			extraModels := combineExtraModelTypes(
+				middleware.modelRegistry,
+				middleware.extraModels,
+			)
+			hooks := composeSwaggerCustomizeHooks(middleware.hook, customizers, preCustomizers, postCustomizers)
+			middleware.spec = buildOpenAPISpecWithRegistryAndOptions(routes, middleware.config, middleware.registry, OpenAPIBuildOptions{
 				SecuritySchemes: middleware.securitySchemes,
 				DefaultSecurity: middleware.defaultSecurity,
 				TagDescriptions: middleware.tagDescriptions,
 				TermsOfService:  middleware.termsOfService,
 				Contact:         middleware.contact,
 				License:         middleware.license,
+				PreHook:         hooks.pre,
+				Hook:            hooks.run,
+				PostHook:        hooks.post,
+				ExtraModels:     extraModels,
 			})
 
 			// Debug: log all registered metadata routes
 			logger.Debug("metadata registry routes")
-			for key, meta := range GetGlobalRegistry().AllRoutes() {
+			activeRegistry := middleware.registry
+			if activeRegistry == nil {
+				activeRegistry = GetGlobalRegistry()
+			}
+			for key, meta := range activeRegistry.AllRoutes() {
 				logger.Debug("registered metadata",
 					zap.String("key", key),
 					zap.String("operationId", meta.OperationID),
@@ -80,8 +114,103 @@ func UseAutoSwagger(opts ...SwaggerOption) di.Node {
 
 			// Register the swagger endpoints
 			middleware.Handle(app)
-		}, Priority(Latest)),
+		}, Priority(Latest), di.Params(
+			``,
+			``,
+			``,
+			di.Group(SwaggerCustomizersGroupName),
+			di.Group(SwaggerPreCustomizersGroupName),
+			di.Group(SwaggerPostCustomizersGroupName),
+		)),
 	)
+}
+
+func combineExtraModelTypes(registry *SwaggerModelRegistry, optionModels []reflect.Type) []reflect.Type {
+	combined := make([]reflect.Type, 0, len(optionModels))
+	seen := make(map[reflect.Type]struct{}, len(optionModels))
+
+	if registry != nil {
+		for _, t := range registry.Types() {
+			normalized := normalizeSwaggerModelType(t)
+			if normalized == nil {
+				continue
+			}
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			combined = append(combined, normalized)
+		}
+	}
+
+	for _, t := range optionModels {
+		normalized := normalizeSwaggerModelType(t)
+		if normalized == nil {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		combined = append(combined, normalized)
+	}
+
+	return combined
+}
+
+type swaggerCustomizeHooks struct {
+	pre  HookFunc
+	run  HookFunc
+	post HookFunc
+}
+
+func composeSwaggerCustomizeHooks(
+	base HookFunc,
+	customizers []SwaggerCustomizer,
+	preCustomizers []SwaggerPreRun,
+	postCustomizers []SwaggerPostRun,
+) swaggerCustomizeHooks {
+	var out swaggerCustomizeHooks
+
+	if len(preCustomizers) > 0 {
+		out.pre = func(ctx *SwaggerContext) {
+			for _, customizer := range preCustomizers {
+				if customizer == nil {
+					continue
+				}
+				customizer.PreCustomizeSwagger(ctx)
+			}
+		}
+	}
+
+	if len(postCustomizers) > 0 {
+		out.post = func(ctx *SwaggerContext) {
+			for _, customizer := range postCustomizers {
+				if customizer == nil {
+					continue
+				}
+				customizer.PostCustomizeSwagger(ctx)
+			}
+		}
+	}
+
+	if base == nil && len(customizers) == 0 {
+		return out
+	}
+
+	out.run = func(ctx *SwaggerContext) {
+		if base != nil {
+			base(ctx)
+		}
+		for _, customizer := range customizers {
+			if customizer == nil {
+				continue
+			}
+			customizer.CustomizeSwagger(ctx)
+		}
+	}
+
+	return out
 }
 
 // Handle registers the auto-swagger routes

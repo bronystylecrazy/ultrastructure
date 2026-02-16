@@ -1,6 +1,7 @@
 package web
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/Flussen/swagger-fiber-v3"
@@ -27,6 +28,8 @@ type swaggerOptions struct {
 	termsOfService  string
 	contact         *AutoSwaggerContact
 	license         *AutoSwaggerLicense
+	hook            HookFunc
+	extraModels     []reflect.Type
 }
 
 func WithSwaggerConfig(config Config) SwaggerOption {
@@ -139,6 +142,57 @@ func WithAPILicense(name, url string) SwaggerOption {
 		o.license = &AutoSwaggerLicense{
 			Name: name,
 			URL:  strings.TrimSpace(url),
+		}
+	}
+}
+
+// WithSwaggerCustomize registers a per-UseAutoSwagger metadata hook.
+// This hook can mutate operation metadata before OpenAPI operation generation.
+func WithSwaggerCustomize(hook HookFunc) SwaggerOption {
+	return func(o *swaggerOptions) {
+		if hook == nil {
+			return
+		}
+		if o.hook == nil {
+			o.hook = hook
+			return
+		}
+		prev := o.hook
+		o.hook = func(ctx *SwaggerContext) {
+			prev(ctx)
+			hook(ctx)
+		}
+	}
+}
+
+// RegisterHook sets the autoswagger hook inside UseAutoSwagger(...).
+// Usage: UseAutoSwagger(RegisterHook(func(ctx *SwaggerContext) { ... }))
+// When called with no arguments it is a no-op option.
+func RegisterHook(hook ...HookFunc) SwaggerOption {
+	if len(hook) == 0 || hook[0] == nil {
+		return func(o *swaggerOptions) {}
+	}
+	return WithSwaggerCustomize(hook[0])
+}
+
+// WithSwaggerExtraModels registers additional model types to always include
+// in OpenAPI components.schemas generation.
+func WithSwaggerExtraModels(models ...any) SwaggerOption {
+	return func(o *swaggerOptions) {
+		if len(models) == 0 {
+			return
+		}
+
+		if o.extraModels == nil {
+			o.extraModels = make([]reflect.Type, 0, len(models))
+		}
+
+		for _, model := range models {
+			t := normalizeSwaggerModelInput(model)
+			if t == nil {
+				continue
+			}
+			o.extraModels = append(o.extraModels, t)
 		}
 	}
 }

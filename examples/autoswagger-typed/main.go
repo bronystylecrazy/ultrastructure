@@ -1,6 +1,8 @@
 package main
 
 import (
+	"reflect"
+	"strings"
 	"time"
 
 	us "github.com/bronystylecrazy/ultrastructure"
@@ -156,10 +158,60 @@ func (h *UserHandler) Health(c fiber.Ctx) error {
 	})
 }
 
+type CustomTest struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+type UsersError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// UsersSwaggerCustomizer demonstrates DI-provided per-route swagger customization.
+type UsersSwaggerCustomizer struct{}
+
+func NewUsersSwaggerCustomizer() *UsersSwaggerCustomizer {
+	return &UsersSwaggerCustomizer{}
+}
+
+func (c *UsersSwaggerCustomizer) CustomizeSwagger(ctx *web.SwaggerContext) {
+	if ctx.Route.Path != "/users/:id" || strings.ToUpper(ctx.Route.Method) != "GET" {
+		return
+	}
+
+	if ctx.Metadata.Responses == nil {
+		ctx.Metadata.Responses = map[int]web.ResponseMetadata{}
+	}
+
+	ctx.Metadata.Responses[400] = web.ResponseMetadata{
+		Type:        reflect.TypeOf(UsersError{}),
+		ContentType: "application/json",
+		Description: "Users endpoint error",
+	}
+	ctx.Metadata.Responses[500] = web.ResponseMetadata{
+		Type:        reflect.TypeOf(UsersError{}),
+		ContentType: "application/json",
+		Description: "Users endpoint internal error",
+	}
+
+	// Add a named schema from the customizer context.
+	if ctx.Models != nil {
+		ctx.Models.AddNamed("CustomTest", CustomTest{})
+	}
+}
+
 func main() {
 	us.New(
 		web.Init(),
 		di.Provide(NewUserHandler),
-		web.UseAutoSwagger(),
+		di.Provide(NewUsersSwaggerCustomizer),
+		web.UseAutoSwagger(
+			web.WithSwaggerCustomize(func(ctx *web.SwaggerContext) {
+				// Option hook and DI customizer are composable.
+				if len(ctx.Metadata.Tags) > 0 && ctx.Metadata.OperationID != "" {
+					ctx.Metadata.OperationID = ctx.Metadata.Tags[0] + "__" + ctx.Metadata.OperationID
+				}
+			}),
+		),
 	).Run()
 }

@@ -3,6 +3,7 @@ package web
 import (
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,6 +60,61 @@ type paginatedUser struct {
 type patchUserBody struct {
 	Name  *string `json:"name,omitempty"`
 	Email *string `json:"email,omitempty"`
+}
+
+type extraSwaggerModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type overriddenErrorModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type phasedSwaggerCustomizer struct {
+	events *[]string
+}
+
+func (c phasedSwaggerCustomizer) PreCustomizeSwagger(ctx *SwaggerContext) {
+	if c.events != nil {
+		*c.events = append(*c.events, "pre")
+	}
+}
+
+func (c phasedSwaggerCustomizer) CustomizeSwagger(ctx *SwaggerContext) {
+	if c.events != nil {
+		*c.events = append(*c.events, "run")
+	}
+}
+
+func (c phasedSwaggerCustomizer) PostCustomizeSwagger(ctx *SwaggerContext) {
+	if c.events != nil {
+		*c.events = append(*c.events, "post")
+	}
+	if ctx != nil {
+		ctx.SetOperationField("x-post-ran", true)
+	}
+}
+
+type preOnlySwaggerCustomizer struct {
+	events *[]string
+}
+
+func (c preOnlySwaggerCustomizer) PreCustomizeSwagger(ctx *SwaggerContext) {
+	if c.events != nil {
+		*c.events = append(*c.events, "pre-only")
+	}
+}
+
+type postOnlySwaggerCustomizer struct {
+	events *[]string
+}
+
+func (c postOnlySwaggerCustomizer) PostCustomizeSwagger(ctx *SwaggerContext) {
+	if c.events != nil {
+		*c.events = append(*c.events, "post-only")
+	}
 }
 
 func TestBuildOpenAPISpec_OmitsFallbackDescriptionWithoutMetadata(t *testing.T) {
@@ -262,6 +318,82 @@ func TestBuildOpenAPISpec_QueryTypeRulesReplaceAndSkip(t *testing.T) {
 	schema := params[0]["schema"].(map[string]interface{})
 	if schema["type"] != "integer" {
 		t.Fatalf("expected age schema type integer via replace rule, got %v", schema["type"])
+	}
+}
+
+func TestBuildOpenAPISpecWithOptions_IncludesExtraModelsInComponents(t *testing.T) {
+	GetGlobalRegistry().Clear()
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/health"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		ExtraModels: []reflect.Type{
+			reflect.TypeOf(extraSwaggerModel{}),
+		},
+	})
+
+	if spec.Components == nil {
+		t.Fatalf("expected components to be initialized")
+	}
+
+	if _, ok := spec.Components.Schemas["extraSwaggerModel"]; !ok {
+		t.Fatalf("expected extraSwaggerModel schema to be included in components")
+	}
+}
+
+func TestWithSwaggerExtraModels_NormalizesAndSkipsInvalid(t *testing.T) {
+	cfg := swaggerOptions{}
+
+	WithSwaggerExtraModels(
+		extraSwaggerModel{},
+		reflect.TypeOf(&patchUserBody{}),
+		nil,
+	)(&cfg)
+
+	if len(cfg.extraModels) != 2 {
+		t.Fatalf("expected 2 extra models, got %d", len(cfg.extraModels))
+	}
+	if cfg.extraModels[0] != reflect.TypeOf(extraSwaggerModel{}) {
+		t.Fatalf("unexpected first type: %v", cfg.extraModels[0])
+	}
+	if cfg.extraModels[1] != reflect.TypeOf(patchUserBody{}) {
+		t.Fatalf("expected pointer type to be normalized to value type, got %v", cfg.extraModels[1])
+	}
+}
+
+func TestCombineExtraModelTypes_Deduplicates(t *testing.T) {
+	registry := NewSwaggerModelRegistry()
+	registry.Add(extraSwaggerModel{})
+
+	combined := combineExtraModelTypes(registry, []reflect.Type{
+		reflect.TypeOf(extraSwaggerModel{}),
+		reflect.TypeOf(patchUserBody{}),
+	})
+
+	if len(combined) != 2 {
+		t.Fatalf("expected 2 unique models, got %d", len(combined))
+	}
+}
+
+func TestSwaggerModelRegistry_AddNamed_SupportsAnonymousStructModel(t *testing.T) {
+	ClearSchemaNameRegistry()
+	defer ClearSchemaNameRegistry()
+	GetGlobalRegistry().Clear()
+
+	models := NewSwaggerModelRegistry()
+	models.AddNamed("InlineUser", struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}{})
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/health"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		ExtraModels: models.Types(),
+	})
+
+	if _, ok := spec.Components.Schemas["InlineUser"]; !ok {
+		t.Fatalf("expected InlineUser schema to be included")
 	}
 }
 
@@ -934,6 +1066,8 @@ func TestBuildOpenAPISpecWithOptions_AddsInfoMetadataAndTagDescriptions(t *testi
 }
 
 func TestBuildOpenAPISpec_GeneratesDeterministicOperationIDs(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
 	GetGlobalRegistry().Clear()
 
 	spec := BuildOpenAPISpec([]RouteInfo{
@@ -965,6 +1099,8 @@ func TestBuildOpenAPISpec_GeneratesDeterministicOperationIDs(t *testing.T) {
 }
 
 func TestBuildOpenAPISpec_OperationIDUniquenessWithSuffix(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
 	GetGlobalRegistry().Clear()
 	GetGlobalRegistry().RegisterRoute("GET", "/users", &RouteMetadata{OperationID: "customID"})
 	GetGlobalRegistry().RegisterRoute("GET", "/admins", &RouteMetadata{OperationID: "customID"})
@@ -982,5 +1118,460 @@ func TestBuildOpenAPISpec_OperationIDUniquenessWithSuffix(t *testing.T) {
 	}
 	if getAdmins["operationId"] != "customID_2" {
 		t.Fatalf("expected suffixed operationId, got %v", getAdmins["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpec_GlobalOperationIDTagPrefixForExplicitName(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
+	ClearOperationIDTagPrefix()
+	defer ClearOperationIDTagPrefix()
+	GetGlobalRegistry().Clear()
+
+	RegisterOperationIDTagPrefix("_")
+	GetGlobalRegistry().RegisterRoute("GET", "/users/:id", &RouteMetadata{
+		OperationID: "GetUserByID",
+		Tags:        []string{"Users"},
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users_GetUserByID" {
+		t.Fatalf("expected prefixed operationId, got %v", getUser["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpec_GlobalOperationIDTagPrefixForGeneratedName(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
+	ClearOperationIDTagPrefix()
+	defer ClearOperationIDTagPrefix()
+	GetGlobalRegistry().Clear()
+
+	RegisterOperationIDTagPrefix("_")
+	GetGlobalRegistry().RegisterRoute("GET", "/users/:id", &RouteMetadata{
+		Tags: []string{"Users"},
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users_getUserById" {
+		t.Fatalf("expected prefixed generated operationId, got %v", getUser["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpec_OperationIDHookCanCustomizeFromContext(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
+	ClearOperationIDTagPrefix()
+	defer ClearOperationIDTagPrefix()
+	GetGlobalRegistry().Clear()
+
+	RegisterOperationIDHook(func(ctx OperationIDHookContext) string {
+		tag := "General"
+		if len(ctx.Tags) > 0 {
+			tag = ctx.Tags[0]
+		}
+		return tag + "__" + ctx.OperationID
+	})
+
+	GetGlobalRegistry().RegisterRoute("GET", "/users/:id", &RouteMetadata{
+		OperationID: "GetUserByID",
+		Tags:        []string{"Users"},
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users__GetUserByID" {
+		t.Fatalf("expected hook-customized operationId, got %v", getUser["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpec_OperationIDHookAppliesToGeneratedIDs(t *testing.T) {
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
+	ClearOperationIDTagPrefix()
+	defer ClearOperationIDTagPrefix()
+	GetGlobalRegistry().Clear()
+
+	RegisterOperationIDHook(func(ctx OperationIDHookContext) string {
+		if ctx.Generated {
+			return "Auto_" + ctx.OperationID
+		}
+		return ctx.OperationID
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Auto_getUserById" {
+		t.Fatalf("expected generated operationId to be customized by hook, got %v", getUser["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpec_RegisterHookCanMutateAnyMetadata(t *testing.T) {
+	ClearGlobalHook()
+	defer ClearGlobalHook()
+	ClearOperationIDHook()
+	defer ClearOperationIDHook()
+	ClearOperationIDTagPrefix()
+	defer ClearOperationIDTagPrefix()
+	GetGlobalRegistry().Clear()
+
+	RegisterGlobalHook(func(ctx *SwaggerContext) {
+		if ctx.Route.Path != "/users/:id" || strings.ToUpper(ctx.Route.Method) != "GET" {
+			return
+		}
+		ctx.Metadata.OperationID = "Users_GetUserByID"
+		ctx.Metadata.Tags = []string{"Users"}
+		ctx.Metadata.Summary = "Hooked summary"
+		ctx.Metadata.Description = "Hooked description"
+		ctx.Metadata.Parameters = append(ctx.Metadata.Parameters, ParameterMetadata{
+			Name:     "X-Tenant-ID",
+			In:       "header",
+			Type:     reflect.TypeOf(""),
+			Required: true,
+		})
+		ctx.Metadata.Responses = map[int]ResponseMetadata{
+			200: {
+				Type:        reflect.TypeOf(map[string]string{}),
+				ContentType: "application/json",
+				Description: "Hooked OK",
+			},
+		}
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users_GetUserByID" {
+		t.Fatalf("expected hook operationId, got %v", getUser["operationId"])
+	}
+	if getUser["summary"] != "Hooked summary" {
+		t.Fatalf("expected hook summary, got %v", getUser["summary"])
+	}
+	if getUser["description"] != "Hooked description" {
+		t.Fatalf("expected hook description, got %v", getUser["description"])
+	}
+
+	params := getUser["parameters"].([]map[string]interface{})
+	foundHeader := false
+	for _, p := range params {
+		if p["in"] == "header" && p["name"] == "X-Tenant-ID" {
+			foundHeader = true
+			break
+		}
+	}
+	if !foundHeader {
+		t.Fatalf("expected header parameter injected by hook")
+	}
+
+	responses := getUser["responses"].(map[string]interface{})
+	resp200 := responses["200"].(map[string]interface{})
+	if resp200["description"] != "Hooked OK" {
+		t.Fatalf("expected custom 200 description from hook, got %v", resp200["description"])
+	}
+}
+
+func TestBuildOpenAPISpecWithOptions_HookOverridesGlobalRegisterHook(t *testing.T) {
+	ClearGlobalHook()
+	defer ClearGlobalHook()
+	GetGlobalRegistry().Clear()
+
+	RegisterGlobalHook(func(ctx *SwaggerContext) {
+		ctx.Metadata.OperationID = "FromGlobalHook"
+	})
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: func(ctx *SwaggerContext) {
+			ctx.Metadata.OperationID = "FromOptionHook"
+			ctx.Metadata.Tags = []string{"Users"}
+		},
+	})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "FromOptionHook" {
+		t.Fatalf("expected option hook to override global hook, got %v", getUser["operationId"])
+	}
+}
+
+func TestBuildOpenAPISpecWithOptions_HookCanAddNamedModelViaContext(t *testing.T) {
+	ClearGlobalHook()
+	defer ClearGlobalHook()
+	ClearSchemaNameRegistry()
+	defer ClearSchemaNameRegistry()
+	GetGlobalRegistry().Clear()
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: func(ctx *SwaggerContext) {
+			ctx.Metadata.Tags = []string{"Users"}
+			ctx.Metadata.OperationID = "GetUserByID"
+			ctx.Metadata.OperationID = ctx.Metadata.Tags[0] + "__" + ctx.Metadata.OperationID
+			if ctx.Models != nil {
+				ctx.Models.AddNamed("CustomTest", struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				}{})
+			}
+		},
+	})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users__GetUserByID" {
+		t.Fatalf("expected operationId to include hook prefix behavior, got %v", getUser["operationId"])
+	}
+
+	if spec.Components == nil || spec.Components.Schemas == nil {
+		t.Fatalf("expected components.schemas to be present")
+	}
+	if _, ok := spec.Components.Schemas["CustomTest"]; !ok {
+		t.Fatalf("expected CustomTest schema to be added from hook context models")
+	}
+}
+
+func TestBuildOpenAPISpecWithOptions_HookCanOverrideErrorResponseSchemaByName(t *testing.T) {
+	ClearGlobalHook()
+	defer ClearGlobalHook()
+	ClearSchemaNameRegistry()
+	defer ClearSchemaNameRegistry()
+	GetGlobalRegistry().Clear()
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: func(ctx *SwaggerContext) {
+			if ctx.Models != nil {
+				ctx.Models.AddNamed("ErrorResponse", overriddenErrorModel{})
+			}
+		},
+	})
+
+	schema, ok := spec.Components.Schemas["ErrorResponse"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected ErrorResponse schema map")
+	}
+
+	props, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected ErrorResponse properties map")
+	}
+	if _, hasID := props["id"]; !hasID {
+		t.Fatalf("expected overridden ErrorResponse to contain id field")
+	}
+	if _, hasError := props["error"]; hasError {
+		t.Fatalf("expected default error field to be replaced by overridden model")
+	}
+}
+
+func TestWithSwaggerCustomize_ComposesMultipleHooks(t *testing.T) {
+	GetGlobalRegistry().Clear()
+
+	cfg := swaggerOptions{}
+	WithSwaggerCustomize(func(ctx *SwaggerContext) {
+		ctx.Metadata.Tags = []string{"Users"}
+	})(&cfg)
+	WithSwaggerCustomize(func(ctx *SwaggerContext) {
+		ctx.Metadata.OperationID = ctx.Metadata.Tags[0] + "__GetUserByID"
+	})(&cfg)
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: cfg.hook,
+	})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["operationId"] != "Users__GetUserByID" {
+		t.Fatalf("expected chained hooks to run in order, got %v", getUser["operationId"])
+	}
+}
+
+func TestComposeSwaggerCustomizeHook_AppliesDICustomizersAfterBaseHook(t *testing.T) {
+	ClearSchemaNameRegistry()
+	defer ClearSchemaNameRegistry()
+
+	ctx := &SwaggerContext{
+		Route: RouteInfo{Method: "GET", Path: "/users/:id"},
+		Metadata: &RouteMetadata{
+			Tags:        []string{"Users"},
+			OperationID: "GetUserByID",
+		},
+		Models: NewSwaggerModelRegistry(),
+	}
+
+	base := func(ctx *SwaggerContext) {
+		ctx.Metadata.OperationID = "Base_" + ctx.Metadata.OperationID
+	}
+	customizers := []SwaggerCustomizer{
+		SwaggerCustomizeFunc(func(ctx *SwaggerContext) {
+			ctx.Metadata.OperationID = ctx.Metadata.Tags[0] + "__" + ctx.Metadata.OperationID
+		}),
+		SwaggerCustomizeFunc(func(ctx *SwaggerContext) {
+			ctx.Models.AddNamed("CustomTest", struct {
+				ID string `json:"id"`
+			}{})
+		}),
+	}
+
+	hooks := composeSwaggerCustomizeHooks(base, customizers, nil, nil)
+	if hooks.run == nil {
+		t.Fatalf("expected composed hook")
+	}
+	hooks.run(ctx)
+
+	if ctx.Metadata.OperationID != "Users__Base_GetUserByID" {
+		t.Fatalf("unexpected operationId: %s", ctx.Metadata.OperationID)
+	}
+	types := ctx.Models.Types()
+	if len(types) != 1 {
+		t.Fatalf("expected one model from customizer, got %d", len(types))
+	}
+	if name, ok := getRegisteredSchemaName(types[0]); !ok || name != "CustomTest" {
+		t.Fatalf("expected renamed model CustomTest, got %q (ok=%v)", name, ok)
+	}
+}
+
+func TestComposeSwaggerCustomizeHooks_RunsPreAndPostWhenImplemented(t *testing.T) {
+	events := []string{}
+	customizers := []SwaggerCustomizer{
+		phasedSwaggerCustomizer{events: &events},
+	}
+
+	preCustomizers := []SwaggerPreRun{customizers[0].(SwaggerPreRun)}
+	postCustomizers := []SwaggerPostRun{customizers[0].(SwaggerPostRun)}
+	hooks := composeSwaggerCustomizeHooks(nil, customizers, preCustomizers, postCustomizers)
+	ctx := &SwaggerContext{
+		Operation: map[string]interface{}{},
+	}
+	if hooks.pre != nil {
+		hooks.pre(ctx)
+	}
+	if hooks.run != nil {
+		hooks.run(ctx)
+	}
+	if hooks.post != nil {
+		hooks.post(ctx)
+	}
+
+	if len(events) != 3 || events[0] != "pre" || events[1] != "run" || events[2] != "post" {
+		t.Fatalf("unexpected phase order: %v", events)
+	}
+	if ctx.Operation["x-post-ran"] != true {
+		t.Fatalf("expected post phase to mutate operation")
+	}
+}
+
+func TestComposeSwaggerCustomizeHooks_SupportsPreOnlyAndPostOnlyInterfaces(t *testing.T) {
+	events := []string{}
+	preCustomizers := []SwaggerPreRun{
+		preOnlySwaggerCustomizer{events: &events},
+	}
+	postCustomizers := []SwaggerPostRun{
+		postOnlySwaggerCustomizer{events: &events},
+	}
+
+	hooks := composeSwaggerCustomizeHooks(nil, nil, preCustomizers, postCustomizers)
+	ctx := &SwaggerContext{}
+	if hooks.pre != nil {
+		hooks.pre(ctx)
+	}
+	if hooks.post != nil {
+		hooks.post(ctx)
+	}
+
+	if len(events) != 2 || events[0] != "pre-only" || events[1] != "post-only" {
+		t.Fatalf("unexpected pre/post-only order: %v", events)
+	}
+}
+
+func TestSwaggerContext_HelpersAndOperationSpecCustomization(t *testing.T) {
+	ClearSchemaNameRegistry()
+	defer ClearSchemaNameRegistry()
+	GetGlobalRegistry().Clear()
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/users/:id"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: func(ctx *SwaggerContext) {
+			if ctx.Method != "GET" {
+				t.Fatalf("expected method GET, got %s", ctx.Method)
+			}
+			if ctx.Path != "/users/{id}" {
+				t.Fatalf("expected normalized path /users/{id}, got %s", ctx.Path)
+			}
+
+			ctx.SetSummary("Custom summary")
+			ctx.SetDescription("Custom description")
+			ctx.SetOperationID("Users_GetUserByID")
+			ctx.AddParameter(ParameterMetadata{
+				Name:     "X-Request-ID",
+				In:       "header",
+				Type:     reflect.TypeOf(""),
+				Required: true,
+			})
+			ctx.SetRequestBody(struct {
+				Name string `json:"name"`
+			}{}, true)
+			ctx.SetResponse(418, struct {
+				Message string `json:"message"`
+			}{}, "Teapot")
+			ctx.SetOperationField("deprecated", true)
+			ctx.Spec.Info.Version = "2.0.0"
+		},
+	})
+
+	getUser := spec.Paths["/users/{id}"]["get"].(map[string]interface{})
+	if getUser["summary"] != "Custom summary" {
+		t.Fatalf("unexpected summary: %v", getUser["summary"])
+	}
+	if getUser["description"] != "Custom description" {
+		t.Fatalf("unexpected description: %v", getUser["description"])
+	}
+	if getUser["operationId"] != "Users_GetUserByID" {
+		t.Fatalf("unexpected operationId: %v", getUser["operationId"])
+	}
+	if getUser["deprecated"] != true {
+		t.Fatalf("expected deprecated=true on operation")
+	}
+	if _, ok := getUser["requestBody"]; !ok {
+		t.Fatalf("expected requestBody from context helper")
+	}
+
+	params := getUser["parameters"].([]map[string]interface{})
+	foundHeader := false
+	for _, p := range params {
+		if p["in"] == "header" && p["name"] == "X-Request-ID" {
+			foundHeader = true
+			break
+		}
+	}
+	if !foundHeader {
+		t.Fatalf("expected header parameter from context helper")
+	}
+
+	responses := getUser["responses"].(map[string]interface{})
+	if _, ok := responses["418"]; !ok {
+		t.Fatalf("expected 418 response from context helper")
+	}
+
+	if spec.Info.Version != "2.0.0" {
+		t.Fatalf("expected spec version override from context, got %s", spec.Info.Version)
 	}
 }

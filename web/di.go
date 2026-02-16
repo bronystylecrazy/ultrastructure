@@ -14,6 +14,7 @@ func IgnoreAutoGroupHandlers() di.Option {
 
 func Init() di.Node {
 	return di.Options(
+		di.AutoGroup[Handler](HandlersGroupName),
 		di.Invoke(func(router fiber.Router, otelMiddleware *OtelMiddleware) {
 			otelMiddleware.Handle(router)
 		}, di.Params(di.Optional(), di.Optional())),

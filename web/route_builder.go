@@ -2,16 +2,20 @@ package web
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 )
+
+var nonWordOperationIDChars = regexp.MustCompile(`[^a-zA-Z0-9_]+`)
 
 // RouteBuilder provides fluent API for route metadata configuration
 type RouteBuilder struct {
 	method   string
 	path     string
 	router   fiber.Router
+	registry *MetadataRegistry
 	metadata *RouteMetadata
 }
 
@@ -19,7 +23,7 @@ type RouteBuilder struct {
 type RouteOption func(*RouteBuilder) *RouteBuilder
 
 // newRouteBuilder creates a new route builder
-func newRouteBuilder(method, path string, router fiber.Router, inheritedTags []string, handlers []fiber.Handler) *RouteBuilder {
+func newRouteBuilder(method, path string, router fiber.Router, registry *MetadataRegistry, inheritedTags []string, handlers []fiber.Handler) *RouteBuilder {
 	// Fiber v3 API signature: (path, handler, ...handlers)
 	// We need at least one handler
 	if len(handlers) == 0 {
@@ -53,6 +57,8 @@ func newRouteBuilder(method, path string, router fiber.Router, inheritedTags []s
 		router.Head(path, firstHandler, restHandlers...)
 	case "OPTIONS":
 		router.Options(path, firstHandler, restHandlers...)
+	case "ALL":
+		router.All(path, firstHandler, restHandlers...)
 	}
 
 	fullPath := resolveRegisteredPath(router, path)
@@ -65,6 +71,12 @@ func newRouteBuilder(method, path string, router fiber.Router, inheritedTags []s
 		method: strings.ToUpper(method),
 		path:   fullPath,
 		router: router,
+		registry: func() *MetadataRegistry {
+			if registry != nil {
+				return registry
+			}
+			return GetGlobalRegistry()
+		}(),
 		metadata: &RouteMetadata{
 			Tags:      tags,
 			Responses: make(map[int]ResponseMetadata),
@@ -113,12 +125,33 @@ func joinRoutePath(prefix, path string) string {
 
 // finalize registers the metadata in the global registry
 func (b *RouteBuilder) finalize() {
-	GetGlobalRegistry().RegisterRoute(b.method, b.path, b.metadata)
+	if b.registry == nil {
+		GetGlobalRegistry().RegisterRoute(b.method, b.path, b.metadata)
+		return
+	}
+	b.registry.RegisterRoute(b.method, b.path, b.metadata)
 }
 
 // Name sets the operation ID.
 func (b *RouteBuilder) Name(name string) *RouteBuilder {
 	b.metadata.OperationID = name
+	b.finalize()
+	return b
+}
+
+// NameWithTagPrefix sets operationId prefixed by first tag, e.g. Users_GetUserByID.
+// If no tag is available, falls back to plain Name behavior.
+func (b *RouteBuilder) NameWithTagPrefix(name string) *RouteBuilder {
+	prefix := ""
+	if len(b.metadata.Tags) > 0 {
+		prefix = sanitizeOperationIDPart(b.metadata.Tags[0])
+	}
+	name = sanitizeOperationIDPart(name)
+	if prefix == "" {
+		b.metadata.OperationID = name
+	} else {
+		b.metadata.OperationID = prefix + "_" + name
+	}
 	b.finalize()
 	return b
 }
@@ -587,6 +620,14 @@ func firstDescription(description ...string) string {
 		return ""
 	}
 	return description[0]
+}
+
+func sanitizeOperationIDPart(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	return nonWordOperationIDChars.ReplaceAllString(v, "_")
 }
 
 func (b *RouteBuilder) ensureResponseMaps() {

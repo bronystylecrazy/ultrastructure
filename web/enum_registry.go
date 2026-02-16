@@ -5,12 +5,18 @@ import (
 	"sync"
 )
 
-var enumRegistry = struct {
+type enumRegistryState struct {
 	mu     sync.RWMutex
 	values map[reflect.Type][]interface{}
-}{
-	values: make(map[reflect.Type][]interface{}),
 }
+
+func newEnumRegistryState() *enumRegistryState {
+	return &enumRegistryState{
+		values: make(map[reflect.Type][]interface{}),
+	}
+}
+
+var enumRegistry = newEnumRegistryState()
 
 // RegisterEnum registers enum values for a Go type so schemas can emit OpenAPI enum constraints.
 // Usage: RegisterEnum(StatusActive, StatusInactive)

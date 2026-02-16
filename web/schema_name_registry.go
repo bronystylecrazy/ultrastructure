@@ -6,33 +6,30 @@ import (
 	"sync"
 )
 
-var schemaNameRegistry = struct {
+type schemaNameRegistryState struct {
 	mu    sync.RWMutex
 	names map[reflect.Type]string
-}{
-	names: make(map[reflect.Type]string),
 }
+
+func newSchemaNameRegistryState() *schemaNameRegistryState {
+	return &schemaNameRegistryState{
+		names: make(map[reflect.Type]string),
+	}
+}
+
+var schemaNameRegistry = newSchemaNameRegistryState()
 
 // RegisterSchemaName overrides the OpenAPI component schema name for type T.
 // Usage: RegisterSchemaName[MyType]("User")
 func RegisterSchemaName[T any](name string) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return
-	}
-
 	var zero T
-	t := reflect.TypeOf(zero)
-	if t == nil {
-		return
-	}
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
+	registerSchemaNameForType(reflect.TypeOf(zero), name)
+}
 
-	schemaNameRegistry.mu.Lock()
-	defer schemaNameRegistry.mu.Unlock()
-	schemaNameRegistry.names[t] = name
+// RegisterSchemaNameForModel overrides the OpenAPI component schema name for a model value/type.
+// model can be a value, pointer, or reflect.Type.
+func RegisterSchemaNameForModel(model any, name string) {
+	registerSchemaNameForType(normalizeSwaggerModelInput(model), name)
 }
 
 // ClearSchemaNameRegistry removes all schema name overrides.
@@ -58,4 +55,20 @@ func getRegisteredSchemaName(t reflect.Type) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+func registerSchemaNameForType(t reflect.Type, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+
+	t = normalizeSwaggerModelType(t)
+	if t == nil {
+		return
+	}
+
+	schemaNameRegistry.mu.Lock()
+	defer schemaNameRegistry.mu.Unlock()
+	schemaNameRegistry.names[t] = name
 }

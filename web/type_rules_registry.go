@@ -5,14 +5,20 @@ import (
 	"sync"
 )
 
-var typeRulesRegistry = struct {
+type typeRulesRegistryState struct {
 	mu      sync.RWMutex
 	replace map[reflect.Type]reflect.Type
 	skipped map[reflect.Type]struct{}
-}{
-	replace: make(map[reflect.Type]reflect.Type),
-	skipped: make(map[reflect.Type]struct{}),
 }
+
+func newTypeRulesRegistryState() *typeRulesRegistryState {
+	return &typeRulesRegistryState{
+		replace: make(map[reflect.Type]reflect.Type),
+		skipped: make(map[reflect.Type]struct{}),
+	}
+}
+
+var typeRulesRegistry = newTypeRulesRegistryState()
 
 // ReplaceType maps a source type to another type for OpenAPI generation.
 // Example: ReplaceType[sql.NullInt64, int64]()

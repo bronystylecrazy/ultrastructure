@@ -2,6 +2,48 @@ package web
 
 import "reflect"
 
+// Name returns a RouteOption that sets operationId.
+func Name(name string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.Name(name)
+	}
+}
+
+// NameWithTagPrefix returns a RouteOption that sets operationId as <firstTag>_<name>.
+func NameWithTagPrefix(name string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.NameWithTagPrefix(name)
+	}
+}
+
+// Tag returns a RouteOption that adds one tag.
+func Tag(tag string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.Tags(tag)
+	}
+}
+
+// Tags returns a RouteOption that adds multiple tags.
+func Tags(tags ...string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.Tags(tags...)
+	}
+}
+
+// Summary returns a RouteOption that sets operation summary.
+func Summary(summary string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.Summary(summary)
+	}
+}
+
+// Description returns a RouteOption that sets operation description.
+func Description(description string) RouteOption {
+	return func(b *RouteBuilder) *RouteBuilder {
+		return b.Description(description)
+	}
+}
+
 // Body returns a RouteOption that sets the request body schema.
 func Body(requestType any) RouteOption {
 	return func(b *RouteBuilder) *RouteBuilder {

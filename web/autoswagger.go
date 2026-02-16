@@ -62,6 +62,10 @@ type OpenAPIBuildOptions struct {
 	TermsOfService  string
 	Contact         *AutoSwaggerContact
 	License         *AutoSwaggerLicense
+	PreHook         HookFunc
+	Hook            HookFunc
+	PostHook        HookFunc
+	ExtraModels     []reflect.Type
 }
 
 // RouteInfo contains metadata about a registered route
@@ -132,8 +136,21 @@ func BuildOpenAPISpecWithSecurity(routes []RouteInfo, config Config, securitySch
 	})
 }
 
+// BuildOpenAPISpecWithRegistry generates an OpenAPI spec using a specific metadata registry.
+func BuildOpenAPISpecWithRegistry(routes []RouteInfo, config Config, registry *MetadataRegistry) *AutoSwaggerSpec {
+	return buildOpenAPISpecWithRegistryAndOptions(routes, config, registry, OpenAPIBuildOptions{})
+}
+
 // BuildOpenAPISpecWithOptions generates an OpenAPI spec with extended metadata options.
 func BuildOpenAPISpecWithOptions(routes []RouteInfo, config Config, opts OpenAPIBuildOptions) *AutoSwaggerSpec {
+	return buildOpenAPISpecWithRegistryAndOptions(routes, config, GetGlobalRegistry(), opts)
+}
+
+func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, registry *MetadataRegistry, opts OpenAPIBuildOptions) *AutoSwaggerSpec {
+	if registry == nil {
+		registry = GetGlobalRegistry()
+	}
+
 	spec := &AutoSwaggerSpec{
 		OpenAPI: "3.0.0",
 		Info: AutoSwaggerInfo{
@@ -152,7 +169,14 @@ func BuildOpenAPISpecWithOptions(routes []RouteInfo, config Config, opts OpenAPI
 
 	// Create schema extractor for deep type analysis
 	extractor := NewSchemaExtractor()
-	registry := GetGlobalRegistry()
+	hookModels := NewSwaggerModelRegistry()
+	if len(opts.ExtraModels) > 0 {
+		initial := make([]any, 0, len(opts.ExtraModels))
+		for _, t := range opts.ExtraModels {
+			initial = append(initial, t)
+		}
+		hookModels.Add(initial...)
+	}
 	usedOperationIDs := make(map[string]struct{})
 
 	for _, route := range routes {
@@ -162,48 +186,101 @@ func BuildOpenAPISpecWithOptions(routes []RouteInfo, config Config, opts OpenAPI
 		}
 
 		method := strings.ToUpper(route.Method)
+		hasRequestBody := method == "POST" || method == "PUT" || method == "PATCH"
+		operation := map[string]interface{}{}
 
 		// Try to get metadata from registry
-		metadata := registry.GetRoute(method, route.Path)
+		metadata := cloneRouteMetadata(registry.GetRoute(method, route.Path))
+		runHook := opts.Hook
+		if runHook == nil {
+			runHook = getRegisteredHook()
+		}
 
-		hasRequestBody := method == "POST" || method == "PUT" || method == "PATCH"
+		ctx := &SwaggerContext{
+			Route:     route,
+			Method:    method,
+			Path:      openAPIPath,
+			Metadata:  metadata,
+			Models:    hookModels,
+			Spec:      spec,
+			Operation: operation,
+		}
 
-		// Create operation object
-		operation := map[string]interface{}{
-			"summary": generateSummaryFromMetadata(route, metadata),
+		if opts.PreHook != nil {
+			opts.PreHook(ctx)
+			metadata = ctx.Metadata
+		}
+		if runHook != nil {
+			if metadata == nil {
+				metadata = &RouteMetadata{}
+				ctx.Metadata = metadata
+			}
+			runHook(ctx)
+			metadata = ctx.Metadata
+		}
+		operationTags := extractOperationTags(route.Path, metadata)
+		if _, exists := operation["summary"]; !exists {
+			operation["summary"] = generateSummaryFromMetadata(route, metadata)
 		}
 
 		// Use metadata if available
+		var baseOperationID string
+		generatedOperationID := true
 		if metadata != nil {
 			if metadata.OperationID != "" {
-				operation["operationId"] = makeUniqueOperationID(metadata.OperationID, usedOperationIDs)
+				baseOperationID = metadata.OperationID
+				generatedOperationID = false
 			}
 			if metadata.Description != "" {
-				operation["description"] = metadata.Description
+				if _, exists := operation["description"]; exists {
+					// Keep explicit operation override from customize hooks.
+				} else {
+					operation["description"] = metadata.Description
+				}
 			}
-			if len(metadata.Tags) > 0 {
-				operation["tags"] = metadata.Tags
+			if len(operationTags) > 0 {
+				if _, exists := operation["tags"]; !exists {
+					operation["tags"] = operationTags
+				}
 			}
 			if metadata.Security != nil {
-				security := buildOperationSecurity(metadata.Security)
-				if len(security) == 0 {
-					// Explicitly empty operation security means "public route"
-					// and overrides any global/default requirements.
-					operation["security"] = []map[string][]string{}
-				} else {
-					operation["security"] = security
+				if _, exists := operation["security"]; !exists {
+					security := buildOperationSecurity(metadata.Security)
+					if len(security) == 0 {
+						// Explicitly empty operation security means "public route"
+						// and overrides any global/default requirements.
+						operation["security"] = []map[string][]string{}
+					} else {
+						operation["security"] = security
+					}
 				}
 			}
 		}
-		if _, hasOperationID := operation["operationId"]; !hasOperationID {
-			operation["operationId"] = makeUniqueOperationID(generateDeterministicOperationID(method, route.Path), usedOperationIDs)
+		if existingOperationID, ok := operation["operationId"].(string); ok && strings.TrimSpace(existingOperationID) != "" {
+			baseOperationID = existingOperationID
+			generatedOperationID = false
 		}
+		if strings.TrimSpace(baseOperationID) == "" {
+			baseOperationID = generateDeterministicOperationID(method, route.Path)
+			generatedOperationID = true
+		}
+		baseOperationID = applyGlobalOperationIDTagPrefix(baseOperationID, operationTags)
+		baseOperationID = applyRegisteredOperationIDHook(OperationIDHookContext{
+			Route:       route,
+			Metadata:    metadata,
+			Tags:        append([]string(nil), operationTags...),
+			OperationID: baseOperationID,
+			Generated:   generatedOperationID,
+		})
+		operation["operationId"] = makeUniqueOperationID(baseOperationID, usedOperationIDs)
 
-		// Generate responses using metadata if available
-		if metadata != nil && len(metadata.Responses) > 0 {
-			operation["responses"] = generateResponsesFromMetadata(metadata, extractor)
-		} else {
-			operation["responses"] = generateResponses(route, extractor)
+		// Generate responses using metadata if available.
+		if _, exists := operation["responses"]; !exists {
+			if metadata != nil && len(metadata.Responses) > 0 {
+				operation["responses"] = generateResponsesFromMetadata(metadata, extractor)
+			} else {
+				operation["responses"] = generateResponses(route, extractor)
+			}
 		}
 		if metadata != nil && metadata.Pagination != nil {
 			_, hasExplicit200 := metadata.Responses[200]
@@ -211,26 +288,35 @@ func BuildOpenAPISpecWithOptions(routes []RouteInfo, config Config, opts OpenAPI
 		}
 
 		// Add request body for methods that typically support bodies, or whenever metadata declares one.
-		if requestBody := buildRequestBody(metadata, hasRequestBody, extractor); requestBody != nil {
-			operation["requestBody"] = requestBody
-		}
-
-		// Add path/query/custom parameters
-		if params := extractParameters(route.Path, metadata); len(params) > 0 {
-			operation["parameters"] = params
-		}
-
-		// Add tags if not set by metadata
-		if _, hasCustomTags := operation["tags"]; !hasCustomTags {
-			if tags := extractTags(route.Path); len(tags) > 0 {
-				operation["tags"] = tags
+		if _, exists := operation["requestBody"]; !exists {
+			if requestBody := buildRequestBody(metadata, hasRequestBody, extractor); requestBody != nil {
+				operation["requestBody"] = requestBody
 			}
+		}
+
+		// Add path/query/custom parameters.
+		if _, exists := operation["parameters"]; !exists {
+			if params := extractParameters(route.Path, metadata); len(params) > 0 {
+				operation["parameters"] = params
+			}
+		}
+
+		// Add tags (from metadata or path fallback).
+		if len(operationTags) > 0 {
+			if _, exists := operation["tags"]; !exists {
+				operation["tags"] = operationTags
+			}
+		}
+		if opts.PostHook != nil {
+			opts.PostHook(ctx)
+			metadata = ctx.Metadata
 		}
 
 		spec.Paths[openAPIPath][strings.ToLower(route.Method)] = operation
 	}
 
-	// Add extracted schemas to components
+	// Add explicitly registered models (including hook-added models) and extracted schemas to components.
+	addExtraModelSchemas(extractor, hookModels.Types())
 	for name, schema := range extractor.GetSchemas() {
 		spec.Components.Schemas[name] = schema
 	}
@@ -250,6 +336,87 @@ func BuildOpenAPISpecWithOptions(routes []RouteInfo, config Config, opts OpenAPI
 	spec.Tags = buildSpecTags(spec.Paths, opts.TagDescriptions)
 
 	return spec
+}
+
+func addExtraModelSchemas(extractor *SchemaExtractor, modelTypes []reflect.Type) {
+	if extractor == nil || len(modelTypes) == 0 {
+		return
+	}
+
+	for _, t := range modelTypes {
+		normalized := normalizeSwaggerModelType(t)
+		if normalized == nil || isSkippedType(normalized) {
+			continue
+		}
+
+		name := extractor.getTypeName(normalized)
+		if name == "" {
+			extractor.ExtractSchemaRef(normalized)
+			continue
+		}
+
+		// Explicit extra models take precedence over already-generated schemas
+		// with the same component name (e.g. AddNamed("ErrorResponse", ...)).
+		extractor.schemas[name] = extractor.extractTypeSchema(normalized)
+	}
+}
+
+func cloneRouteMetadata(meta *RouteMetadata) *RouteMetadata {
+	if meta == nil {
+		return nil
+	}
+
+	cloned := *meta
+	if meta.Tags != nil {
+		cloned.Tags = append([]string{}, meta.Tags...)
+	}
+	if meta.Parameters != nil {
+		cloned.Parameters = append([]ParameterMetadata{}, meta.Parameters...)
+	}
+	if meta.Security != nil {
+		cloned.Security = append([]SecurityRequirement{}, meta.Security...)
+	}
+
+	if meta.RequestBody != nil {
+		req := *meta.RequestBody
+		req.ContentTypes = append([]string(nil), meta.RequestBody.ContentTypes...)
+		cloned.RequestBody = &req
+	}
+
+	if meta.Responses != nil {
+		cloned.Responses = make(map[int]ResponseMetadata, len(meta.Responses))
+		for code, resp := range meta.Responses {
+			respCopy := resp
+			if resp.Headers != nil {
+				respCopy.Headers = make(map[string]ResponseHeaderMetadata, len(resp.Headers))
+				for name, header := range resp.Headers {
+					respCopy.Headers[name] = header
+				}
+			}
+			cloned.Responses[code] = respCopy
+		}
+	}
+
+	if meta.Examples != nil {
+		cloned.Examples = make(map[int]interface{}, len(meta.Examples))
+		for code, example := range meta.Examples {
+			cloned.Examples[code] = example
+		}
+	}
+
+	if meta.Pagination != nil {
+		p := *meta.Pagination
+		cloned.Pagination = &p
+	}
+
+	return &cloned
+}
+
+func extractOperationTags(path string, metadata *RouteMetadata) []string {
+	if metadata != nil && len(metadata.Tags) > 0 {
+		return metadata.Tags
+	}
+	return extractTags(path)
 }
 
 // generateSummary creates a human-readable summary from route info
@@ -1059,6 +1226,27 @@ func makeUniqueOperationID(base string, used map[string]struct{}) string {
 			return candidate
 		}
 	}
+}
+
+func applyGlobalOperationIDTagPrefix(operationID string, tags []string) string {
+	enabled, sep := getOperationIDTagPrefixConfig()
+	if !enabled || operationID == "" || len(tags) == 0 {
+		return operationID
+	}
+
+	prefix := sanitizeOperationIDPart(tags[0])
+	if prefix == "" {
+		return operationID
+	}
+	if sep == "" {
+		sep = "_"
+	}
+
+	candidate := prefix + sep + operationID
+	if strings.HasPrefix(operationID, prefix+sep) {
+		return operationID
+	}
+	return candidate
 }
 
 func generateDeterministicOperationID(method, path string) string {
