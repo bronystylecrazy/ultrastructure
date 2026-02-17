@@ -1310,6 +1310,31 @@ func TestBuildOpenAPISpecWithOptions_HookOverridesGlobalRegisterHook(t *testing.
 	}
 }
 
+func TestBuildOpenAPISpec_SkipsDuplicateMethodPathRoutesWithoutOperationIDSuffix(t *testing.T) {
+	ClearGlobalHook()
+	defer ClearGlobalHook()
+	GetGlobalRegistry().Clear()
+
+	GetGlobalRegistry().RegisterRoute("GET", "/health", &RouteMetadata{
+		OperationID: "HealthCheck",
+		Summary:     "Health check",
+	})
+
+	spec := BuildOpenAPISpecWithOptions([]RouteInfo{
+		{Method: "GET", Path: "/health"},
+		{Method: "GET", Path: "/health"},
+	}, Config{Name: "Test API"}, OpenAPIBuildOptions{
+		Hook: func(ctx *SwaggerContext) {
+			ctx.Metadata.OperationID = "custom_" + ctx.Metadata.OperationID
+		},
+	})
+
+	getOp := spec.Paths["/health"]["get"].(map[string]interface{})
+	if getOp["operationId"] != "custom_HealthCheck" {
+		t.Fatalf("expected no operationId suffix for duplicate method/path, got %v", getOp["operationId"])
+	}
+}
+
 func TestBuildOpenAPISpecWithOptions_HookCanAddNamedModelViaContext(t *testing.T) {
 	ClearGlobalHook()
 	defer ClearGlobalHook()
@@ -1573,5 +1598,55 @@ func TestSwaggerContext_HelpersAndOperationSpecCustomization(t *testing.T) {
 
 	if spec.Info.Version != "2.0.0" {
 		t.Fatalf("expected spec version override from context, got %s", spec.Info.Version)
+	}
+}
+
+func TestSwaggerContext_PrimaryModelPackageHelpers(t *testing.T) {
+	ctx := &SwaggerContext{
+		Metadata: &RouteMetadata{
+			RequestBody: &RequestBodyMetadata{
+				Type: reflect.TypeOf(searchUsersBody{}),
+			},
+			Responses: map[int]ResponseMetadata{
+				200: {Type: reflect.TypeOf(paginatedUser{})},
+			},
+		},
+	}
+
+	primary := ctx.RouteModelType()
+	if primary == nil {
+		t.Fatalf("expected primary model type")
+	}
+	if primary.Name() != "searchUsersBody" {
+		t.Fatalf("expected request body type priority, got %s", primary.Name())
+	}
+
+	pkgPath := ctx.RouteModelPackagePath()
+	if pkgPath == "" {
+		t.Fatalf("expected package path for primary model")
+	}
+
+	pkgName := ctx.RouteModelPackageName()
+	if pkgName == "" {
+		t.Fatalf("expected package name for primary model")
+	}
+}
+
+func TestSwaggerContext_PrimaryModelTypeFallsBackToLowestResponseCode(t *testing.T) {
+	ctx := &SwaggerContext{
+		Metadata: &RouteMetadata{
+			Responses: map[int]ResponseMetadata{
+				500: {Type: reflect.TypeOf(queryExtensions{})},
+				200: {Type: reflect.TypeOf(paginatedUser{})},
+			},
+		},
+	}
+
+	primary := ctx.RouteModelType()
+	if primary == nil {
+		t.Fatalf("expected primary model type")
+	}
+	if primary.Name() != "paginatedUser" {
+		t.Fatalf("expected lowest-status response model paginatedUser, got %s", primary.Name())
 	}
 }

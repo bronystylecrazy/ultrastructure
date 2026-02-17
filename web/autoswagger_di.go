@@ -31,6 +31,10 @@ type AutoSwaggerMiddleware struct {
 // This inspects all registered routes at runtime and generates an OpenAPI spec
 func UseAutoSwagger(opts ...SwaggerOption) di.Node {
 	return di.Options(
+		di.AutoGroup[SwaggerCustomizer](SwaggerCustomizersGroupName),
+		di.AutoGroup[SwaggerPreRun](SwaggerPreCustomizersGroupName),
+		di.AutoGroup[SwaggerPostRun](SwaggerPostCustomizersGroupName),
+
 		// Provide the auto-swagger middleware
 		di.Provide(func(config Config, logger *zap.Logger, registries *RegistryContainer, modelRegistry *SwaggerModelRegistry) (*AutoSwaggerMiddleware, error) {
 			cfg := swaggerOptions{path: "/docs"}

@@ -1,6 +1,10 @@
 package web
 
 import (
+	"path"
+	"reflect"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -86,6 +90,66 @@ func (c *SwaggerContext) SetOperationField(key string, value any) {
 		c.Operation = make(map[string]interface{})
 	}
 	c.Operation[key] = value
+}
+
+// RouteModelType returns a stable "primary" model type for this route context.
+// Priority: request body type, then lowest-status response type, then query type,
+// then parameter types, then pagination item type.
+func (c *SwaggerContext) RouteModelType() reflect.Type {
+	if c == nil || c.Metadata == nil {
+		return nil
+	}
+
+	if c.Metadata.RequestBody != nil && c.Metadata.RequestBody.Type != nil {
+		return normalizeSwaggerModelType(c.Metadata.RequestBody.Type)
+	}
+
+	if len(c.Metadata.Responses) > 0 {
+		codes := make([]int, 0, len(c.Metadata.Responses))
+		for code := range c.Metadata.Responses {
+			codes = append(codes, code)
+		}
+		sort.Ints(codes)
+		for _, code := range codes {
+			if t := normalizeSwaggerModelType(c.Metadata.Responses[code].Type); t != nil {
+				return t
+			}
+		}
+	}
+
+	if c.Metadata.QueryType != nil {
+		return normalizeSwaggerModelType(c.Metadata.QueryType)
+	}
+
+	for _, p := range c.Metadata.Parameters {
+		if t := normalizeSwaggerModelType(p.Type); t != nil {
+			return t
+		}
+	}
+
+	if c.Metadata.Pagination != nil && c.Metadata.Pagination.ItemType != nil {
+		return normalizeSwaggerModelType(c.Metadata.Pagination.ItemType)
+	}
+
+	return nil
+}
+
+// RouteModelPackagePath returns the import path of the primary model type.
+func (c *SwaggerContext) RouteModelPackagePath() string {
+	t := c.RouteModelType()
+	if t == nil {
+		return ""
+	}
+	return strings.TrimSpace(t.PkgPath())
+}
+
+// RouteModelPackageName returns the last path segment of the primary model package.
+func (c *SwaggerContext) RouteModelPackageName() string {
+	pkgPath := c.RouteModelPackagePath()
+	if pkgPath == "" {
+		return ""
+	}
+	return path.Base(pkgPath)
 }
 
 type hookRegistryState struct {

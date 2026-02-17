@@ -3,23 +3,29 @@ package web
 import (
 	"fmt"
 	"mime/multipart"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
 
 // SchemaExtractor extracts OpenAPI schemas from Go types using reflection
 type SchemaExtractor struct {
-	schemas map[string]interface{}
+	schemas      map[string]interface{}
+	typeNames    map[reflect.Type]string
+	claimedNames map[string]reflect.Type
 }
 
 // NewSchemaExtractor creates a new schema extractor
 func NewSchemaExtractor() *SchemaExtractor {
 	return &SchemaExtractor{
-		schemas: make(map[string]interface{}),
+		schemas:      make(map[string]interface{}),
+		typeNames:    make(map[reflect.Type]string),
+		claimedNames: make(map[string]reflect.Type),
 	}
 }
 
@@ -357,21 +363,57 @@ func (e *SchemaExtractor) getTypeName(t reflect.Type) string {
 		return registeredName
 	}
 
-	// Use the type name if available
-	if t.Name() != "" {
-		if t.PkgPath() != "" {
-			// Return just the type name without package path
-			return t.Name()
-		}
-		return t.Name()
+	// Use the type name if available.
+	if t.Name() == "" {
+		return ""
 	}
 
-	return ""
+	if existing, ok := e.typeNames[t]; ok {
+		return existing
+	}
+
+	base := t.Name()
+	candidate := base
+	if owner, exists := e.claimedNames[candidate]; exists && owner != t {
+		pkgSegment := sanitizePackageSegment(t.PkgPath())
+		if pkgSegment == "" {
+			pkgSegment = "pkg"
+		}
+		candidate = pkgSegment + "_" + base
+		suffix := 2
+		for {
+			if owner, exists := e.claimedNames[candidate]; !exists || owner == t {
+				break
+			}
+			candidate = fmt.Sprintf("%s_%d", pkgSegment+"_"+base, suffix)
+			suffix++
+		}
+	}
+
+	e.typeNames[t] = candidate
+	e.claimedNames[candidate] = t
+	return candidate
 }
 
 // GetSchemas returns all registered schemas
 func (e *SchemaExtractor) GetSchemas() map[string]interface{} {
 	return e.schemas
+}
+
+func sanitizePackageSegment(pkgPath string) string {
+	segment := path.Base(strings.TrimSpace(pkgPath))
+	if segment == "" || segment == "." || segment == "/" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range segment {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('_')
+	}
+	return strings.Trim(b.String(), "_")
 }
 
 func isSchemaFieldRequired(field reflect.StructField, omitempty bool) bool {

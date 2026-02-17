@@ -186,6 +186,12 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 		}
 
 		method := strings.ToUpper(route.Method)
+		methodKey := strings.ToLower(route.Method)
+		// Fiber can expose duplicate route entries for the same path+method.
+		// OpenAPI supports a single operation per path+method, so keep the first one.
+		if _, exists := spec.Paths[openAPIPath][methodKey]; exists {
+			continue
+		}
 		hasRequestBody := method == "POST" || method == "PUT" || method == "PATCH"
 		operation := map[string]interface{}{}
 
@@ -312,7 +318,7 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 			metadata = ctx.Metadata
 		}
 
-		spec.Paths[openAPIPath][strings.ToLower(route.Method)] = operation
+		spec.Paths[openAPIPath][methodKey] = operation
 	}
 
 	// Add explicitly registered models (including hook-added models) and extracted schemas to components.

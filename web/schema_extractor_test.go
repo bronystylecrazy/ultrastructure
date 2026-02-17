@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/bronystylecrazy/ultrastructure/web/testtypes/pkgalpha"
+	"github.com/bronystylecrazy/ultrastructure/web/testtypes/pkgbeta"
 )
 
 type patchUserSchema struct {
@@ -364,6 +367,30 @@ func TestSchemaExtractor_UsesRegisteredSchemaName(t *testing.T) {
 	schemas := extractor.GetSchemas()
 	if _, ok := schemas["UserModel"]; !ok {
 		t.Fatalf("expected component schema key UserModel to be registered")
+	}
+}
+
+func TestSchemaExtractor_DeduplicatesSameTypeNameAcrossPackages(t *testing.T) {
+	extractor := NewSchemaExtractor()
+
+	refAlpha := extractor.ExtractSchemaRef(reflect.TypeOf(pkgalpha.Duplicate{}))
+	refBeta := extractor.ExtractSchemaRef(reflect.TypeOf(pkgbeta.Duplicate{}))
+
+	alphaRef, _ := refAlpha["$ref"].(string)
+	betaRef, _ := refBeta["$ref"].(string)
+	if alphaRef == "" || betaRef == "" {
+		t.Fatalf("expected schema refs for both types, got alpha=%q beta=%q", alphaRef, betaRef)
+	}
+	if alphaRef == betaRef {
+		t.Fatalf("expected distinct refs for same type name across packages, got %q", alphaRef)
+	}
+
+	schemas := extractor.GetSchemas()
+	if _, ok := schemas["Duplicate"]; !ok {
+		t.Fatalf("expected first schema key Duplicate")
+	}
+	if _, ok := schemas["pkgbeta_Duplicate"]; !ok {
+		t.Fatalf("expected deduplicated key pkgbeta_Duplicate, got keys=%v", reflect.ValueOf(schemas).MapKeys())
 	}
 }
 
