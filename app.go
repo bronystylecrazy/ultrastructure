@@ -1,7 +1,9 @@
 package us
 
 import (
+	"os"
 	"reflect"
+	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/cmd"
@@ -9,24 +11,41 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/imgutil"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/bronystylecrazy/ultrastructure/security/token"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	kservice "github.com/kardianos/service"
 	"go.uber.org/fx"
 )
 
 var nodeType = reflect.TypeOf((*di.Node)(nil)).Elem()
 
 type App struct {
-	nodes []any
+	nodes               []any
+	enableServiceHost   bool
+	serviceCommandToken string
 }
 
 func New(nodes ...any) *App {
-	allNodes := append(defaultNodes(), flattenNodes(nodes)...)
+	app := &App{
+		serviceCommandToken: "service",
+	}
+	var extras []any
+	for _, node := range nodes {
+		if opt, ok := node.(appOption); ok {
+			opt.apply(app)
+			continue
+		}
+		extras = append(extras, node)
+	}
+
+	allNodes := append(defaultNodes(), flattenNodes(extras)...)
 	allNodes = append(allNodes, di.Invoke(cmd.RegisterCommands))
-	return &App{nodes: allNodes}
+	app.nodes = allNodes
+	return app
 }
 
 func (a *App) Build() fx.Option {
@@ -36,7 +55,56 @@ func (a *App) Build() fx.Option {
 
 func (a *App) Run() error {
 	syncMeta()
+	if a.enableServiceHost && shouldRunServiceHost(os.Args[1:], a.serviceCommandToken) {
+		return a.runWithServiceHost()
+	}
 	return di.Run(a.nodes...)
+}
+
+func (a *App) runWithServiceHost() error {
+	program := &serviceHostProgram{owner: a}
+	svc, err := kservice.New(program, &kservice.Config{
+		Name:        sanitizeServiceName(meta.Name),
+		DisplayName: meta.Name,
+		Description: meta.Description,
+	})
+	if err != nil {
+		return err
+	}
+	return svc.Run()
+}
+
+func shouldRunServiceHost(args []string, serviceCommandToken string) bool {
+	cmdToken, ok := firstCommandToken(args)
+	if !ok {
+		return true
+	}
+	if cmdToken == "serve" {
+		return true
+	}
+	if cmdToken == strings.TrimSpace(serviceCommandToken) {
+		return false
+	}
+	return false
+}
+
+func firstCommandToken(args []string) (string, bool) {
+	for _, arg := range args {
+		v := strings.TrimSpace(arg)
+		if v == "" || strings.HasPrefix(v, "-") {
+			continue
+		}
+		return v, true
+	}
+	return "", false
+}
+
+func sanitizeServiceName(name string) string {
+	base := strings.TrimSpace(name)
+	if base == "" {
+		return "ultrastructure"
+	}
+	return strings.ReplaceAll(base, " ", "-")
 }
 
 func defaultNodes() []any {

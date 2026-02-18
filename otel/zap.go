@@ -1,9 +1,11 @@
 package otel
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/meta"
+	xservice "github.com/bronystylecrazy/ultrastructure/service"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/fx/fxevent"
@@ -27,6 +29,11 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 		)
 	}))
 
+	wrapped, err = maybeAttachWindowsDaemonFileLog(wrapped)
+	if err != nil {
+		return nil, err
+	}
+
 	if !config.Enabled {
 		return wrapped, nil
 	}
@@ -37,6 +44,31 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 
 	return wrapped.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
 		return zapcore.NewTee(c, otelzap.NewCore(config.ServiceName, otelzap.WithLoggerProvider(lp)))
+	})), nil
+}
+
+func maybeAttachWindowsDaemonFileLog(logger *zap.Logger) (*zap.Logger, error) {
+	mode, err := xservice.RuntimeMode()
+	if err != nil {
+		return nil, fmt.Errorf("detect runtime mode: %w", err)
+	}
+	if mode != xservice.ModeDaemon {
+		return logger, nil
+	}
+
+	logPath := xservice.WindowsServiceLogFile(meta.Name)
+	if strings.TrimSpace(logPath) == "" {
+		return logger, nil
+	}
+
+	fileCore, closeFn, err := openDaemonFileCore(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("open daemon log file: %w", err)
+	}
+	_ = closeFn // process-lifetime file handle for daemon logging
+
+	return logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(c, fileCore)
 	})), nil
 }
 

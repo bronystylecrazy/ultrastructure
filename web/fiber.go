@@ -106,9 +106,14 @@ func buildAppName(name string) string {
 }
 
 func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
+				addr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
 				listenCfg := fiber.ListenConfig{
 					ListenerNetwork:       config.Listen.ListenerNetwork,
 					ShutdownTimeout:       config.Listen.ShutdownTimeout,
@@ -128,10 +133,18 @@ func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, confi
 					listenCfg.TLSMinVersion = tlsVersion
 				}
 
-				err := app.Listen(fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port), listenCfg)
+				logger.Info("fiber listener starting",
+					zap.String("address", addr),
+					zap.String("network", listenCfg.ListenerNetwork),
+					zap.Bool("prefork", listenCfg.EnablePrefork),
+				)
+
+				err := app.Listen(addr, listenCfg)
 				if err != nil {
 					logger.Error("failed to start fiber app", zap.Error(err))
+					return
 				}
+				logger.Info("fiber listener stopped")
 			}()
 			return nil
 		},
