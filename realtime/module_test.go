@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/ditest"
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
-	"go.uber.org/fx/fxtest"
 )
 
 func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
@@ -18,13 +18,11 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	var publisher usmqtt.Publisher
 	var subscriber usmqtt.Subscriber
 
-	app := fxtest.New(t,
-		di.App(
-			Module(),
-			di.Populate(&broker),
-			di.Populate(&publisher),
-			di.Populate(&subscriber),
-		).Build(),
+	app := ditest.New(t,
+		Module(),
+		di.Populate(&broker),
+		di.Populate(&publisher),
+		di.Populate(&subscriber),
 	)
 
 	defer app.RequireStart().RequireStop()

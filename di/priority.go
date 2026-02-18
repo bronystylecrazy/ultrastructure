@@ -31,12 +31,15 @@ func PriorityIndex(value any) (int, bool) {
 	if !ok {
 		return 0, false
 	}
+	found := false
+	priority := 0
 	for _, item := range meta {
 		if ord, ok := item.(priorityOrder); ok {
-			return ord.Index, true
+			priority = ord.Index
+			found = true
 		}
 	}
-	return 0, false
+	return priority, found
 }
 
 // OrderIndex returns the auto-group order index if present.
@@ -49,12 +52,15 @@ func OrderIndex(value any) (int, bool) {
 	if !ok {
 		return 0, false
 	}
+	found := false
+	order := 0
 	for _, item := range meta {
 		if ord, ok := item.(autoGroupOrder); ok {
-			return ord.Index, true
+			order = ord.Index
+			found = true
 		}
 	}
-	return 0, false
+	return order, found
 }
 
 // Between returns a PriorityLevel between lower and upper.

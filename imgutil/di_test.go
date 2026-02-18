@@ -4,21 +4,19 @@ import (
 	"testing"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/ditest"
 	"github.com/bronystylecrazy/ultrastructure/imgutil"
-	"go.uber.org/fx/fxtest"
 )
 
 func TestModuleProvidesServiceAndInterface(t *testing.T) {
 	var svc *imgutil.Service
 	var hasher imgutil.ThumbHasher
 
-	defer fxtest.New(
+	defer ditest.New(
 		t,
-		di.App(
-			imgutil.Module(),
-			di.Populate(&svc),
-			di.Populate(&hasher),
-		).Build(),
+		imgutil.Module(),
+		di.Populate(&svc),
+		di.Populate(&hasher),
 	).RequireStart().RequireStop()
 
 	if svc == nil {

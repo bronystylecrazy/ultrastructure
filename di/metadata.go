@@ -92,6 +92,42 @@ func ReflectMetadata[T any](value any) (T, bool) {
 	return casted, true
 }
 
+// FindMetadata returns the first metadata item assignable to T.
+func FindMetadata[T any](value any) (T, bool) {
+	var zero T
+	raw, ok := ReflectMetadata[[]any](value)
+	if !ok {
+		return zero, false
+	}
+	for _, item := range raw {
+		casted, ok := item.(T)
+		if ok {
+			return casted, true
+		}
+	}
+	return zero, false
+}
+
+// FindAllMetadata returns all metadata items assignable to T.
+func FindAllMetadata[T any](value any) []T {
+	raw, ok := ReflectMetadata[[]any](value)
+	if !ok {
+		return nil
+	}
+	out := make([]T, 0, len(raw))
+	for _, item := range raw {
+		casted, ok := item.(T)
+		if !ok {
+			continue
+		}
+		out = append(out, casted)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 type metadataOption string
 
 func (m metadataOption) applyBind(cfg *bindConfig) {

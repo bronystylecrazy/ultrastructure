@@ -45,7 +45,11 @@ func NewAttachedObservables(logger *zap.Logger, tp *TracerProvider, mp *MeterPro
 	for _, observable := range observables {
 		layerName := "service"
 		if meta, ok := di.ReflectMetadata[[]any](observable); ok && len(meta) > 0 {
-			if layer, ok := meta[0].(LayerMetadata); ok && layer.Name != "" {
+			for _, item := range meta {
+				layer, ok := item.(LayerMetadata)
+				if !ok || layer.Name == "" {
+					continue
+				}
 				layerName = layer.Name
 			}
 		}

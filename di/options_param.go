@@ -10,6 +10,8 @@ type paramsOption struct {
 	err   error
 }
 
+type skipParamOption struct{}
+
 func (p paramsOption) applyBind(cfg *bindConfig) {
 	if cfg.err != nil {
 		return
@@ -62,11 +64,16 @@ func collectParamTags(items []any) ([]string, error) {
 	var tags []string
 	for _, item := range items {
 		switch v := item.(type) {
+		case nil:
+			// Preserve positional placeholders, e.g. Params(nil, Name("x")).
+			tags = append(tags, "")
 		case string:
 			tag := normalizeParamTag(v)
 			if tag != "" {
 				tags = append(tags, tag)
 			}
+		case skipParamOption:
+			tags = append(tags, "")
 		case Option:
 			var pc paramConfig
 			v.applyParam(&pc)
@@ -87,6 +94,8 @@ func validateParamsItems(items []any) error {
 		case nil:
 			continue
 		case string:
+			continue
+		case skipParamOption:
 			continue
 		case Option:
 			continue
@@ -149,4 +158,14 @@ func InGroup(name string) Option {
 // Optional marks the next parameter optional.
 func Optional() Option {
 	return InTag(`optional:"true"`)
+}
+
+func (skipParamOption) applyBind(*bindConfig) {}
+func (skipParamOption) applyParam(cfg *paramConfig) {
+	cfg.tags = append(cfg.tags, "")
+}
+
+// Skip reserves a positional parameter slot in Params without adding a tag.
+func Skip() Option {
+	return skipParamOption{}
 }

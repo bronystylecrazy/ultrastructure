@@ -5,8 +5,8 @@ import (
 
 	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/ditest"
 	redis "github.com/redis/go-redis/v9"
-	"go.uber.org/fx/fxtest"
 )
 
 func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
@@ -16,18 +16,16 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 	var strings rd.StringManager
 	var closer rd.Closer
 
-	defer fxtest.New(
+	defer ditest.New(
 		t,
-		di.App(
-			di.Supply(rd.Config{InMemory: true}),
-			di.Provide(rd.NewClient),
-			rd.UseInterfaces(),
-			di.Populate(&raw),
-			di.Populate(&client),
-			di.Populate(&manager),
-			di.Populate(&strings),
-			di.Populate(&closer),
-		).Build(),
+		di.Supply(rd.Config{InMemory: true}),
+		di.Provide(rd.NewClient),
+		rd.UseInterfaces(),
+		di.Populate(&raw),
+		di.Populate(&client),
+		di.Populate(&manager),
+		di.Populate(&strings),
+		di.Populate(&closer),
 	).RequireStart().RequireStop()
 
 	if raw == nil {

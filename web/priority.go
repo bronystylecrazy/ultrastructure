@@ -12,8 +12,12 @@ const (
 	Latest   = di.Latest
 )
 
+type webPriority struct {
+	Index int
+}
+
 func Priority(value PriorityLevel) di.Option {
-	return di.Priority(value)
+	return di.Metadata(webPriority{Index: int(value)})
 }
 
 func Between(lower, upper PriorityLevel) PriorityLevel {
@@ -22,17 +26,9 @@ func Between(lower, upper PriorityLevel) PriorityLevel {
 
 func resolvePriority(handler Handler) int {
 	priority := int(Normal)
-	if p, ok := di.PriorityIndex(handler); ok {
-		priority = p
-	} else if meta, ok := di.ReflectMetadata[[]any](handler); ok {
-		for _, item := range meta {
-			switch v := item.(type) {
-			case PriorityLevel:
-				priority = int(v)
-			case int:
-				priority = v
-			}
-		}
+	values := di.FindAllMetadata[webPriority](handler)
+	if len(values) > 0 {
+		priority = values[len(values)-1].Index
 	}
 	order := 0
 	if o, ok := di.OrderIndex(handler); ok {

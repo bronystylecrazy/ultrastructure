@@ -293,13 +293,11 @@ func buildMetadataConstructor(constructor any, exports []exportSpec, includeSelf
 	}
 	metaTag := reflect.StructTag(`group:"` + MetadataGroupName + `"`)
 	metaType := reflect.TypeOf(MetadataValue{})
-	for i := range outputs {
-		fields = append(fields, reflect.StructField{
-			Name: fmt.Sprintf("Meta%d", i),
-			Type: metaType,
-			Tag:  metaTag,
-		})
-	}
+	fields = append(fields, reflect.StructField{
+		Name: "Meta",
+		Type: metaType,
+		Tag:  metaTag,
+	})
 	outType := reflect.StructOf(fields)
 
 	inTypes := make([]reflect.Type, fn.NumIn())
@@ -333,17 +331,13 @@ func buildMetadataConstructor(constructor any, exports []exportSpec, includeSelf
 		for i := range outputs {
 			out.Field(fieldIdx + i).Set(val)
 		}
-		metaIdx := fieldIdx + len(outputs)
-		for i, spec := range outputs {
-			meta := MetadataValue{
-				Value:    val.Interface(),
-				Type:     spec.typ,
-				Name:     spec.name,
-				Group:    spec.group,
-				Metadata: metadata,
-			}
-			out.Field(metaIdx + i).Set(reflect.ValueOf(meta))
+		meta := MetadataValue{
+			Value:    val.Interface(),
+			Type:     valueType,
+			Metadata: metadata,
 		}
+		metaIdx := fieldIdx + len(outputs)
+		out.Field(metaIdx).Set(reflect.ValueOf(meta))
 		if hasErr {
 			return []reflect.Value{out, reflect.Zero(errorType)}
 		}
@@ -388,13 +382,11 @@ func buildMetadataSupply(value any, exports []exportSpec, includeSelf bool, meta
 	}
 	metaTag := reflect.StructTag(`group:"` + MetadataGroupName + `"`)
 	metaType := reflect.TypeOf(MetadataValue{})
-	for i := range outputs {
-		fields = append(fields, reflect.StructField{
-			Name: fmt.Sprintf("Meta%d", i),
-			Type: metaType,
-			Tag:  metaTag,
-		})
-	}
+	fields = append(fields, reflect.StructField{
+		Name: "Meta",
+		Type: metaType,
+		Tag:  metaTag,
+	})
 	outType := reflect.StructOf(fields)
 
 	val := reflect.ValueOf(value)
@@ -406,17 +398,13 @@ func buildMetadataSupply(value any, exports []exportSpec, includeSelf bool, meta
 		for i := range outputs {
 			out.Field(fieldIdx + i).Set(val)
 		}
-		metaIdx := fieldIdx + len(outputs)
-		for i, spec := range outputs {
-			meta := MetadataValue{
-				Value:    val.Interface(),
-				Type:     spec.typ,
-				Name:     spec.name,
-				Group:    spec.group,
-				Metadata: metadata,
-			}
-			out.Field(metaIdx + i).Set(reflect.ValueOf(meta))
+		meta := MetadataValue{
+			Value:    val.Interface(),
+			Type:     valueType,
+			Metadata: metadata,
 		}
+		metaIdx := fieldIdx + len(outputs)
+		out.Field(metaIdx).Set(reflect.ValueOf(meta))
 		return []reflect.Value{out}
 	})
 

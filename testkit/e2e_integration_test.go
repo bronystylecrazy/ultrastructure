@@ -14,11 +14,11 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/ditest"
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	uss3 "github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/google/uuid"
-	"go.uber.org/fx/fxtest"
 	"gorm.io/gorm"
 )
 
@@ -170,7 +170,7 @@ func startE2EApp(t *testing.T, pgURL string, redisCtr *RedisContainer, minio *Mi
 
 	var deps e2eDeps
 
-	app := fxtest.New(t, di.App(
+	app := ditest.New(t,
 		di.Diagnostics(),
 		lifecycle.Module(),
 		otel.Module(),
@@ -202,7 +202,7 @@ func startE2EApp(t *testing.T, pgURL string, redisCtr *RedisContainer, minio *Mi
 		di.Populate(&deps.uploader),
 		di.Populate(&deps.downloader),
 		di.Populate(&deps.deleter),
-	).Build())
+	)
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
 

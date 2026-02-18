@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bronystylecrazy/ultrastructure/ditest"
 	usmqtt "github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/fx"
-	"go.uber.org/fx/fxtest"
 )
 
 func TestManagedPubSubAutoUnsubscribeOnStop(t *testing.T) {
@@ -25,7 +25,7 @@ func TestManagedPubSubAutoUnsubscribeOnStop(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello", 2).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -119,7 +119,7 @@ func TestManagedPubSubMiddlewareOrder(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/mw", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -180,7 +180,7 @@ func TestManagedPubSubTopicWithInlineMiddlewares(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/inline", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -229,7 +229,7 @@ func TestManagedPubSubTopicWithTopicContext(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/context", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -268,7 +268,7 @@ func TestManagedPubSubTopicWithTopicContext(t *testing.T) {
 func TestManagedPubSubTopicArgsValidation(t *testing.T) {
 	sub := NewMockSubscriber(t)
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -301,7 +301,7 @@ func TestManagedPubSubContextPassThroughMiddleware(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/ctx", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -361,7 +361,7 @@ func TestClientIdentityHookAndMiddleware(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/identity", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -404,7 +404,7 @@ func TestManagedPubSubTopicACLAllowed(t *testing.T) {
 	sub.EXPECT().Unsubscribe("/public/hello", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -430,7 +430,7 @@ func TestManagedPubSubTopicACLDenied(t *testing.T) {
 	sub := NewMockSubscriber(t)
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -469,7 +469,7 @@ func TestCtxDisconnect(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/disconnect", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -506,7 +506,7 @@ func TestCtxDisconnectWithoutClient(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/disconnect-nil", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -546,7 +546,7 @@ func TestCtxPublish(t *testing.T) {
 	pub.EXPECT().PublishJSON("hello/reply", mock.Anything, false, byte(0)).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			func() usmqtt.Publisher { return pub },
@@ -580,7 +580,7 @@ func TestCtxPublishWithoutPublisher(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/no-publisher", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -615,7 +615,7 @@ func TestCtxDecodeJSON(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/bind", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -666,7 +666,7 @@ func TestCtxUsernameClientIDAndReject(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/reject", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -715,7 +715,7 @@ func TestTimeoutTopicMiddlewareCancelOnly(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/timeout-cancel", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -764,7 +764,7 @@ func TestTimeoutTopicMiddlewareWithDisconnect(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/timeout-disconnect", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,
@@ -836,7 +836,7 @@ func TestConnectContextClaimsFromConnectPhase(t *testing.T) {
 	sub.EXPECT().Unsubscribe("hello/claims", 1).Return(nil).Once()
 
 	var manager *ManagedPubSub
-	app := fxtest.New(t,
+	app := ditest.New(t,
 		fx.Provide(
 			func() usmqtt.Subscriber { return sub },
 			NewManagedPubSub,

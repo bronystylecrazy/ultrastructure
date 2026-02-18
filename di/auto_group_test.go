@@ -1,6 +1,7 @@
 package di
 
 import (
+	"reflect"
 	"testing"
 
 	"go.uber.org/fx/fxtest"
@@ -148,5 +149,36 @@ func TestAutoGroupModuleOverrideGroup(t *testing.T) {
 	}
 	if things[0].Name() != "ok" {
 		t.Fatalf("unexpected thing name %q", things[0].Name())
+	}
+}
+
+func TestAutoGroupFilterOption(t *testing.T) {
+	cfg := bindConfig{
+		autoGroups: []autoGroupRule{{}},
+	}
+	opt := AutoGroupFilter(func(reflect.Type) bool { return false })
+	opt.applyBind(&cfg)
+	if cfg.err != nil {
+		t.Fatalf("unexpected bind error: %v", cfg.err)
+	}
+	if cfg.autoGroups[0].filter == nil {
+		t.Fatalf("expected filter override to be applied")
+	}
+	if cfg.autoGroups[0].filter(reflect.TypeOf(&autoGroupThingImpl{})) {
+		t.Fatalf("expected filter function to return false")
+	}
+}
+
+func TestAutoGroupAsSelfOption(t *testing.T) {
+	cfg := bindConfig{
+		autoGroups: []autoGroupRule{{}},
+	}
+	opt := AutoGroupAsSelf()
+	opt.applyBind(&cfg)
+	if cfg.err != nil {
+		t.Fatalf("unexpected bind error: %v", cfg.err)
+	}
+	if !cfg.autoGroups[0].asSelf {
+		t.Fatalf("expected asSelf override to be applied")
 	}
 }

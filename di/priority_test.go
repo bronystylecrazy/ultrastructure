@@ -86,3 +86,29 @@ func TestBetweenPriority(t *testing.T) {
 		t.Fatalf("expected Between(Earlier, Later) to be between %d and %d, got %d", Earlier, Later, mid)
 	}
 }
+
+func TestPriorityIndexUsesLastMetadataValue(t *testing.T) {
+	value := &priorityThingNormal{name: "normal"}
+	RegisterMetadata(value, priorityOrder{Index: int(Earlier)}, priorityOrder{Index: int(Later)})
+
+	got, ok := PriorityIndex(value)
+	if !ok {
+		t.Fatalf("expected priority metadata to be found")
+	}
+	if got != int(Later) {
+		t.Fatalf("unexpected priority index: got %d want %d", got, int(Later))
+	}
+}
+
+func TestOrderIndexUsesLastMetadataValue(t *testing.T) {
+	value := &priorityThingNormal{name: "normal"}
+	RegisterMetadata(value, autoGroupOrder{Index: 1}, autoGroupOrder{Index: 7})
+
+	got, ok := OrderIndex(value)
+	if !ok {
+		t.Fatalf("expected order metadata to be found")
+	}
+	if got != 7 {
+		t.Fatalf("unexpected order index: got %d want %d", got, 7)
+	}
+}
