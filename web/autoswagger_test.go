@@ -940,6 +940,53 @@ func TestBuildOpenAPISpec_GeneratesOperationSecurityRequirements(t *testing.T) {
 	if len(oauthScopes) != 2 || oauthScopes[0] != "read:users" || oauthScopes[1] != "write:users" {
 		t.Fatalf("unexpected oauth scopes: %v", oauthScopes)
 	}
+
+	xScopes, ok := getOp["x-scopes"].([]string)
+	if !ok {
+		t.Fatalf("expected x-scopes extension")
+	}
+	if len(xScopes) != 2 || xScopes[0] != "read:users" || xScopes[1] != "write:users" {
+		t.Fatalf("unexpected x-scopes extension: %v", xScopes)
+	}
+}
+
+func TestBuildOpenAPISpec_AddsPolicyAndScopeExtensions(t *testing.T) {
+	GetGlobalRegistry().Clear()
+	GetGlobalRegistry().RegisterRoute("GET", "/orders", &RouteMetadata{
+		Policies: []string{" orders.read ", "orders.read", "orders.write"},
+		Security: []SecurityRequirement{
+			{Scheme: "BearerAuth", Scopes: []string{"orders:read", "orders:read"}},
+			{Scheme: "ApiKeyAuth", Scopes: []string{"orders:write"}},
+		},
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{
+			Method: "GET",
+			Path:   "/orders",
+		},
+	}, Config{Name: "Test API"})
+
+	getOp, ok := spec.Paths["/orders"]["get"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected GET /orders operation")
+	}
+
+	xPolicies, ok := getOp["x-policies"].([]string)
+	if !ok {
+		t.Fatalf("expected x-policies extension")
+	}
+	if len(xPolicies) != 2 || xPolicies[0] != "orders.read" || xPolicies[1] != "orders.write" {
+		t.Fatalf("unexpected x-policies extension: %v", xPolicies)
+	}
+
+	xScopes, ok := getOp["x-scopes"].([]string)
+	if !ok {
+		t.Fatalf("expected x-scopes extension")
+	}
+	if len(xScopes) != 2 || xScopes[0] != "orders:read" || xScopes[1] != "orders:write" {
+		t.Fatalf("unexpected x-scopes extension: %v", xScopes)
+	}
 }
 
 func TestBuildOpenAPISpecWithSecurity_DefaultAndPublicOverride(t *testing.T) {

@@ -62,10 +62,24 @@ without_query_variables = true
 without_metrics = false
 include_dry_run_spans = false
 
-[jwt]
+[token]
 secret = "change-me"
+issuer = "ultrastructure"
 access_token_ttl = "15m"
 refresh_token_ttl = "720h"
+
+[apikey]
+header_name = "Authorization"
+header_scheme = "ApiKey"
+hasher_mode = "argon2id" # "argon2id" | "hmac-sha256"
+hmac_secret = ""          # required when hasher_mode = "hmac-sha256"
+key_prefix = "usk"
+key_id_length = 16
+secret_length = 32
+skew_allowance = "30s"
+set_principal_ctx = true
+set_principal_body = false
+detailed_errors = false
 
 [storage.s3]
 region = "us-east-1"

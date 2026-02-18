@@ -261,6 +261,16 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 					}
 				}
 			}
+			if _, exists := operation["x-scopes"]; !exists {
+				if scopes := collectRouteScopes(metadata); len(scopes) > 0 {
+					operation["x-scopes"] = scopes
+				}
+			}
+			if _, exists := operation["x-policies"]; !exists {
+				if policies := normalizeOperationStrings(metadata.Policies); len(policies) > 0 {
+					operation["x-policies"] = policies
+				}
+			}
 		}
 		if existingOperationID, ok := operation["operationId"].(string); ok && strings.TrimSpace(existingOperationID) != "" {
 			baseOperationID = existingOperationID
@@ -381,6 +391,9 @@ func cloneRouteMetadata(meta *RouteMetadata) *RouteMetadata {
 	}
 	if meta.Security != nil {
 		cloned.Security = append([]SecurityRequirement{}, meta.Security...)
+	}
+	if meta.Policies != nil {
+		cloned.Policies = append([]string{}, meta.Policies...)
 	}
 
 	if meta.RequestBody != nil {
@@ -922,6 +935,41 @@ func buildOperationSecurity(requirements []SecurityRequirement) []map[string][]s
 	}
 
 	return security
+}
+
+func collectRouteScopes(metadata *RouteMetadata) []string {
+	if metadata == nil || len(metadata.Security) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(metadata.Security))
+	for _, req := range metadata.Security {
+		out = append(out, req.Scopes...)
+	}
+	return normalizeOperationStrings(out)
+}
+
+func normalizeOperationStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
 }
 
 func buildSpecTags(paths map[string]map[string]interface{}, tagDescriptions map[string]string) []AutoSwaggerTag {

@@ -15,6 +15,7 @@ type RouteMetadata struct {
 	QueryType   reflect.Type
 	Parameters  []ParameterMetadata
 	Security    []SecurityRequirement
+	Policies    []string
 	Pagination  *PaginationMetadata
 	Responses   map[int]ResponseMetadata // statusCode -> metadata
 	Examples    map[int]interface{}      // statusCode -> example

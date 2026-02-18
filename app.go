@@ -11,6 +11,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/lifecycle"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
+	"github.com/bronystylecrazy/ultrastructure/security/token"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"go.uber.org/fx"
@@ -44,6 +45,7 @@ func defaultNodes() []any {
 		otel.Module(),
 		lifecycle.Module(),
 		web.Module(),
+		token.Module(),
 		database.Module(),
 		realtime.Module(),
 		cmd.Module(),

@@ -426,12 +426,12 @@ func (b *RouteBuilder) SetCookies(statusCode int, cookieName string, description
 // Security adds a security requirement with no scopes.
 // Usage: .Security("BearerAuth")
 func (b *RouteBuilder) Security(scheme string) *RouteBuilder {
-	return b.SecurityScopes(scheme)
+	return b.Scopes(scheme)
 }
 
-// SecurityScopes adds a security requirement with scopes.
-// Usage: .SecurityScopes("OAuth2", "read:users")
-func (b *RouteBuilder) SecurityScopes(scheme string, scopes ...string) *RouteBuilder {
+// Scopes adds a security requirement with scopes.
+// Usage: .Scopes("OAuth2", "read:users")
+func (b *RouteBuilder) Scopes(scheme string, scopes ...string) *RouteBuilder {
 	scheme = strings.TrimSpace(scheme)
 	if scheme == "" {
 		return b
@@ -442,6 +442,34 @@ func (b *RouteBuilder) SecurityScopes(scheme string, scopes ...string) *RouteBui
 		Scheme: scheme,
 		Scopes: copiedScopes,
 	})
+	b.finalize()
+	return b
+}
+
+// Policies adds policy names used by authz policy governance.
+// Usage: .Policies("orders.read", "orders.write")
+func (b *RouteBuilder) Policies(policies ...string) *RouteBuilder {
+	if len(policies) == 0 {
+		return b
+	}
+	seen := make(map[string]struct{}, len(b.metadata.Policies)+len(policies))
+	for _, p := range b.metadata.Policies {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			seen[p] = struct{}{}
+		}
+	}
+	for _, p := range policies {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		b.metadata.Policies = append(b.metadata.Policies, p)
+	}
 	b.finalize()
 	return b
 }

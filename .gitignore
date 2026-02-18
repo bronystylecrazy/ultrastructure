@@ -32,3 +32,8 @@ go.work.sum
 # .vscode/
 config.toml
 config.json
+
+# VitePress docs
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
