@@ -46,6 +46,9 @@ type Session struct {
 	funcKeysByPkg  map[string]map[string]struct{}
 	reportByPkg    map[string]PackageReport
 	diagnosticsPkg map[string][]AnalyzerDiagnostic
+
+	lastLoadDuration    time.Duration
+	lastAnalyzeDuration time.Duration
 }
 
 func NewSession(opts Options) (*Session, error) {
@@ -129,6 +132,7 @@ func (s *Session) AnalyzeChangedFiles(files []string) (*Report, error) {
 	}
 	s.progress(fmt.Sprintf("watch change set: %s", summarizeList(changed, 12)))
 	fullReload, invalidated := s.computeInvalidatedPackages(changed)
+	invalidatedCount := len(invalidated)
 	if err := s.applyOverlay(changed); err != nil {
 		return nil, err
 	}
@@ -140,6 +144,15 @@ func (s *Session) AnalyzeChangedFiles(files []string) (*Report, error) {
 		report, err := s.analyzeRootPackages(s.rootPkgPaths())
 		if err == nil {
 			s.progress(fmt.Sprintf("watch rerun took %s (%s)", time.Since(started).Round(time.Millisecond), heapStatsString()))
+			s.progress(fmt.Sprintf(
+				"watch summary: changed=%d invalidated=all analyzed=%d load=%s analyze=%s total=%s heap=%s",
+				len(changed),
+				len(report.Packages),
+				s.lastLoadDuration.Round(time.Millisecond),
+				s.lastAnalyzeDuration.Round(time.Millisecond),
+				time.Since(started).Round(time.Millisecond),
+				heapStatsString(),
+			))
 		}
 		return report, err
 	}
@@ -161,6 +174,16 @@ func (s *Session) AnalyzeChangedFiles(files []string) (*Report, error) {
 	report, err := s.analyzeRootPackages(roots)
 	if err == nil {
 		s.progress(fmt.Sprintf("watch rerun took %s (%s)", time.Since(started).Round(time.Millisecond), heapStatsString()))
+		s.progress(fmt.Sprintf(
+			"watch summary: changed=%d invalidated=%d reanalyzed=%d load=%s analyze=%s total=%s heap=%s",
+			len(changed),
+			invalidatedCount,
+			len(roots),
+			s.lastLoadDuration.Round(time.Millisecond),
+			s.lastAnalyzeDuration.Round(time.Millisecond),
+			time.Since(started).Round(time.Millisecond),
+			heapStatsString(),
+		))
 	}
 	return report, err
 }
@@ -254,7 +277,8 @@ func (s *Session) loadUniverse(patterns []string, full bool, invalidated map[str
 	s.loaded = true
 	s.progress(fmt.Sprintf("loaded %d root packages", len(s.roots)))
 	s.progress(fmt.Sprintf("watchable files mapped: %d", len(s.fileToPk)))
-	s.progress(fmt.Sprintf("load+index phase took %s (%s)", time.Since(started).Round(time.Millisecond), heapStatsString()))
+	s.lastLoadDuration = time.Since(started)
+	s.progress(fmt.Sprintf("load+index phase took %s (%s)", s.lastLoadDuration.Round(time.Millisecond), heapStatsString()))
 	return nil
 }
 
@@ -603,8 +627,6 @@ func (s *Session) analyzeRootPackages(rootPaths []string) (*Report, error) {
 		if pkg == nil {
 			continue
 		}
-		pkgStarted := time.Now()
-		s.progress("analyzing package: " + pkg.PkgPath)
 		out := PackageReport{
 			Path:    pkg.PkgPath,
 			Imports: collectPackageImports(pkg),
@@ -623,7 +645,6 @@ func (s *Session) analyzeRootPackages(rootPaths []string) (*Report, error) {
 					out.Imports = collectPackageImports(pkg)
 				}
 				packageDiags = append(packageDiags, cached.Diagnostics...)
-				s.progress("package cache hit: " + pkg.PkgPath)
 			} else {
 				s.progress("package cache miss: " + pkg.PkgPath)
 			}
@@ -669,11 +690,11 @@ func (s *Session) analyzeRootPackages(rootPaths []string) (*Report, error) {
 		})
 		s.reportByPkg[path] = out
 		s.diagnosticsPkg[path] = packageDiags
-		s.progress(fmt.Sprintf("analyzed package: %s (%s)", pkg.PkgPath, time.Since(pkgStarted).Round(time.Millisecond)))
 	}
 	report := s.currentReport()
 	s.progress(fmt.Sprintf("analysis complete: %d package reports, %d diagnostics", len(report.Packages), len(report.Diagnostics)))
-	s.progress(fmt.Sprintf("analyze phase took %s (%s)", time.Since(started).Round(time.Millisecond), heapStatsString()))
+	s.lastAnalyzeDuration = time.Since(started)
+	s.progress(fmt.Sprintf("analyze phase took %s (%s)", s.lastAnalyzeDuration.Round(time.Millisecond), heapStatsString()))
 	if s.opts.StrictDI {
 		for _, d := range report.Diagnostics {
 			if d.Severity == "error" {

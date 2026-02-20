@@ -42,6 +42,8 @@ func main() {
 	var indexScope string
 	var diagOnly bool
 	var diagGrouped bool
+	var lint bool
+	var lintSeverity string
 	var cacheDir string
 	var noCache bool
 	var cachePrune bool
@@ -65,6 +67,8 @@ func main() {
 	flag.StringVar(&indexScope, "index-scope", "", "index scope: auto|workspace|roots|referenced|all (overrides --deep)")
 	flag.BoolVar(&diagOnly, "diag-only", false, "print diagnostics only (human-readable), do not emit JSON report/hook payload")
 	flag.BoolVar(&diagGrouped, "diag-grouped", true, "group diagnostics by route/package in -diag-only output")
+	flag.BoolVar(&lint, "lint", false, "run analyzer lint checks and exit non-zero when diagnostics meet severity threshold")
+	flag.StringVar(&lintSeverity, "lint-severity", "warning", "lint failure threshold: warning|error")
 	flag.StringVar(&cacheDir, "cache-dir", defaultCacheDir(), "directory for analysis cache")
 	flag.BoolVar(&noCache, "no-cache", false, "disable reading/writing analysis cache")
 	flag.BoolVar(&cachePrune, "cache-prune", false, "delete cache directory and exit")
@@ -131,6 +135,17 @@ func main() {
 			}
 			if strings.TrimSpace(graphOut) != "" {
 				writeDependencyGraph(graphOut, report.DependencyGraph)
+			}
+			if lint {
+				violations := filterLintDiagnostics(report.Diagnostics, lintSeverity)
+				if len(violations) > 0 {
+					printDiagnostics(violations, diagGrouped)
+					return fmt.Errorf("lint failed: %d diagnostic(s) at severity >= %s", len(violations), normalizeLintSeverity(lintSeverity))
+				}
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] lint ok (severity>=%s)\n", time.Now().Format("15:04:05"), normalizeLintSeverity(lintSeverity))
+				}
+				return nil
 			}
 			if diagOnly {
 				printDiagnostics(report.Diagnostics, diagGrouped)
@@ -343,6 +358,18 @@ func main() {
 	}
 	if strings.TrimSpace(graphOut) != "" {
 		writeDependencyGraph(graphOut, report.DependencyGraph)
+	}
+	if lint {
+		violations := filterLintDiagnostics(report.Diagnostics, lintSeverity)
+		if len(violations) > 0 {
+			printDiagnostics(violations, diagGrouped)
+			fmt.Fprintf(os.Stderr, "lint failed: %d diagnostic(s) at severity >= %s\n", len(violations), normalizeLintSeverity(lintSeverity))
+			os.Exit(1)
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] lint ok (severity>=%s)\n", time.Now().Format("15:04:05"), normalizeLintSeverity(lintSeverity))
+		}
+		return
 	}
 	if cacheEnabled && cachePath != "" && err == nil {
 		if writeErr := writeCachedReport(cachePath, report); writeErr != nil && verbose {
@@ -740,6 +767,33 @@ func shouldEscalateAnalyzeReport(report *analyzer.Report) bool {
 		}
 	}
 	return false
+}
+
+func normalizeLintSeverity(in string) string {
+	switch strings.ToLower(strings.TrimSpace(in)) {
+	case "error":
+		return "error"
+	default:
+		return "warning"
+	}
+}
+
+func filterLintDiagnostics(diags []analyzer.AnalyzerDiagnostic, threshold string) []analyzer.AnalyzerDiagnostic {
+	threshold = normalizeLintSeverity(threshold)
+	out := make([]analyzer.AnalyzerDiagnostic, 0, len(diags))
+	for _, d := range diags {
+		sev := strings.ToLower(strings.TrimSpace(d.Severity))
+		if threshold == "error" {
+			if sev == "error" {
+				out = append(out, d)
+			}
+			continue
+		}
+		if sev == "error" || sev == "warning" || sev == "" {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func autoAnalyzeScopes(strictDI bool, explicitOnly bool, explicitScope string) []string {
