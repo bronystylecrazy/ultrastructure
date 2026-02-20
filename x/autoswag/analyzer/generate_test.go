@@ -228,6 +228,49 @@ func TestGenerateHookSource_EmitsQueryMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
+	report := &Report{
+		Packages: []PackageReport{
+			{
+				Path: "example/pkg",
+				Handlers: []HandlerReport{
+					{
+						Name: "H",
+						Key:  "k",
+					},
+				},
+				Routes: []RouteBindingReport{
+					{
+						Method:      "GET",
+						Path:        "/x",
+						HandlerKey:  "k",
+						Name:        "ListX",
+						Description: "Lists x resources",
+						Tags:        []string{"users", "v1"},
+					},
+				},
+			},
+		},
+	}
+
+	src, err := GenerateHookSource(report, GenerateOptions{
+		PackageName: "autodoc",
+		FuncName:    "GeneratedHook",
+	})
+	if err != nil {
+		t.Fatalf("GenerateHookSource returned error: %v", err)
+	}
+	if !strings.Contains(src, "ctx.SetSummary(\"ListX\")") {
+		t.Fatalf("expected route summary emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.SetDescription(\"Lists x resources\")") {
+		t.Fatalf("expected route description emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddTag(\"users\", \"v1\")") {
+		t.Fatalf("expected route tag emission, source:\n%s", src)
+	}
+}
+
 func TestGenerateHookSource_UsesDetectedResponseDescription(t *testing.T) {
 	report := &Report{
 		Packages: []PackageReport{

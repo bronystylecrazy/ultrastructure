@@ -128,6 +128,17 @@ func TestAnalyze_RouteVariants_AssignDeclAndMultiContentResponses(t *testing.T) 
 		if _, ok := expectedRoutes[key]; !ok {
 			t.Fatalf("unexpected route binding: %+v", route)
 		}
+		if key == "GET /v/pathonly/{slug}" {
+			if route.Name != "PathOnlyRoute" {
+				t.Fatalf("expected route name from @autoswag:name, got %+v", route)
+			}
+			if route.Description != "Path-only endpoint" {
+				t.Fatalf("expected route description from @autoswag:description, got %+v", route)
+			}
+			if len(route.Tags) != 2 || route.Tags[0] != "pathonly" || route.Tags[1] != "demo" {
+				t.Fatalf("expected route tags from @autoswag:tag, got %+v", route.Tags)
+			}
+		}
 		delete(expectedRoutes, key)
 	}
 	if len(expectedRoutes) != 0 {
@@ -323,6 +334,116 @@ func TestAnalyze_DIInjectedInterfaceWrapper(t *testing.T) {
 	}
 }
 
+func TestAnalyze_ExplicitOnlySkipsInterfaceHelperDispatch(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:          ".",
+		Patterns:     []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/wrappersdi"},
+		ExplicitOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected 1 package, got %d", len(report.Packages))
+	}
+	p := report.Packages[0]
+	var wrapped *HandlerReport
+	for i := range p.Handlers {
+		if p.Handlers[i].Name == "Wrapped" {
+			wrapped = &p.Handlers[i]
+			break
+		}
+	}
+	if wrapped == nil {
+		t.Fatalf("expected Wrapped handler report, got %+v", p.Handlers)
+	}
+	for _, resp := range wrapped.Responses {
+		if resp.Status == 200 && resp.Type == "web.Response" && resp.ContentType == "application/json" {
+			t.Fatalf("did not expect interface helper response in explicit-only mode, got %+v", wrapped.Responses)
+		}
+	}
+	foundWarn := false
+	for _, d := range report.Diagnostics {
+		if d.Code == "helper_response_dispatch_ambiguous" {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Fatalf("expected helper_response_dispatch_ambiguous warning, got %+v", report.Diagnostics)
+	}
+}
+
+func TestAnalyze_ExplicitOnlyAllowsDirectLocalHelper(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:          ".",
+		Patterns:     []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/explicitlocal"},
+		ExplicitOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected 1 package report, got %d", len(report.Packages))
+	}
+	pkg := report.Packages[0]
+	var get *HandlerReport
+	for i := range pkg.Handlers {
+		if pkg.Handlers[i].Name == "Get" {
+			get = &pkg.Handlers[i]
+			break
+		}
+	}
+	if get == nil {
+		t.Fatalf("expected Get handler report, got %+v", pkg.Handlers)
+	}
+	found := false
+	for _, resp := range get.Responses {
+		if resp.Status == 200 && resp.Type == "web.Response" && resp.ContentType == "application/json" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected local helper response inference, got %+v", get.Responses)
+	}
+}
+
+func TestAnalyze_ExplicitOnlyAllowsGenericLocalHelper(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:          ".",
+		Patterns:     []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/explicitgeneric"},
+		ExplicitOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected 1 package report, got %d", len(report.Packages))
+	}
+	pkg := report.Packages[0]
+	var get *HandlerReport
+	for i := range pkg.Handlers {
+		if pkg.Handlers[i].Name == "Get" {
+			get = &pkg.Handlers[i]
+			break
+		}
+	}
+	if get == nil {
+		t.Fatalf("expected Get handler report, got %+v", pkg.Handlers)
+	}
+	found := false
+	for _, resp := range get.Responses {
+		if resp.Status == 200 && resp.Type == "web.Response" && resp.ContentType == "application/json" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected generic local helper response inference, got %+v", get.Responses)
+	}
+}
+
 func TestAnalyze_DIAmbiguousInterfaceDispatchDiagnostics(t *testing.T) {
 	report, err := Analyze(Options{
 		Dir:      ".",
@@ -494,5 +615,22 @@ func TestAnalyze_UsNewBranchVarIncludesPossibleBranches(t *testing.T) {
 	}
 	if !foundAmbiguous {
 		t.Fatalf("expected ambiguity diagnostic when both us.New branches are statically possible, got %+v", report.Diagnostics)
+	}
+}
+
+func TestAnalyze_IgnoreFileDirectiveSkipsAllRouteAutoDetection(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:      ".",
+		Patterns: []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/ignorefile"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected 1 package, got %d", len(report.Packages))
+	}
+	p := report.Packages[0]
+	if len(p.Routes) != 0 {
+		t.Fatalf("expected no routes when @autoswag:ignore-file is present, got %+v", p.Routes)
 	}
 }

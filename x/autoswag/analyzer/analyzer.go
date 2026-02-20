@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -21,6 +22,10 @@ type Options struct {
 	Tags              string
 	StrictDI          bool
 	IndexScope        string
+	LoadDeps          bool
+	ExplicitOnly      bool
+	ExplicitScope     string
+	Overlay           map[string][]byte
 	ToolVersion       string
 	Progress          func(message string)
 	PackageCacheLoad  func(pkgPath, fingerprint string) (*PackageCacheEntry, bool)
@@ -87,9 +92,12 @@ type HandlerReport struct {
 }
 
 type RouteBindingReport struct {
-	Method     string `json:"method"`
-	Path       string `json:"path"`
-	HandlerKey string `json:"handler_key"`
+	Method      string   `json:"method"`
+	Path        string   `json:"path"`
+	HandlerKey  string   `json:"handler_key"`
+	Name        string   `json:"name,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 type RequestReport struct {
@@ -138,6 +146,7 @@ type helperResolver struct {
 	provided      []providedBinding
 	pkgPath       string
 	strictDI      bool
+	explicitOnly  bool
 	diagnostics   []AnalyzerDiagnostic
 	diagSeen      map[string]struct{}
 	sourceByInfo  map[*types.Info]diagnosticSource
@@ -164,143 +173,11 @@ type diagnosticSource struct {
 }
 
 func Analyze(opts Options) (*Report, error) {
-	progress := func(msg string) {
-		if opts.Progress != nil {
-			opts.Progress(msg)
-		}
-	}
-	progress("loading packages")
-	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax | packages.NeedFiles | packages.NeedImports | packages.NeedDeps,
-		Dir:  strings.TrimSpace(opts.Dir),
-	}
-	if strings.TrimSpace(opts.Tags) != "" {
-		cfg.BuildFlags = []string{"-tags=" + strings.TrimSpace(opts.Tags)}
-	}
-	patterns := opts.Patterns
-	if len(patterns) == 0 {
-		patterns = []string{"."}
-	}
-
-	pkgs, err := packages.Load(cfg, patterns...)
+	session, err := NewSession(opts)
 	if err != nil {
 		return nil, err
 	}
-	if packages.PrintErrors(pkgs) > 0 {
-		return nil, fmt.Errorf("failed to load packages")
-	}
-	progress(fmt.Sprintf("loaded %d root packages", len(pkgs)))
-
-	allPkgs := collectAllPackages(pkgs)
-	scope := normalizeIndexScope(opts.IndexScope)
-	scopedPkgs := selectPackagesByScope(pkgs, allPkgs, scope)
-	progress(fmt.Sprintf("expanded dependency graph to %d packages (scope=%s)", len(scopedPkgs), scope))
-	globalDecls := buildGlobalHelperDeclIndex(scopedPkgs)
-	sourceByInfo := buildDiagnosticSourceIndex(scopedPkgs)
-	providedBindings := buildDIProvidedBindings(scopedPkgs, pkgs, globalDecls)
-	if scope == "referenced" {
-		globalDecls = buildReferencedHelperDeclIndex(scopedPkgs, pkgs, globalDecls, providedBindings)
-	}
-	progress(fmt.Sprintf("indexed %d helper functions and %d DI bindings", len(globalDecls), len(providedBindings)))
-
-	report := &Report{
-		Packages:        make([]PackageReport, 0, len(pkgs)),
-		DependencyGraph: buildDependencyGraph(providedBindings),
-	}
-	for _, pkg := range pkgs {
-		progress("analyzing package: " + pkg.PkgPath)
-		out := PackageReport{
-			Path:    pkg.PkgPath,
-			Imports: collectPackageImports(pkg),
-		}
-		var packageDiags []AnalyzerDiagnostic
-		cacheHit := false
-		fingerprint, fpErr := packageFingerprint(pkg, scope, opts.Tags, opts.StrictDI, opts.ToolVersion)
-		if fpErr == nil && opts.PackageCacheLoad != nil {
-			if cached, ok := opts.PackageCacheLoad(pkg.PkgPath, fingerprint); ok && cached != nil {
-				cacheHit = true
-				out = cached.Package
-				if strings.TrimSpace(out.Path) == "" {
-					out.Path = pkg.PkgPath
-				}
-				if len(out.Imports) == 0 {
-					out.Imports = collectPackageImports(pkg)
-				}
-				packageDiags = append(packageDiags, cached.Diagnostics...)
-				progress("package cache hit: " + pkg.PkgPath)
-			} else {
-				progress("package cache miss: " + pkg.PkgPath)
-			}
-		}
-
-		if !cacheHit {
-			resolver := newHelperResolver(globalDecls, providedBindings, pkg.PkgPath, opts.StrictDI, sourceByInfo)
-			for _, file := range pkg.Syntax {
-				for _, decl := range file.Decls {
-					fn, ok := decl.(*ast.FuncDecl)
-					if !ok || fn.Body == nil || fn.Type == nil || fn.Type.Params == nil {
-						continue
-					}
-					if !isFiberCtxHandler(fn, pkg.TypesInfo) {
-						if isRouterHandleMethod(fn, pkg.TypesInfo) {
-							routes, inlineHandlers := extractRouteBindings(pkg, fn, resolver)
-							out.Routes = append(out.Routes, routes...)
-							out.Handlers = append(out.Handlers, inlineHandlers...)
-						}
-						continue
-					}
-					handler := analyzeFunc(pkg, fn, resolver)
-					out.Handlers = append(out.Handlers, handler)
-				}
-			}
-			if resolver != nil && len(resolver.diagnostics) > 0 {
-				annotateDiagnosticsRoutes(resolver.diagnostics, out.Routes)
-				packageDiags = append(packageDiags, resolver.diagnostics...)
-			}
-			if fpErr == nil && opts.PackageCacheStore != nil {
-				opts.PackageCacheStore(pkg.PkgPath, fingerprint, PackageCacheEntry{
-					Package:     out,
-					Diagnostics: packageDiags,
-				})
-			}
-		}
-
-		sort.Slice(out.Handlers, func(i, j int) bool {
-			return out.Handlers[i].Name < out.Handlers[j].Name
-		})
-		sort.Slice(out.Routes, func(i, j int) bool {
-			if out.Routes[i].Path == out.Routes[j].Path {
-				return out.Routes[i].Method < out.Routes[j].Method
-			}
-			return out.Routes[i].Path < out.Routes[j].Path
-		})
-		report.Packages = append(report.Packages, out)
-		if len(packageDiags) > 0 {
-			report.Diagnostics = append(report.Diagnostics, packageDiags...)
-		}
-	}
-	progress(fmt.Sprintf("analysis complete: %d package reports, %d diagnostics", len(report.Packages), len(report.Diagnostics)))
-
-	sort.Slice(report.Packages, func(i, j int) bool {
-		return report.Packages[i].Path < report.Packages[j].Path
-	})
-	sort.Slice(report.Diagnostics, func(i, j int) bool {
-		if report.Diagnostics[i].Package == report.Diagnostics[j].Package {
-			if report.Diagnostics[i].Code == report.Diagnostics[j].Code {
-				return report.Diagnostics[i].Message < report.Diagnostics[j].Message
-			}
-			return report.Diagnostics[i].Code < report.Diagnostics[j].Code
-		}
-		return report.Diagnostics[i].Package < report.Diagnostics[j].Package
-	})
-	if opts.StrictDI {
-		for _, d := range report.Diagnostics {
-			if d.Severity == "error" {
-				return report, fmt.Errorf("strict-di: %s: %s", d.Code, d.Message)
-			}
-		}
-	}
-	return report, nil
+	return session.Analyze()
 }
 
 func normalizeIndexScope(scope string) string {
@@ -558,6 +435,267 @@ func normalizeCommentText(s string) string {
 	return strings.TrimSpace(strings.Join(fields, " "))
 }
 
+func hasAutoswagIgnoreDirective(pkg *packages.Package, node ast.Node) bool {
+	if pkg == nil || pkg.Fset == nil || node == nil {
+		return false
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return false
+	}
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return false
+	}
+	containsDirective := func(text string) bool {
+		return strings.Contains(strings.ToLower(strings.TrimSpace(text)), "@autoswag:ignore")
+	}
+	containsFileDirective := func(text string) bool {
+		normalized := strings.ToLower(strings.TrimSpace(text))
+		return strings.Contains(normalized, "@autoswag:ignore-file") || strings.Contains(normalized, "@autoswag:file-ignore")
+	}
+	// File-level ignore.
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		if containsFileDirective(cg.Text()) {
+			return true
+		}
+	}
+	// Same-line trailing comment support.
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column && containsDirective(cg.Text()) {
+				return true
+			}
+		}
+	}
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		// Directive applies only to the immediately following statement.
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		// Ignore trailing comments from previous statements in "above" mode.
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return containsDirective(bestText)
+}
+
+func lineHasNonWhitespacePrefix(path string, line, column int) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || line <= 0 || column <= 1 {
+		return false
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(b), "\n")
+	if line > len(lines) {
+		return false
+	}
+	runes := []rune(lines[line-1])
+	limit := column - 1
+	if limit > len(runes) {
+		limit = len(runes)
+	}
+	for i := 0; i < limit; i++ {
+		if !unicode.IsSpace(runes[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func autoswagDirectiveValue(pkg *packages.Package, node ast.Node, key string) string {
+	if pkg == nil || pkg.Fset == nil || node == nil {
+		return ""
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return ""
+	}
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "" {
+		return ""
+	}
+	parseValue := func(text string) string {
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			prefix := "@autoswag:" + key
+			if !strings.HasPrefix(strings.ToLower(l), prefix) {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(prefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			return rest
+		}
+		return ""
+	}
+
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return ""
+	}
+	// Same-line trailing directive.
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column {
+				if v := parseValue(cg.Text()); v != "" {
+					return v
+				}
+			}
+		}
+	}
+	// Directive directly above this statement.
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return parseValue(bestText)
+}
+
+func autoswagDirectiveValues(pkg *packages.Package, node ast.Node, key string) []string {
+	if pkg == nil || pkg.Fset == nil || node == nil {
+		return nil
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return nil
+	}
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "" {
+		return nil
+	}
+	parseValues := func(text string) []string {
+		out := []string{}
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			prefix := "@autoswag:" + key
+			if !strings.HasPrefix(strings.ToLower(l), prefix) {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(prefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			if rest == "" {
+				continue
+			}
+			for _, part := range strings.Split(rest, ",") {
+				tag := strings.TrimSpace(part)
+				if tag == "" {
+					continue
+				}
+				out = appendUniqueString(out, tag)
+			}
+		}
+		return out
+	}
+
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return nil
+	}
+	// Same-line trailing directive.
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column {
+				if out := parseValues(cg.Text()); len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+	// Directive directly above this statement.
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return parseValues(bestText)
+}
+
 func annotateDiagnosticsRoutes(diags []AnalyzerDiagnostic, routes []RouteBindingReport) {
 	if len(diags) == 0 || len(routes) == 0 {
 		return
@@ -777,6 +915,12 @@ func appendRouteBindingFromExpr(
 	out []RouteBindingReport,
 	inline []HandlerReport,
 ) ([]RouteBindingReport, []HandlerReport) {
+	if hasAutoswagIgnoreDirective(pkg, expr) {
+		return out, inline
+	}
+	routeName := autoswagDirectiveValue(pkg, expr, "name")
+	routeDescription := autoswagDirectiveValue(pkg, expr, "description")
+	routeTags := autoswagDirectiveValues(pkg, expr, "tag")
 	routeCall, method, ok := unwrapRouteCall(expr)
 	if !ok || len(routeCall.Args) < 2 {
 		return out, inline
@@ -799,9 +943,12 @@ func appendRouteBindingFromExpr(
 		inline = append(inline, *inlineHandler)
 	}
 	out = append(out, RouteBindingReport{
-		Method:     method,
-		Path:       openAPIPath,
-		HandlerKey: handlerKey,
+		Method:      method,
+		Path:        openAPIPath,
+		HandlerKey:  handlerKey,
+		Name:        routeName,
+		Description: routeDescription,
+		Tags:        routeTags,
 	})
 	return out, inline
 }
@@ -1234,9 +1381,15 @@ func applyResponseDescription(in []detectedResponse, description string) []detec
 }
 
 func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperResolver) ([]detectedResponse, bool) {
-	sel, ok := call.Fun.(*ast.SelectorExpr)
+	baseFun := baseCallFunExpr(call.Fun)
+	sel, ok := baseFun.(*ast.SelectorExpr)
 	if !ok || sel.Sel == nil {
 		if resolver != nil {
+			if resolver.explicitOnly {
+				if !isAllowedConcreteHelperResponseCall(call, info, resolver) {
+					return nil, false
+				}
+			}
 			if out, ok := resolver.resolveCall(call, info); ok {
 				return downgradeResponsesConfidence(out, responseConfidenceInferred), true
 			}
@@ -1327,12 +1480,106 @@ func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperRes
 		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.Render"}}}, true
 	default:
 		if resolver != nil {
+			if resolver.explicitOnly {
+				if !isAllowedConcreteHelperResponseCall(call, info, resolver) {
+					return nil, false
+				}
+			}
 			if out, ok := resolver.resolveCall(call, info); ok {
 				return downgradeResponsesConfidence(out, responseConfidenceInferred), true
 			}
 		}
 		return nil, false
 	}
+}
+
+func isAllowedConcreteHelperResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperResolver) bool {
+	if call == nil || info == nil {
+		return false
+	}
+	if !callHasFiberCtxArg(call, info) {
+		return false
+	}
+	baseFun := baseCallFunExpr(call.Fun)
+	selExpr, ok := baseFun.(*ast.SelectorExpr)
+	if !ok {
+		// Allow direct helper function calls like sendJSON(c) in explicit-only mode.
+		if _, isIdent := baseFun.(*ast.Ident); isIdent {
+			return true
+		}
+		if resolver != nil {
+			file, line, column, endLine, endColumn := resolver.lookupNodeSpan(info, call)
+			resolver.addDiagnostic(
+				"warning",
+				"helper_response_dispatch_rejected",
+				"response helper dispatch is limited to concrete method calls like *.Method(c, ...); use explicit c.* or annotate route output with .ProduceAs(...)",
+				file, line, column, endLine, endColumn,
+			)
+		}
+		return false
+	}
+	sel := info.Selections[selExpr]
+	if sel == nil || sel.Obj() == nil {
+		if resolver != nil {
+			file, line, column, endLine, endColumn := resolver.lookupNodeSpan(info, selExpr)
+			resolver.addDiagnostic(
+				"warning",
+				"helper_response_dispatch_rejected",
+				"response helper dispatch is limited to concrete method calls like *.Method(c, ...); use explicit c.* or annotate route output with .ProduceAs(...)",
+				file, line, column, endLine, endColumn,
+			)
+		}
+		return false
+	}
+	recv := sel.Recv()
+	if recv == nil {
+		return false
+	}
+	if _, iface := recv.Underlying().(*types.Interface); iface {
+		if resolver != nil {
+			file, line, column, endLine, endColumn := resolver.lookupNodeSpan(info, selExpr)
+			resolver.addDiagnostic(
+				"warning",
+				"helper_response_dispatch_ambiguous",
+				fmt.Sprintf("skipping non-concrete helper dispatch for %s; use .ProduceAs(...) on the route to declare response type", recv.String()),
+				file, line, column, endLine, endColumn,
+			)
+		}
+		return false
+	}
+	return true
+}
+
+func callHasFiberCtxArg(call *ast.CallExpr, info *types.Info) bool {
+	if call == nil || info == nil {
+		return false
+	}
+	for _, arg := range call.Args {
+		t := info.TypeOf(arg)
+		if t == nil {
+			continue
+		}
+		if t.String() == "github.com/gofiber/fiber/v3.Ctx" {
+			return true
+		}
+	}
+	return false
+}
+
+func baseCallFunExpr(expr ast.Expr) ast.Expr {
+	for expr != nil {
+		switch v := expr.(type) {
+		case *ast.IndexExpr:
+			expr = v.X
+		case *ast.IndexListExpr:
+			expr = v.X
+		case *ast.ParenExpr:
+			expr = v.X
+		default:
+			return expr
+		}
+	}
+	return nil
 }
 
 func extractStatusAndContentTypeFromChain(call *ast.CallExpr, info *types.Info, status int, contentType string) (int, string) {
@@ -1475,26 +1722,9 @@ func buildReferencedHelperDeclIndex(scopedPkgs, roots []*packages.Package, all m
 	if len(all) == 0 {
 		return all
 	}
-	seeds := map[string]struct{}{}
-	for _, pkg := range roots {
-		if pkg == nil || pkg.TypesInfo == nil {
-			continue
-		}
-		for _, file := range pkg.Syntax {
-			for _, decl := range file.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Name == nil || fn.Body == nil {
-					continue
-				}
-				if isFiberCtxHandler(fn, pkg.TypesInfo) || isRouterHandleMethod(fn, pkg.TypesInfo) {
-					if obj := pkg.TypesInfo.Defs[fn.Name]; obj != nil {
-						if f, ok := obj.(*types.Func); ok {
-							seeds[f.FullName()] = struct{}{}
-						}
-					}
-				}
-			}
-		}
+	seeds := collectEntrypointSeeds(roots)
+	if len(seeds) == 0 {
+		seeds = collectHandlerSeeds(roots)
 	}
 
 	for _, call := range collectCallsReachableFromUsNew(roots, all) {
@@ -1542,10 +1772,78 @@ func buildReferencedHelperDeclIndex(scopedPkgs, roots []*packages.Package, all m
 					}
 				}
 			}
+			if shouldCollectFunctionArgsFromCall(call, decl.pkg.TypesInfo) {
+				for _, arg := range call.Args {
+					if next, ok := resolveFuncExprKey(arg, decl.pkg.TypesInfo); ok {
+						if _, exists := seen[next]; !exists {
+							if _, known := all[next]; known {
+								queue = append(queue, next)
+							}
+						}
+					}
+				}
+			}
 			return true
 		})
 	}
 	return referenced
+}
+
+func collectEntrypointSeeds(roots []*packages.Package) map[string]struct{} {
+	seeds := map[string]struct{}{}
+	for _, pkg := range roots {
+		if pkg == nil || pkg.TypesInfo == nil || pkg.Fset == nil {
+			continue
+		}
+		for _, file := range pkg.Syntax {
+			if file == nil {
+				continue
+			}
+			filename := filepath.Base(pkg.Fset.Position(file.Pos()).Filename)
+			isEntrypointFile := strings.EqualFold(strings.TrimSpace(filename), "main.go")
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || fn.Body == nil {
+					continue
+				}
+				name := strings.TrimSpace(fn.Name.Name)
+				if !isEntrypointFile && !(name == "main" && strings.TrimSpace(pkg.Name) == "main") {
+					continue
+				}
+				if obj := pkg.TypesInfo.Defs[fn.Name]; obj != nil {
+					if f, ok := obj.(*types.Func); ok {
+						seeds[f.FullName()] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	return seeds
+}
+
+func collectHandlerSeeds(roots []*packages.Package) map[string]struct{} {
+	seeds := map[string]struct{}{}
+	for _, pkg := range roots {
+		if pkg == nil || pkg.TypesInfo == nil {
+			continue
+		}
+		for _, file := range pkg.Syntax {
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || fn.Body == nil {
+					continue
+				}
+				if isFiberCtxHandler(fn, pkg.TypesInfo) || isRouterHandleMethod(fn, pkg.TypesInfo) {
+					if obj := pkg.TypesInfo.Defs[fn.Name]; obj != nil {
+						if f, ok := obj.(*types.Func); ok {
+							seeds[f.FullName()] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+	}
+	return seeds
 }
 
 func buildDiagnosticSourceIndex(pkgs []*packages.Package) map[*types.Info]diagnosticSource {
@@ -1708,7 +2006,7 @@ func resolveCallExprFuncKey(call *ast.CallExpr, info *types.Info) (string, bool)
 	if call == nil || info == nil {
 		return "", false
 	}
-	switch f := call.Fun.(type) {
+	switch f := baseCallFunExpr(call.Fun).(type) {
 	case *ast.Ident:
 		if obj := info.Uses[f]; obj != nil {
 			if fn, ok := obj.(*types.Func); ok {
@@ -1730,6 +2028,65 @@ func resolveCallExprFuncKey(call *ast.CallExpr, info *types.Info) (string, bool)
 		}
 	}
 	return "", false
+}
+
+func resolveFuncExprKey(expr ast.Expr, info *types.Info) (string, bool) {
+	if expr == nil || info == nil {
+		return "", false
+	}
+	switch v := expr.(type) {
+	case *ast.Ident:
+		if obj := info.Uses[v]; obj != nil {
+			if fn, ok := obj.(*types.Func); ok {
+				key := strings.TrimSpace(fn.FullName())
+				return key, key != ""
+			}
+		}
+	case *ast.SelectorExpr:
+		if sel := info.Selections[v]; sel != nil && sel.Obj() != nil {
+			if fn, ok := sel.Obj().(*types.Func); ok {
+				key := strings.TrimSpace(fn.FullName())
+				return key, key != ""
+			}
+		}
+		if obj := info.Uses[v.Sel]; obj != nil {
+			if fn, ok := obj.(*types.Func); ok {
+				key := strings.TrimSpace(fn.FullName())
+				return key, key != ""
+			}
+		}
+	case *ast.IndexExpr:
+		return resolveFuncExprKey(v.X, info)
+	case *ast.IndexListExpr:
+		return resolveFuncExprKey(v.X, info)
+	case *ast.ParenExpr:
+		return resolveFuncExprKey(v.X, info)
+	}
+	return "", false
+}
+
+func shouldCollectFunctionArgsFromCall(call *ast.CallExpr, info *types.Info) bool {
+	if call == nil || info == nil {
+		return false
+	}
+	if key, ok := resolveCallExprFuncKey(call, info); ok {
+		switch key {
+		case "github.com/bronystylecrazy/ultrastructure.New",
+			"github.com/bronystylecrazy/ultrastructure/di.Provide":
+			return true
+		}
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(sel.Sel.Name)) {
+	case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ALL":
+		return true
+	case "USE", "GROUP":
+		return true
+	}
+	return false
 }
 
 func isDIProvideCall(call *ast.CallExpr, info *types.Info) bool {
@@ -2004,7 +2361,7 @@ func candidateVariants(t types.Type) []types.Type {
 	return dedup
 }
 
-func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []providedBinding, pkgPath string, strictDI bool, sourceByInfo map[*types.Info]diagnosticSource) *helperResolver {
+func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []providedBinding, pkgPath string, strictDI bool, explicitOnly bool, sourceByInfo map[*types.Info]diagnosticSource) *helperResolver {
 	if len(globalDecls) == 0 {
 		return nil
 	}
@@ -2013,6 +2370,7 @@ func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []provide
 		provided:      dedupeProvidedBindings(provided),
 		pkgPath:       pkgPath,
 		strictDI:      strictDI,
+		explicitOnly:  explicitOnly,
 		diagnostics:   []AnalyzerDiagnostic{},
 		diagSeen:      map[string]struct{}{},
 		sourceByInfo:  sourceByInfo,
@@ -2027,7 +2385,7 @@ func (r *helperResolver) resolveCall(call *ast.CallExpr, info *types.Info) ([]de
 		return nil, false
 	}
 	key := ""
-	switch f := call.Fun.(type) {
+	switch f := baseCallFunExpr(call.Fun).(type) {
 	case *ast.Ident:
 		if obj := info.Uses[f]; obj != nil {
 			if fn, ok := obj.(*types.Func); ok {
@@ -2058,7 +2416,89 @@ func (r *helperResolver) resolveCall(call *ast.CallExpr, info *types.Info) ([]de
 	if !ok {
 		return nil, false
 	}
+	out = applyGenericCallTypeArgs(call, info, out)
 	return prependTrace(out, "call:"+key), true
+}
+
+func applyGenericCallTypeArgs(call *ast.CallExpr, info *types.Info, in []detectedResponse) []detectedResponse {
+	if len(in) == 0 || call == nil || info == nil {
+		return in
+	}
+	paramToConcrete := map[string]string{}
+	var baseFun ast.Expr
+	var typeArgExprs []ast.Expr
+	switch f := call.Fun.(type) {
+	case *ast.IndexExpr:
+		baseFun = f.X
+		typeArgExprs = []ast.Expr{f.Index}
+	case *ast.IndexListExpr:
+		baseFun = f.X
+		typeArgExprs = append([]ast.Expr(nil), f.Indices...)
+	default:
+		return in
+	}
+	if len(typeArgExprs) == 0 {
+		return in
+	}
+	var fn *types.Func
+	switch v := baseCallFunExpr(baseFun).(type) {
+	case *ast.Ident:
+		if obj := info.Uses[v]; obj != nil {
+			if f, ok := obj.(*types.Func); ok {
+				fn = f
+			}
+		}
+	case *ast.SelectorExpr:
+		if sel := info.Selections[v]; sel != nil && sel.Obj() != nil {
+			if f, ok := sel.Obj().(*types.Func); ok {
+				fn = f
+			}
+		}
+		if fn == nil && v.Sel != nil {
+			if obj := info.Uses[v.Sel]; obj != nil {
+				if f, ok := obj.(*types.Func); ok {
+					fn = f
+				}
+			}
+		}
+	}
+	if fn == nil {
+		return in
+	}
+	sig, ok := fn.Type().(*types.Signature)
+	if !ok || sig.TypeParams() == nil || sig.TypeParams().Len() == 0 {
+		return in
+	}
+	n := sig.TypeParams().Len()
+	if len(typeArgExprs) < n {
+		n = len(typeArgExprs)
+	}
+	for i := 0; i < n; i++ {
+		param := sig.TypeParams().At(i)
+		if param == nil || param.Obj() == nil {
+			continue
+		}
+		t := info.TypeOf(typeArgExprs[i])
+		if t == nil {
+			continue
+		}
+		paramToConcrete[param.Obj().Name()] = canonicalTypeName(t)
+	}
+	if len(paramToConcrete) == 0 {
+		return in
+	}
+	out := make([]detectedResponse, 0, len(in))
+	for _, item := range in {
+		if repl, ok := paramToConcrete[item.typ]; ok {
+			item.typ = repl
+		} else if strings.HasPrefix(item.typ, "*") {
+			if repl, ok := paramToConcrete[strings.TrimPrefix(item.typ, "*")]; ok {
+				item.typ = "*" + repl
+			}
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func (r *helperResolver) resolveSelectorDispatch(selExpr *ast.SelectorExpr, sel *types.Selection, info *types.Info) ([]detectedResponse, bool) {

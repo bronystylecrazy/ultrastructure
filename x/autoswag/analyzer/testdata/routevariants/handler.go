@@ -23,6 +23,12 @@ func (h *Handler) Handle(r web.Router) {
 	var _ = g.Get("/decl", h.DeclRoute)
 	g.Get("/multi", h.MultiResponse)
 	g.Get("/ambiguous", h.AmbiguousResponse)
+	// @autoswag:ignore
+	g.Get("/ignored", h.IgnoredResponse)
+	g.Get("/ignored-inline", h.IgnoredInlineResponse) // @autoswag:ignore
+	// @autoswag:name PathOnlyRoute
+	// @autoswag:description Path-only endpoint
+	// @autoswag:tag pathonly, demo
 	g.Get("/pathonly/:slug", h.PathOnly)
 	g.Post("/confidence/:id", h.Confidence)
 }
@@ -47,6 +53,14 @@ func (h *Handler) AmbiguousResponse(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(web.Error{})
 	}
 	return c.Status(fiber.StatusOK).JSON(web.Response{})
+}
+
+func (h *Handler) IgnoredResponse(c fiber.Ctx) error {
+	return c.Status(fiber.StatusTeapot).JSON(web.Response{})
+}
+
+func (h *Handler) IgnoredInlineResponse(c fiber.Ctx) error {
+	return c.Status(fiber.StatusTeapot).JSON(web.Response{})
 }
 
 func (h *Handler) PathOnly(c fiber.Ctx) error {

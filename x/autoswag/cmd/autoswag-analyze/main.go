@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer"
+	"github.com/fsnotify/fsnotify"
 )
 
 func main() {
@@ -28,6 +33,8 @@ func main() {
 	var tags string
 	var exactOnly bool
 	var strictDI bool
+	explicitOnly := true
+	explicitScope := "imports"
 	var diagOut string
 	var graphOut string
 	var verbose bool
@@ -38,6 +45,8 @@ func main() {
 	var cacheDir string
 	var noCache bool
 	var cachePrune bool
+	var watch bool
+	var watchInterval time.Duration
 	flag.StringVar(&dir, "dir", ".", "working directory")
 	flag.StringVar(&pattern, "patterns", ".", "comma-separated go package patterns")
 	flag.BoolVar(&emitHook, "emit-hook", false, "emit autoswag WithCustomize hook source instead of JSON report")
@@ -47,16 +56,20 @@ func main() {
 	flag.StringVar(&tags, "tags", "", "build tags for package loading (comma-separated or go -tags expression)")
 	flag.BoolVar(&exactOnly, "exact-only", false, "when -emit-hook is enabled, include only exact-confidence detections")
 	flag.BoolVar(&strictDI, "strict-di", false, "treat ambiguous DI interface dispatch as an error")
+	flag.BoolVar(&explicitOnly, "explicit-only", true, "limit response inference to explicit c.* and concrete helper methods (*.Method(c,...)); disables DI/deep helper inference")
+	flag.StringVar(&explicitScope, "explicit-scope", "imports", "explicit-only package scope: roots|imports|workspace|all|auto")
 	flag.StringVar(&diagOut, "diag-out", "", "write analyzer diagnostics JSON to file path")
 	flag.StringVar(&graphOut, "graph-out", "", "write dependency graph JSON to file path")
 	flag.BoolVar(&verbose, "verbose", false, "print analyzer progress logs to stderr")
 	flag.BoolVar(&deep, "deep", true, "enable deep indexing (equivalent to --index-scope all when index-scope is not set)")
-	flag.StringVar(&indexScope, "index-scope", "", "index scope: workspace|roots|referenced|all (overrides --deep)")
+	flag.StringVar(&indexScope, "index-scope", "", "index scope: auto|workspace|roots|referenced|all (overrides --deep)")
 	flag.BoolVar(&diagOnly, "diag-only", false, "print diagnostics only (human-readable), do not emit JSON report/hook payload")
 	flag.BoolVar(&diagGrouped, "diag-grouped", true, "group diagnostics by route/package in -diag-only output")
 	flag.StringVar(&cacheDir, "cache-dir", defaultCacheDir(), "directory for analysis cache")
 	flag.BoolVar(&noCache, "no-cache", false, "disable reading/writing analysis cache")
 	flag.BoolVar(&cachePrune, "cache-prune", false, "delete cache directory and exit")
+	flag.BoolVar(&watch, "watch", false, "watch files and rerun analyze command on changes")
+	flag.DurationVar(&watchInterval, "watch-interval", 1*time.Second, "watch polling interval (e.g. 500ms, 2s)")
 	flag.Parse()
 
 	cacheRoot := strings.TrimSpace(cacheDir)
@@ -76,10 +89,14 @@ func main() {
 	scope := strings.TrimSpace(indexScope)
 	if scope == "" {
 		if deep {
-			scope = "all"
+			scope = "auto"
 		} else {
 			scope = "workspace"
 		}
+	}
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		scope = "all"
 	}
 
 	patterns := []string{"."}
@@ -88,6 +105,154 @@ func main() {
 		for i := range patterns {
 			patterns[i] = strings.TrimSpace(patterns[i])
 		}
+	}
+	if watch {
+		toolVersion := detectToolVersion()
+		cacheEnabled := !noCache && cacheRoot != ""
+		watchSessionRecycleHeapMB := watchRecycleHeapMB()
+		if watchSessionRecycleHeapMB > 0 {
+			debug.SetMemoryLimit(int64(watchSessionRecycleHeapMB * 1024 * 1024))
+		}
+		autoWatch := scope == "auto"
+		watchScopes := []string{scope}
+		if autoWatch {
+			watchScopes = autoAnalyzeScopes(strictDI, explicitOnly, explicitScope)
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch auto scopes: %s\n", time.Now().Format("15:04:05"), strings.Join(watchScopes, " -> "))
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch heap guard: recycle=%dMB\n", time.Now().Format("15:04:05"), watchSessionRecycleHeapMB)
+			}
+		}
+		emit := func(report *analyzer.Report) error {
+			if report == nil {
+				return nil
+			}
+			if strings.TrimSpace(diagOut) != "" {
+				writeDiagnostics(diagOut, report.Diagnostics)
+			}
+			if strings.TrimSpace(graphOut) != "" {
+				writeDependencyGraph(graphOut, report.DependencyGraph)
+			}
+			if diagOnly {
+				printDiagnostics(report.Diagnostics, diagGrouped)
+				return nil
+			}
+			payload, err := buildPayload(report, emitHook, hookPackage, hookFunc, exactOnly)
+			if err != nil {
+				return err
+			}
+			return writePayload(out, payload)
+		}
+		watchScopeIdx := 0
+		newWatchSession := func(scope string) (*analyzer.Session, error) {
+			return newAnalyzeSession(dir, patterns, tags, strictDI, explicitOnly, explicitScope, scope, toolVersion, verbose, cacheEnabled, cacheRoot)
+		}
+		var session *analyzer.Session
+		recycleWatchSession := func(reason string) error {
+			if verbose {
+				fmt.Fprintf(
+					os.Stderr,
+					"[autoswag-analyze %s] recycling watch session (%s, scope=%s, heap_alloc=%dMB)\n",
+					time.Now().Format("15:04:05"),
+					reason,
+					watchScopes[watchScopeIdx],
+					heapAllocMB(),
+				)
+			}
+			session = nil
+			runtime.GC()
+			debug.FreeOSMemory()
+			next, err := newWatchSession(watchScopes[watchScopeIdx])
+			if err != nil {
+				return err
+			}
+			session = next
+			if verbose {
+				fmt.Fprintf(
+					os.Stderr,
+					"[autoswag-analyze %s] watch session recycled (heap_alloc=%dMB)\n",
+					time.Now().Format("15:04:05"),
+					heapAllocMB(),
+				)
+			}
+			return nil
+		}
+		session, err := newWatchSession(watchScopes[watchScopeIdx])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		runWatchAnalyze := func(changed []string, initial bool) (*analyzer.Report, error) {
+			for {
+				var report *analyzer.Report
+				var err error
+				if initial {
+					report, err = session.Analyze()
+				} else {
+					report, err = session.AnalyzeChangedFiles(changed)
+				}
+				if err != nil {
+					return report, err
+				}
+				if !autoWatch || !shouldEscalateAnalyzeReport(report) || watchScopeIdx >= len(watchScopes)-1 {
+					return report, nil
+				}
+				prevScope := watchScopes[watchScopeIdx]
+				watchScopeIdx++
+				nextScope := watchScopes[watchScopeIdx]
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] auto escalation requested: %s -> %s\n", time.Now().Format("15:04:05"), prevScope, nextScope)
+				}
+				session, err = newWatchSession(nextScope)
+				if err != nil {
+					return nil, err
+				}
+				initial = true
+			}
+		}
+		report, err := runWatchAnalyze(nil, true)
+		if err != nil {
+			if report != nil && strings.TrimSpace(diagOut) != "" {
+				writeDiagnostics(diagOut, report.Diagnostics)
+			}
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		if err := emit(report); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		if err := runWatchMode(cacheRoot, dir, patterns, out, watchInterval, verbose, func(changed []string) error {
+			report, err := runWatchAnalyze(changed, false)
+			if err != nil {
+				if report != nil && strings.TrimSpace(diagOut) != "" {
+					writeDiagnostics(diagOut, report.Diagnostics)
+				}
+				return err
+			}
+			if err := emit(report); err != nil {
+				return err
+			}
+			if explicitOnly {
+				runtime.GC()
+				debug.FreeOSMemory()
+				if verbose {
+					fmt.Fprintf(
+						os.Stderr,
+						"[autoswag-analyze %s] post-run memory trim (heap_alloc=%dMB)\n",
+						time.Now().Format("15:04:05"),
+						heapAllocMB(),
+					)
+				}
+			}
+			if heapAllocMB() >= watchSessionRecycleHeapMB {
+				return recycleWatchSession("heap threshold")
+			}
+			return nil
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		return
 	}
 	toolVersion := detectToolVersion()
 
@@ -112,32 +277,58 @@ func main() {
 	}
 
 	if report == nil {
-		opts := analyzer.Options{
-			Dir:         dir,
-			Patterns:    patterns,
-			Tags:        tags,
-			StrictDI:    strictDI,
-			IndexScope:  scope,
-			ToolVersion: toolVersion,
-			Progress: func(message string) {
-				if !verbose {
-					return
-				}
-				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] %s\n", time.Now().Format("15:04:05"), strings.TrimSpace(message))
-			},
-		}
-		if cacheEnabled {
-			opts.PackageCacheLoad = func(pkgPath, fingerprint string) (*analyzer.PackageCacheEntry, bool) {
-				entry, loadErr := readCachedPackageEntry(cacheRoot, pkgPath, fingerprint)
-				return entry, loadErr == nil && entry != nil
+		runAnalyze := func(runScope string) (*analyzer.Report, error) {
+			opts := analyzer.Options{
+				Dir:           dir,
+				Patterns:      patterns,
+				Tags:          tags,
+				StrictDI:      strictDI,
+				ExplicitOnly:  explicitOnly,
+				ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, runScope),
+				IndexScope:    runScope,
+				LoadDeps:      shouldLoadDepsForScope(runScope, explicitOnly),
+				ToolVersion:   toolVersion,
+				Progress: func(message string) {
+					if !verbose {
+						return
+					}
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] %s\n", time.Now().Format("15:04:05"), strings.TrimSpace(message))
+				},
 			}
-			opts.PackageCacheStore = func(pkgPath, fingerprint string, entry analyzer.PackageCacheEntry) {
-				if writeErr := writeCachedPackageEntry(cacheRoot, pkgPath, fingerprint, entry); writeErr != nil && verbose {
-					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] package cache write failed (%s): %v\n", time.Now().Format("15:04:05"), strings.TrimSpace(pkgPath), writeErr)
+			if cacheEnabled {
+				opts.PackageCacheLoad = func(pkgPath, fingerprint string) (*analyzer.PackageCacheEntry, bool) {
+					entry, loadErr := readCachedPackageEntry(cacheRoot, pkgPath, fingerprint)
+					return entry, loadErr == nil && entry != nil
+				}
+				opts.PackageCacheStore = func(pkgPath, fingerprint string, entry analyzer.PackageCacheEntry) {
+					if writeErr := writeCachedPackageEntry(cacheRoot, pkgPath, fingerprint, entry); writeErr != nil && verbose {
+						fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] package cache write failed (%s): %v\n", time.Now().Format("15:04:05"), strings.TrimSpace(pkgPath), writeErr)
+					}
 				}
 			}
+			return analyzer.Analyze(opts)
 		}
-		report, err = analyzer.Analyze(opts)
+
+		if scope == "auto" {
+			autoScopes := autoAnalyzeScopes(strictDI, explicitOnly, explicitScope)
+			for i, runScope := range autoScopes {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] auto scope pass: %s\n", time.Now().Format("15:04:05"), runScope)
+				}
+				report, err = runAnalyze(runScope)
+				if err != nil {
+					break
+				}
+				if !shouldEscalateAnalyzeReport(report) || i == len(autoScopes)-1 {
+					break
+				}
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] auto escalation requested\n", time.Now().Format("15:04:05"))
+				}
+			}
+		} else {
+			report, err = runAnalyze(scope)
+		}
 	}
 	if err != nil {
 		// If analyzer returned a partial report with diagnostics, persist diag output first.
@@ -166,7 +357,53 @@ func main() {
 		return
 	}
 
-	var payload []byte
+	payload, err := buildPayload(report, emitHook, hookPackage, hookFunc, exactOnly)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := writePayload(out, payload); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] done in %s\n", time.Now().Format("15:04:05"), time.Since(startedAt).Round(time.Millisecond))
+	}
+}
+
+func newAnalyzeSession(dir string, patterns []string, tags string, strictDI bool, explicitOnly bool, explicitScope string, scope string, toolVersion string, verbose bool, cacheEnabled bool, cacheRoot string) (*analyzer.Session, error) {
+	opts := analyzer.Options{
+		Dir:           dir,
+		Patterns:      patterns,
+		Tags:          tags,
+		StrictDI:      strictDI,
+		ExplicitOnly:  explicitOnly,
+		ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, scope),
+		IndexScope:    scope,
+		LoadDeps:      shouldLoadDepsForScope(scope, explicitOnly),
+		ToolVersion:   toolVersion,
+		Progress: func(message string) {
+			if !verbose {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] %s\n", time.Now().Format("15:04:05"), strings.TrimSpace(message))
+		},
+	}
+	if cacheEnabled {
+		opts.PackageCacheLoad = func(pkgPath, fingerprint string) (*analyzer.PackageCacheEntry, bool) {
+			entry, loadErr := readCachedPackageEntry(cacheRoot, pkgPath, fingerprint)
+			return entry, loadErr == nil && entry != nil
+		}
+		opts.PackageCacheStore = func(pkgPath, fingerprint string, entry analyzer.PackageCacheEntry) {
+			if writeErr := writeCachedPackageEntry(cacheRoot, pkgPath, fingerprint, entry); writeErr != nil && verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] package cache write failed (%s): %v\n", time.Now().Format("15:04:05"), strings.TrimSpace(pkgPath), writeErr)
+			}
+		}
+	}
+	return analyzer.NewSession(opts)
+}
+
+func buildPayload(report *analyzer.Report, emitHook bool, hookPackage, hookFunc string, exactOnly bool) ([]byte, error) {
 	if emitHook {
 		src, err := analyzer.GenerateHookSource(report, analyzer.GenerateOptions{
 			PackageName: hookPackage,
@@ -174,36 +411,23 @@ func main() {
 			ExactOnly:   exactOnly,
 		})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
+			return nil, err
 		}
-		payload = []byte(src)
-	} else {
-		b, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		payload = append(b, '\n')
+		return []byte(src), nil
 	}
+	b, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
 
+func writePayload(out string, payload []byte) error {
 	if strings.TrimSpace(out) == "" {
-		if _, err := os.Stdout.Write(payload); err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-		if verbose {
-			fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] done in %s\n", time.Now().Format("15:04:05"), time.Since(startedAt).Round(time.Millisecond))
-		}
-		return
+		_, err := os.Stdout.Write(payload)
+		return err
 	}
-	if err := os.WriteFile(out, payload, 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	if verbose {
-		fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] done in %s\n", time.Now().Format("15:04:05"), time.Since(startedAt).Round(time.Millisecond))
-	}
+	return os.WriteFile(out, payload, 0o644)
 }
 
 func writeDiagnostics(path string, diagnostics []analyzer.AnalyzerDiagnostic) {
@@ -488,6 +712,104 @@ func packageCacheEntryPath(cacheRoot, pkgPath, fingerprint string) string {
 	return filepath.Join(cacheRoot, "pkgs", name)
 }
 
+func shouldEscalateAnalyzeReport(report *analyzer.Report) bool {
+	if report == nil {
+		return false
+	}
+	for _, d := range report.Diagnostics {
+		switch strings.TrimSpace(d.Code) {
+		case "di_unresolved_interface_dispatch", "di_ambiguous_interface_dispatch":
+			return true
+		}
+	}
+	for _, p := range report.Packages {
+		for _, h := range p.Handlers {
+			for _, r := range h.Responses {
+				conf := strings.TrimSpace(r.Confidence)
+				if conf == "inferred" || conf == "heuristic" {
+					for _, step := range r.Trace {
+						if strings.HasPrefix(strings.TrimSpace(step), "call:") {
+							return true
+						}
+					}
+					if strings.TrimSpace(r.Type) == "any" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func autoAnalyzeScopes(strictDI bool, explicitOnly bool, explicitScope string) []string {
+	if explicitOnly {
+		switch strings.ToLower(strings.TrimSpace(explicitScope)) {
+		case "auto":
+			out := []string{"roots", "imports", "workspace"}
+			if strictDI {
+				out = append(out, "all")
+			}
+			return out
+		case "roots", "imports", "workspace", "all":
+			return []string{strings.ToLower(strings.TrimSpace(explicitScope))}
+		default:
+			return []string{"imports"}
+		}
+	}
+	out := []string{"roots", "workspace", "referenced"}
+	if strictDI {
+		out = append(out, "all")
+	}
+	return out
+}
+
+func explicitScopeForScope(explicitOnly bool, explicitScope string, scope string) string {
+	if !explicitOnly {
+		return ""
+	}
+	explicitScope = strings.ToLower(strings.TrimSpace(explicitScope))
+	if explicitScope == "auto" {
+		switch strings.ToLower(strings.TrimSpace(scope)) {
+		case "roots":
+			return "roots"
+		case "workspace", "referenced":
+			return "workspace"
+		case "all":
+			return "all"
+		default:
+			return "imports"
+		}
+	}
+	return explicitScope
+}
+
+func shouldLoadDepsForScope(scope string, explicitOnly bool) bool {
+	if explicitOnly {
+		return false
+	}
+	return strings.TrimSpace(strings.ToLower(scope)) == "all"
+}
+
+func heapAllocMB() uint64 {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return ms.HeapAlloc / (1024 * 1024)
+}
+
+func watchRecycleHeapMB() uint64 {
+	const def uint64 = 768
+	raw := strings.TrimSpace(os.Getenv("AUTOSWAG_WATCH_RECYCLE_HEAP_MB"))
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || n == 0 {
+		return def
+	}
+	return n
+}
+
 func pruneCacheDir(cacheRoot string) error {
 	cacheRoot = strings.TrimSpace(cacheRoot)
 	if cacheRoot == "" {
@@ -517,4 +839,273 @@ func writeDependencyGraph(path string, graph *analyzer.DependencyGraph) {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+}
+
+func runWatchMode(cacheRoot, dir string, patterns []string, out string, interval time.Duration, verbose bool, onChange func(changed []string) error) error {
+	if interval <= 0 {
+		interval = 500 * time.Millisecond
+	}
+	root, err := filepath.Abs(strings.TrimSpace(dir))
+	if err != nil {
+		return fmt.Errorf("watch: resolve dir: %w", err)
+	}
+	watchRoots, err := deriveWatchRoots(root, patterns)
+	if err != nil {
+		return err
+	}
+	excludes := map[string]struct{}{}
+	if strings.TrimSpace(out) != "" {
+		if absOut, err := absFromCwd(out); err == nil {
+			excludes[absOut] = struct{}{}
+		}
+	}
+	if strings.TrimSpace(cacheRoot) != "" {
+		if absCache, err := filepath.Abs(strings.TrimSpace(cacheRoot)); err == nil {
+			excludes[absCache] = struct{}{}
+		}
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("watch: create watcher: %w", err)
+	}
+	defer watcher.Close()
+	watchedDirs := map[string]struct{}{}
+	for _, wr := range watchRoots {
+		if err := addWatchDirsRecursively(watcher, wr, excludes, watchedDirs); err != nil {
+			return err
+		}
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch mode enabled (debounce=%s, roots=%s)\n", time.Now().Format("15:04:05"), interval, strings.Join(pathsToSlash(watchRoots), ","))
+	}
+	var debounce *time.Timer
+	trigger := make(chan struct{}, 1)
+	pending := map[string]struct{}{}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	fire := func() {
+		select {
+		case trigger <- struct{}{}:
+		default:
+		}
+	}
+	resetDebounce := func() {
+		if debounce != nil {
+			debounce.Stop()
+		}
+		debounce = time.AfterFunc(interval, fire)
+	}
+
+	for {
+		select {
+		case <-sigCh:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch stopped\n", time.Now().Format("15:04:05"))
+			}
+			return nil
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			if strings.TrimSpace(event.Name) == "" {
+				continue
+			}
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) == 0 {
+				continue
+			}
+			absEvent, err := filepath.Abs(event.Name)
+			if err != nil {
+				continue
+			}
+			if !isUnderAnyRoot(absEvent, watchRoots) {
+				continue
+			}
+			if shouldExcludePath(absEvent, excludes) {
+				continue
+			}
+			if event.Has(fsnotify.Create) {
+				if info, statErr := os.Stat(absEvent); statErr == nil && info.IsDir() {
+					_ = addWatchDirsRecursively(watcher, absEvent, excludes, watchedDirs)
+					continue
+				}
+			}
+			if !isWatchedSourceFile(absEvent) {
+				continue
+			}
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] change detected: %s\n", time.Now().Format("15:04:05"), filepath.ToSlash(absEvent))
+			}
+			pending[absEvent] = struct{}{}
+			resetDebounce()
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch error: %v\n", time.Now().Format("15:04:05"), err)
+			}
+		case <-trigger:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] rerunning\n", time.Now().Format("15:04:05"))
+			}
+			changed := make([]string, 0, len(pending))
+			for p := range pending {
+				changed = append(changed, p)
+			}
+			sort.Strings(changed)
+			pending = map[string]struct{}{}
+			if onChange != nil {
+				if err := onChange(changed); err != nil && verbose {
+					fmt.Fprintf(os.Stderr, "[autoswag-analyze %s] watch run failed: %v\n", time.Now().Format("15:04:05"), err)
+				}
+			}
+		}
+	}
+}
+
+func absFromCwd(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(filepath.Join(cwd, path)), nil
+}
+
+func addWatchDirsRecursively(watcher *fsnotify.Watcher, root string, excludes map[string]struct{}, watched map[string]struct{}) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return nil
+	}
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if shouldExcludePath(absPath, excludes) || shouldSkipWatchDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if _, ok := watched[absPath]; ok {
+			return nil
+		}
+		if err := watcher.Add(absPath); err != nil {
+			return nil
+		}
+		watched[absPath] = struct{}{}
+		return nil
+	})
+}
+
+func shouldExcludePath(path string, excludes map[string]struct{}) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	for ex := range excludes {
+		ex = filepath.Clean(strings.TrimSpace(ex))
+		if ex == "" {
+			continue
+		}
+		if path == ex || strings.HasPrefix(path, ex+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSkipWatchDir(name string) bool {
+	switch strings.TrimSpace(name) {
+	case ".git", "node_modules", "vendor":
+		return true
+	default:
+		return false
+	}
+}
+
+func isWatchedSourceFile(path string) bool {
+	name := strings.TrimSpace(filepath.Base(path))
+	if name == "go.mod" || name == "go.sum" {
+		return true
+	}
+	return strings.HasSuffix(name, ".go")
+}
+
+func deriveWatchRoots(root string, patterns []string) ([]string, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return nil, fmt.Errorf("watch: empty root")
+	}
+	if len(patterns) == 0 {
+		return []string{root}, nil
+	}
+	out := []string{}
+	seen := map[string]struct{}{}
+	for _, p := range patterns {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "." {
+			p = root
+		} else {
+			if idx := strings.Index(p, "..."); idx >= 0 {
+				p = p[:idx]
+			}
+			p = strings.TrimSuffix(p, "/")
+			if p == "" {
+				p = root
+			} else if !filepath.IsAbs(p) {
+				p = filepath.Join(root, p)
+			}
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(abs)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		abs = filepath.Clean(abs)
+		if _, ok := seen[abs]; ok {
+			continue
+		}
+		seen[abs] = struct{}{}
+		out = append(out, abs)
+	}
+	if len(out) == 0 {
+		out = append(out, root)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func isUnderAnyRoot(path string, roots []string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	for _, r := range roots {
+		r = filepath.Clean(strings.TrimSpace(r))
+		if r == "" {
+			continue
+		}
+		if path == r || strings.HasPrefix(path, r+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathsToSlash(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, p := range in {
+		out = append(out, filepath.ToSlash(p))
+	}
+	return out
 }

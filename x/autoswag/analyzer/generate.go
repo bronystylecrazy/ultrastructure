@@ -141,6 +141,25 @@ func GenerateHookSource(report *Report, opts GenerateOptions) (string, error) {
 			}
 			key := strings.ToUpper(strings.TrimSpace(route.Method)) + " " + normalizedPath
 			b.WriteString("\tcase " + strconv.Quote(key) + ":\n")
+			if name := strings.TrimSpace(route.Name); name != "" {
+				b.WriteString("\t\tctx.SetSummary(" + strconv.Quote(name) + ")\n")
+			}
+			if description := strings.TrimSpace(route.Description); description != "" {
+				b.WriteString("\t\tctx.SetDescription(" + strconv.Quote(description) + ")\n")
+			}
+			if len(route.Tags) > 0 {
+				tags := make([]string, 0, len(route.Tags))
+				for _, tag := range route.Tags {
+					tag = strings.TrimSpace(tag)
+					if tag == "" {
+						continue
+					}
+					tags = append(tags, strconv.Quote(tag))
+				}
+				if len(tags) > 0 {
+					b.WriteString("\t\tctx.AddTag(" + strings.Join(tags, ", ") + ")\n")
+				}
+			}
 			emitHandlerMetadata(&b, h, pkgName, aliasRemapByPkg[p.Path], opts.ExactOnly)
 			b.WriteString("\t\treturn\n")
 		}
