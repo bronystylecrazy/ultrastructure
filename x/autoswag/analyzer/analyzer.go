@@ -92,12 +92,14 @@ type HandlerReport struct {
 }
 
 type RouteBindingReport struct {
-	Method      string   `json:"method"`
-	Path        string   `json:"path"`
-	HandlerKey  string   `json:"handler_key"`
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	Method      string               `json:"method"`
+	Path        string               `json:"path"`
+	HandlerKey  string               `json:"handler_key"`
+	Name        string               `json:"name,omitempty"`
+	Description string               `json:"description,omitempty"`
+	Tags        []string             `json:"tags,omitempty"`
+	Responses   []ResponseTypeReport `json:"responses,omitempty"`
+	PathParams  []PathParamReport    `json:"path_params,omitempty"`
 }
 
 type RequestReport struct {
@@ -112,9 +114,10 @@ type TypeReport struct {
 }
 
 type PathParamReport struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Confidence string `json:"confidence,omitempty"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Confidence  string `json:"confidence,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type ResponseTypeReport struct {
@@ -696,6 +699,210 @@ func autoswagDirectiveValues(pkg *packages.Package, node ast.Node, key string) [
 	return parseValues(bestText)
 }
 
+func autoswagDirectiveResponses(pkg *packages.Package, node ast.Node) []ResponseTypeReport {
+	if pkg == nil || pkg.Fset == nil || node == nil {
+		return nil
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return nil
+	}
+	parseResponses := func(text string) []ResponseTypeReport {
+		out := []ResponseTypeReport{}
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			prefix := "@autoswag:response"
+			if !strings.HasPrefix(strings.ToLower(l), prefix) {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(prefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			if rest == "" {
+				continue
+			}
+			fields := strings.Fields(rest)
+			if len(fields) < 2 {
+				continue
+			}
+			status, err := strconv.Atoi(strings.TrimSpace(fields[0]))
+			if err != nil {
+				continue
+			}
+			typ := strings.TrimSpace(fields[1])
+			if typ == "" {
+				continue
+			}
+			contentType := ""
+			desc := ""
+			if len(fields) >= 3 {
+				if strings.Contains(fields[2], "/") {
+					contentType = strings.TrimSpace(fields[2])
+					if len(fields) > 3 {
+						desc = strings.TrimSpace(strings.Join(fields[3:], " "))
+					}
+				} else {
+					desc = strings.TrimSpace(strings.Join(fields[2:], " "))
+				}
+			}
+			out = append(out, ResponseTypeReport{
+				Status:      status,
+				Type:        typ,
+				ContentType: contentType,
+				Description: desc,
+				Confidence:  responseConfidenceExact,
+			})
+		}
+		return out
+	}
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return nil
+	}
+	// Same-line trailing directive(s).
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column {
+				if out := parseResponses(cg.Text()); len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+	// Directive block directly above statement.
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return parseResponses(bestText)
+}
+
+func autoswagDirectivePathParams(pkg *packages.Package, node ast.Node) []PathParamReport {
+	if pkg == nil || pkg.Fset == nil || node == nil {
+		return nil
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return nil
+	}
+	parseParams := func(text string) []PathParamReport {
+		out := []PathParamReport{}
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			lower := strings.ToLower(l)
+			prefix := "@autoswag:param"
+			legacyPrefix := "@autoswag:pathparam"
+			matchPrefix := ""
+			if strings.HasPrefix(lower, prefix) {
+				matchPrefix = prefix
+			}
+			if strings.HasPrefix(lower, legacyPrefix) {
+				matchPrefix = legacyPrefix
+			}
+			if matchPrefix == "" {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(matchPrefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			fields := strings.Fields(rest)
+			if len(fields) < 2 {
+				continue
+			}
+			name := strings.TrimSpace(fields[0])
+			typ := strings.TrimSpace(fields[1])
+			if name == "" || typ == "" {
+				continue
+			}
+			desc := ""
+			if len(fields) > 2 {
+				desc = strings.TrimSpace(strings.Join(fields[2:], " "))
+			}
+			out = append(out, PathParamReport{
+				Name:        name,
+				Type:        typ,
+				Confidence:  responseConfidenceExact,
+				Description: desc,
+			})
+		}
+		return out
+	}
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return nil
+	}
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column {
+				if out := parseParams(cg.Text()); len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return parseParams(bestText)
+}
+
 func annotateDiagnosticsRoutes(diags []AnalyzerDiagnostic, routes []RouteBindingReport) {
 	if len(diags) == 0 || len(routes) == 0 {
 		return
@@ -921,6 +1128,8 @@ func appendRouteBindingFromExpr(
 	routeName := autoswagDirectiveValue(pkg, expr, "name")
 	routeDescription := autoswagDirectiveValue(pkg, expr, "description")
 	routeTags := autoswagDirectiveValues(pkg, expr, "tag")
+	routeResponses := autoswagDirectiveResponses(pkg, expr)
+	routePathParams := autoswagDirectivePathParams(pkg, expr)
 	routeCall, method, ok := unwrapRouteCall(expr)
 	if !ok || len(routeCall.Args) < 2 {
 		return out, inline
@@ -939,6 +1148,25 @@ func appendRouteBindingFromExpr(
 	if handlerKey == "" {
 		return out, inline
 	}
+	if resolver != nil {
+		if decl, ok := resolver.declByKey[handlerKey]; ok && decl.fn != nil && decl.pkg != nil {
+			if strings.TrimSpace(routeName) == "" {
+				routeName = autoswagDirectiveValue(decl.pkg, decl.fn, "name")
+			}
+			if strings.TrimSpace(routeDescription) == "" {
+				routeDescription = autoswagDirectiveValue(decl.pkg, decl.fn, "description")
+			}
+			if len(routeTags) == 0 {
+				routeTags = autoswagDirectiveValues(decl.pkg, decl.fn, "tag")
+			}
+			if len(routeResponses) == 0 {
+				routeResponses = autoswagDirectiveResponses(decl.pkg, decl.fn)
+			}
+			if len(routePathParams) == 0 {
+				routePathParams = autoswagDirectivePathParams(decl.pkg, decl.fn)
+			}
+		}
+	}
 	if inlineHandler != nil {
 		inline = append(inline, *inlineHandler)
 	}
@@ -949,6 +1177,8 @@ func appendRouteBindingFromExpr(
 		Name:        routeName,
 		Description: routeDescription,
 		Tags:        routeTags,
+		Responses:   routeResponses,
+		PathParams:  routePathParams,
 	})
 	return out, inline
 }

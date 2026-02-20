@@ -26,9 +26,6 @@ func (h *Handler) Handle(r web.Router) {
 	// @autoswag:ignore
 	g.Get("/ignored", h.IgnoredResponse)
 	g.Get("/ignored-inline", h.IgnoredInlineResponse) // @autoswag:ignore
-	// @autoswag:name PathOnlyRoute
-	// @autoswag:description Path-only endpoint
-	// @autoswag:tag pathonly, demo
 	g.Get("/pathonly/:slug", h.PathOnly)
 	g.Post("/confidence/:id", h.Confidence)
 }
@@ -63,6 +60,11 @@ func (h *Handler) IgnoredInlineResponse(c fiber.Ctx) error {
 	return c.Status(fiber.StatusTeapot).JSON(web.Response{})
 }
 
+// @autoswag:name PathOnlyRoute
+// @autoswag:description Path-only endpoint
+// @autoswag:tag pathonly, demo
+// @autoswag:response 204 string text/plain No content for path-only
+// @autoswag:param slug string Slug identifier
 func (h *Handler) PathOnly(c fiber.Ctx) error {
 	slug := c.Params("slug")
 	_ = slug

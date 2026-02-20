@@ -247,6 +247,21 @@ func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
 						Name:        "ListX",
 						Description: "Lists x resources",
 						Tags:        []string{"users", "v1"},
+						Responses: []ResponseTypeReport{
+							{
+								Status:      201,
+								Type:        "string",
+								ContentType: "text/plain",
+								Description: "Created text",
+							},
+						},
+						PathParams: []PathParamReport{
+							{
+								Name:        "id",
+								Type:        "string",
+								Description: "Resource ID",
+							},
+						},
 					},
 				},
 			},
@@ -268,6 +283,12 @@ func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
 	}
 	if !strings.Contains(src, "ctx.AddTag(\"users\", \"v1\")") {
 		t.Fatalf("expected route tag emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.SetResponseAs(201, \"\", \"text/plain\", \"Created text\")") {
+		t.Fatalf("expected route response override emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddParameter(autoswag.ParameterMetadata{Name: \"id\", In: \"path\", Type: reflect.TypeOf(\"\"), Required: true, Description: \"Resource ID\"})") {
+		t.Fatalf("expected route path param override emission, source:\n%s", src)
 	}
 }
 

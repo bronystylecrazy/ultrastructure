@@ -138,6 +138,16 @@ func TestAnalyze_RouteVariants_AssignDeclAndMultiContentResponses(t *testing.T) 
 			if len(route.Tags) != 2 || route.Tags[0] != "pathonly" || route.Tags[1] != "demo" {
 				t.Fatalf("expected route tags from @autoswag:tag, got %+v", route.Tags)
 			}
+			if len(route.Responses) != 1 {
+				t.Fatalf("expected route response override from @autoswag:response, got %+v", route.Responses)
+			}
+			resp := route.Responses[0]
+			if resp.Status != 204 || resp.Type != "string" || resp.ContentType != "text/plain" || resp.Description != "No content for path-only" {
+				t.Fatalf("unexpected route response override: %+v", resp)
+			}
+			if len(route.PathParams) != 1 || route.PathParams[0].Name != "slug" || route.PathParams[0].Type != "string" || route.PathParams[0].Description != "Slug identifier" {
+				t.Fatalf("unexpected route pathparam override: %+v", route.PathParams)
+			}
 		}
 		delete(expectedRoutes, key)
 	}

@@ -160,7 +160,14 @@ func GenerateHookSource(report *Report, opts GenerateOptions) (string, error) {
 					b.WriteString("\t\tctx.AddTag(" + strings.Join(tags, ", ") + ")\n")
 				}
 			}
-			emitHandlerMetadata(&b, h, pkgName, aliasRemapByPkg[p.Path], opts.ExactOnly)
+			hForRoute := h
+			if len(route.Responses) > 0 {
+				hForRoute.Responses = mergeRouteResponses(h.Responses, route.Responses)
+			}
+			if len(route.PathParams) > 0 {
+				hForRoute.Path = mergeRoutePathParams(h.Path, route.PathParams)
+			}
+			emitHandlerMetadata(&b, hForRoute, pkgName, aliasRemapByPkg[p.Path], opts.ExactOnly)
 			b.WriteString("\t\treturn\n")
 		}
 	}
@@ -226,7 +233,12 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 		case "boolean":
 			t = "reflect.TypeOf(false)"
 		}
-		b.WriteString("\t\tctx.AddParameter(autoswag.ParameterMetadata{Name: " + strconv.Quote(p.Name) + ", In: \"path\", Type: " + t + ", Required: true})\n")
+		paramExpr := "autoswag.ParameterMetadata{Name: " + strconv.Quote(p.Name) + ", In: \"path\", Type: " + t + ", Required: true"
+		if d := strings.TrimSpace(p.Description); d != "" {
+			paramExpr += ", Description: " + strconv.Quote(d)
+		}
+		paramExpr += "}"
+		b.WriteString("\t\tctx.AddParameter(" + paramExpr + ")\n")
 	}
 	for _, r := range h.Responses {
 		if exactOnly && strings.TrimSpace(r.Confidence) != "" && strings.TrimSpace(r.Confidence) != responseConfidenceExact {
@@ -249,13 +261,59 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 }
 
 func handlerNeedsReflect(h HandlerReport) bool {
-	for _, p := range h.Path {
-		switch p.Type {
-		case "integer", "number", "boolean":
-			return true
-		}
+	return len(h.Path) > 0
+}
+
+func mergeRouteResponses(base []ResponseTypeReport, overrides []ResponseTypeReport) []ResponseTypeReport {
+	if len(overrides) == 0 {
+		return base
 	}
-	return false
+	out := make([]ResponseTypeReport, 0, len(base)+len(overrides))
+	seen := map[string]int{}
+	keyFor := func(r ResponseTypeReport) string {
+		return strconv.Itoa(r.Status) + "|" + strings.TrimSpace(r.ContentType)
+	}
+	for _, r := range base {
+		key := keyFor(r)
+		seen[key] = len(out)
+		out = append(out, r)
+	}
+	for _, r := range overrides {
+		key := keyFor(r)
+		if idx, ok := seen[key]; ok {
+			out[idx] = r
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, r)
+	}
+	return out
+}
+
+func mergeRoutePathParams(base []PathParamReport, overrides []PathParamReport) []PathParamReport {
+	if len(overrides) == 0 {
+		return base
+	}
+	out := make([]PathParamReport, 0, len(base)+len(overrides))
+	indexByName := map[string]int{}
+	for _, p := range base {
+		key := strings.TrimSpace(p.Name)
+		indexByName[key] = len(out)
+		out = append(out, p)
+	}
+	for _, p := range overrides {
+		key := strings.TrimSpace(p.Name)
+		if key == "" {
+			continue
+		}
+		if idx, ok := indexByName[key]; ok {
+			out[idx] = p
+			continue
+		}
+		indexByName[key] = len(out)
+		out = append(out, p)
+	}
+	return out
 }
 
 func collectTypeImports(typeName string, pkgImports map[string]string, imports map[string]string, usedAliases map[string]string, remap map[string]string, localPkg string) {
