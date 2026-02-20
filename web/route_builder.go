@@ -67,22 +67,21 @@ func newRouteBuilder(method, path string, router fiber.Router, registry *Metadat
 	tags := make([]string, len(inheritedTags))
 	copy(tags, inheritedTags)
 
-	return &RouteBuilder{
-		method: strings.ToUpper(method),
-		path:   fullPath,
-		router: router,
-		registry: func() *MetadataRegistry {
-			if registry != nil {
-				return registry
-			}
-			return GetGlobalRegistry()
-		}(),
+	builder := &RouteBuilder{
+		method:   strings.ToUpper(method),
+		path:     fullPath,
+		router:   router,
+		registry: registry,
 		metadata: &RouteMetadata{
 			Tags:      tags,
 			Responses: make(map[int]ResponseMetadata),
 			Examples:  make(map[int]interface{}),
 		},
 	}
+
+	// Ensure base metadata is visible even when no RouteBuilder methods are chained.
+	builder.finalize()
+	return builder
 }
 
 func resolveRegisteredPath(router fiber.Router, path string) string {
@@ -126,7 +125,6 @@ func joinRoutePath(prefix, path string) string {
 // finalize registers the metadata in the global registry
 func (b *RouteBuilder) finalize() {
 	if b.registry == nil {
-		GetGlobalRegistry().RegisterRoute(b.method, b.path, b.metadata)
 		return
 	}
 	b.registry.RegisterRoute(b.method, b.path, b.metadata)
@@ -139,9 +137,9 @@ func (b *RouteBuilder) Name(name string) *RouteBuilder {
 	return b
 }
 
-// NameWithTagPrefix sets operationId prefixed by first tag, e.g. Users_GetUserByID.
+// TaggedName sets operationId prefixed by first tag, e.g. Users_GetUserByID.
 // If no tag is available, falls back to plain Name behavior.
-func (b *RouteBuilder) NameWithTagPrefix(name string) *RouteBuilder {
+func (b *RouteBuilder) TaggedName(name string) *RouteBuilder {
 	prefix := ""
 	if len(b.metadata.Tags) > 0 {
 		prefix = sanitizeOperationIDPart(b.metadata.Tags[0])
@@ -177,8 +175,8 @@ func (b *RouteBuilder) Description(description string) *RouteBuilder {
 	return b
 }
 
-// Apply applies reusable route options in order.
-func (b *RouteBuilder) Apply(opts ...RouteOption) *RouteBuilder {
+// With applies reusable route options in order.
+func (b *RouteBuilder) With(opts ...RouteOption) *RouteBuilder {
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -192,7 +190,7 @@ func (b *RouteBuilder) Apply(opts ...RouteOption) *RouteBuilder {
 //
 // Usage: .Body(CreateUserRequest{})
 func (b *RouteBuilder) Body(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, true, false, "application/json")
+	b.setRequestBody(requestType, true, false, ContentTypeApplicationJSON)
 	b.finalize()
 	return b
 }
@@ -210,7 +208,7 @@ func (b *RouteBuilder) BodyAs(requestType any, contentTypes ...string) *RouteBui
 //
 // Usage: .BodyOptional(SearchRequest{})
 func (b *RouteBuilder) BodyOptional(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, false, false, "application/json")
+	b.setRequestBody(requestType, false, false, ContentTypeApplicationJSON)
 	b.finalize()
 	return b
 }
@@ -226,28 +224,28 @@ func (b *RouteBuilder) BodyAsOptional(requestType any, contentTypes ...string) *
 
 // Form sets a required x-www-form-urlencoded request body type.
 func (b *RouteBuilder) Form(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, true, false, "application/x-www-form-urlencoded")
+	b.setRequestBody(requestType, true, false, ContentTypeApplicationXWWWFormURLEncoded)
 	b.finalize()
 	return b
 }
 
 // FormOptional sets an optional x-www-form-urlencoded request body type.
 func (b *RouteBuilder) FormOptional(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, false, false, "application/x-www-form-urlencoded")
+	b.setRequestBody(requestType, false, false, ContentTypeApplicationXWWWFormURLEncoded)
 	b.finalize()
 	return b
 }
 
 // Multipart sets a required multipart/form-data request body type.
 func (b *RouteBuilder) Multipart(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, true, false, "multipart/form-data")
+	b.setRequestBody(requestType, true, false, ContentTypeMultipartFormData)
 	b.finalize()
 	return b
 }
 
 // MultipartOptional sets an optional multipart/form-data request body type.
 func (b *RouteBuilder) MultipartOptional(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, false, false, "multipart/form-data")
+	b.setRequestBody(requestType, false, false, ContentTypeMultipartFormData)
 	b.finalize()
 	return b
 }
@@ -255,7 +253,7 @@ func (b *RouteBuilder) MultipartOptional(requestType any) *RouteBuilder {
 // BodyAtLeastOne sets a required request body and enforces that at least one field is present.
 // Useful for PATCH-style DTOs with optional fields.
 func (b *RouteBuilder) BodyAtLeastOne(requestType any) *RouteBuilder {
-	b.setRequestBody(requestType, true, true, "application/json")
+	b.setRequestBody(requestType, true, true, ContentTypeApplicationJSON)
 	b.finalize()
 	return b
 }
@@ -272,7 +270,8 @@ func (b *RouteBuilder) AtLeastOneBodyField() *RouteBuilder {
 	if b.metadata.RequestBody == nil {
 		b.metadata.RequestBody = &RequestBodyMetadata{
 			Required:          true,
-			ContentTypes:      []string{"application/json"},
+			ContentTypes:      []string{ContentTypeApplicationJSON},
+			Content:           map[string]reflect.Type{ContentTypeApplicationJSON: nil},
 			RequireAtLeastOne: true,
 		}
 	} else {
@@ -484,25 +483,14 @@ func (b *RouteBuilder) Public() *RouteBuilder {
 // Produces sets a response type for a status code using type inference
 // Usage: .Produces(User{}, 200)
 func (b *RouteBuilder) Produces(responseType any, statusCode int) *RouteBuilder {
-	b.ensureResponseMaps()
-	resp := b.metadata.Responses[statusCode]
-	resp.Type = reflect.TypeOf(responseType)
-	resp.ContentType = "application/json"
-	resp.NoContent = statusCode == 204
-	b.metadata.Responses[statusCode] = resp
+	b.setResponse(statusCode, responseType, inferResponseContentType(responseType), "", false)
 	b.finalize()
 	return b
 }
 
 // ProducesWithDescription sets a response type and custom description for a status code.
 func (b *RouteBuilder) ProducesWithDescription(responseType any, statusCode int, description string) *RouteBuilder {
-	b.ensureResponseMaps()
-	resp := b.metadata.Responses[statusCode]
-	resp.Type = reflect.TypeOf(responseType)
-	resp.ContentType = "application/json"
-	resp.NoContent = statusCode == 204
-	resp.Description = description
-	b.metadata.Responses[statusCode] = resp
+	b.setResponse(statusCode, responseType, inferResponseContentType(responseType), description, true)
 	b.finalize()
 	return b
 }
@@ -511,14 +499,9 @@ func (b *RouteBuilder) ProducesWithDescription(responseType any, statusCode int,
 // Usage: .ProducesAs(string(""), 200, "text/plain")
 func (b *RouteBuilder) ProducesAs(responseType any, statusCode int, contentType string) *RouteBuilder {
 	if contentType == "" {
-		contentType = "application/json"
+		contentType = inferResponseContentType(responseType)
 	}
-	b.ensureResponseMaps()
-	resp := b.metadata.Responses[statusCode]
-	resp.Type = reflect.TypeOf(responseType)
-	resp.ContentType = contentType
-	resp.NoContent = statusCode == 204
-	b.metadata.Responses[statusCode] = resp
+	b.setResponse(statusCode, responseType, contentType, "", false)
 	b.finalize()
 	return b
 }
@@ -537,12 +520,7 @@ func (b *RouteBuilder) NoContent(statusCode int) *RouteBuilder {
 // ProducesWithExample sets a response type with a custom example
 // Usage: .ProducesWithExample(User{ID: "123"}, 200)
 func (b *RouteBuilder) ProducesWithExample(example any, statusCode int) *RouteBuilder {
-	b.ensureResponseMaps()
-	resp := b.metadata.Responses[statusCode]
-	resp.Type = reflect.TypeOf(example)
-	resp.ContentType = "application/json"
-	resp.NoContent = statusCode == 204
-	b.metadata.Responses[statusCode] = resp
+	b.setResponse(statusCode, example, inferResponseContentType(example), "", false)
 	b.metadata.Examples[statusCode] = example
 	b.finalize()
 	return b
@@ -598,7 +576,7 @@ func (b *RouteBuilder) InternalError(responseType any, description ...string) *R
 	return b.ProducesWithDescription(responseType, 500, firstDescription(description...))
 }
 
-// StandardErrors adds common error responses (400/401/403/404/500) using OpenAPIErrorResponse schema.
+// StandardErrors adds common error responses (400/401/403/404/500) using Error schema.
 func (b *RouteBuilder) StandardErrors() *RouteBuilder {
 	b.ensureResponseMaps()
 	b.addErrorResponseIfMissing(400, "Bad request")
@@ -610,7 +588,7 @@ func (b *RouteBuilder) StandardErrors() *RouteBuilder {
 	return b
 }
 
-// ValidationErrors adds validation-focused error responses (400/422) using OpenAPIErrorResponse schema.
+// ValidationErrors adds validation-focused error responses (400/422) using Error schema.
 func (b *RouteBuilder) ValidationErrors() *RouteBuilder {
 	b.ensureResponseMaps()
 	b.addErrorResponseIfMissing(400, "Invalid request")
@@ -632,14 +610,44 @@ func (b *RouteBuilder) Paginated(itemType any) *RouteBuilder {
 
 func (b *RouteBuilder) setRequestBody(requestType any, required bool, requireAtLeastOne bool, contentTypes ...string) {
 	if len(contentTypes) == 0 {
-		contentTypes = []string{"application/json"}
+		contentTypes = []string{ContentTypeApplicationJSON}
+	}
+	typ := reflect.TypeOf(requestType)
+
+	if b.metadata.RequestBody == nil {
+		b.metadata.RequestBody = &RequestBodyMetadata{
+			Type:              typ,
+			Required:          required,
+			RequireAtLeastOne: requireAtLeastOne,
+			Content:           make(map[string]reflect.Type, len(contentTypes)),
+		}
+	} else {
+		b.metadata.RequestBody.Type = typ
+		b.metadata.RequestBody.Required = required
+		b.metadata.RequestBody.RequireAtLeastOne = requireAtLeastOne
+		if b.metadata.RequestBody.Content == nil {
+			b.metadata.RequestBody.Content = make(map[string]reflect.Type, len(contentTypes))
+		}
 	}
 
-	b.metadata.RequestBody = &RequestBodyMetadata{
-		Type:              reflect.TypeOf(requestType),
-		Required:          required,
-		ContentTypes:      contentTypes,
-		RequireAtLeastOne: requireAtLeastOne,
+	existingTypes := make(map[string]struct{}, len(b.metadata.RequestBody.ContentTypes)+len(contentTypes))
+	for _, ct := range b.metadata.RequestBody.ContentTypes {
+		ct = strings.TrimSpace(ct)
+		if ct == "" {
+			continue
+		}
+		existingTypes[ct] = struct{}{}
+	}
+	for _, ct := range contentTypes {
+		ct = strings.TrimSpace(ct)
+		if ct == "" {
+			ct = ContentTypeApplicationJSON
+		}
+		if _, exists := existingTypes[ct]; !exists {
+			b.metadata.RequestBody.ContentTypes = append(b.metadata.RequestBody.ContentTypes, ct)
+			existingTypes[ct] = struct{}{}
+		}
+		b.metadata.RequestBody.Content[ct] = typ
 	}
 }
 
@@ -673,14 +681,86 @@ func (b *RouteBuilder) addErrorResponseIfMissing(statusCode int, message string)
 	}
 
 	b.metadata.Responses[statusCode] = ResponseMetadata{
-		Type:        reflect.TypeOf(OpenAPIErrorResponse{}),
-		ContentType: "application/json",
+		Type:        reflect.TypeOf(Error{}),
+		ContentType: ContentTypeApplicationJSON,
+		Content: map[string]reflect.Type{
+			ContentTypeApplicationJSON: reflect.TypeOf(Error{}),
+		},
 	}
-	b.metadata.Examples[statusCode] = OpenAPIErrorResponse{
-		Error:   message,
-		Code:    strings.ToUpper(strings.ReplaceAll(message, " ", "_")),
-		Message: message,
+	b.metadata.Examples[statusCode] = Error{
+		Error: ErrorDetail{
+			Code:    strings.ToUpper(strings.ReplaceAll(message, " ", "_")),
+			Message: message,
+		},
 	}
+}
+
+func (b *RouteBuilder) setResponse(statusCode int, responseType any, contentType, description string, hasDescription bool) {
+	if contentType == "" {
+		contentType = inferResponseContentType(responseType)
+	}
+
+	b.ensureResponseMaps()
+	resp := b.metadata.Responses[statusCode]
+	respType := reflect.TypeOf(responseType)
+
+	// Preserve legacy fields for compatibility and for callers that inspect a single value.
+	resp.Type = respType
+	resp.ContentType = contentType
+	resp.NoContent = statusCode == 204
+	if hasDescription {
+		resp.Description = description
+	}
+
+	if resp.Content == nil {
+		resp.Content = make(map[string]reflect.Type)
+		if resp.ContentType != "" && resp.Type != nil {
+			resp.Content[resp.ContentType] = resp.Type
+		}
+	}
+	if resp.ContentVariants == nil {
+		resp.ContentVariants = make(map[string][]reflect.Type)
+	}
+	if contentType != "" {
+		if existing, exists := resp.Content[contentType]; exists {
+			resp.ContentVariants[contentType] = appendUniqueResponseType(resp.ContentVariants[contentType], existing)
+		}
+		resp.ContentVariants[contentType] = appendUniqueResponseType(resp.ContentVariants[contentType], respType)
+		resp.Content[contentType] = respType
+	}
+
+	b.metadata.Responses[statusCode] = resp
+}
+
+func appendUniqueResponseType(existing []reflect.Type, t reflect.Type) []reflect.Type {
+	if t == nil {
+		return existing
+	}
+	for _, item := range existing {
+		if item == t {
+			return existing
+		}
+	}
+	return append(existing, t)
+}
+
+func inferResponseContentType(responseType any) string {
+	t := reflect.TypeOf(responseType)
+	if t == nil {
+		return ContentTypeApplicationJSON
+	}
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return ContentTypeTextPlain
+	case reflect.Slice:
+		if t.Elem().Kind() == reflect.Uint8 {
+			return ContentTypeApplicationOctetStream
+		}
+	}
+	return ContentTypeApplicationJSON
 }
 
 func (b *RouteBuilder) addParameterMetadata(in, name string, paramType any, required bool, description, extensions string) {

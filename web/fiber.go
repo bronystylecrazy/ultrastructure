@@ -2,14 +2,12 @@ package web
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
+	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/meta"
-	"github.com/dustin/go-humanize"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -20,29 +18,6 @@ type FiberConfig struct {
 	Proxy         FiberProxyConfig `mapstructure:"proxy"`
 	CaseSensitive bool             `mapstructure:"case_sensitive" default:"false"`
 	StrictRouting bool             `mapstructure:"strict_routing" default:"false"`
-}
-
-type FiberAppOption interface {
-	apply(*fiberAppOptions)
-}
-
-type fiberAppOptions struct {
-	name string
-}
-
-type fiberAppOptionFunc func(*fiberAppOptions)
-
-func (f fiberAppOptionFunc) apply(o *fiberAppOptions) {
-	f(o)
-}
-
-func WithName(name string) FiberAppOption {
-	return fiberAppOptionFunc(func(o *fiberAppOptions) {
-		name = strings.TrimSpace(name)
-		if name != "" {
-			o.name = name
-		}
-	})
 }
 
 type FiberAppConfig struct {
@@ -63,29 +38,89 @@ type FiberProxyConfig struct {
 	TrustProxyConfig fiber.TrustProxyConfig `mapstructure:"trust_proxy_config"`
 }
 
-func NewFiberApp(config FiberConfig) *fiber.App {
-	return NewFiberAppWithOptions(config)
+type FiberConfigOption interface {
+	FiberConfigConfigurer
+	di.Node
 }
 
-func NewFiberAppWithOptions(config FiberConfig, opts ...FiberAppOption) *fiber.App {
-	options := fiberAppOptions{
-		name: meta.Name,
+const FiberConfigConfigurersGroupName = "us.web.fiber_config_configurers"
+
+type FiberConfigConfigurer interface {
+	MutateFiberConfig(*fiber.Config)
+}
+
+type fiberConfigNodeOption struct {
+	mutate func(*fiber.Config)
+	build  func() (fx.Option, error)
+	err    error
+}
+
+func (o fiberConfigNodeOption) MutateFiberConfig(cfg *fiber.Config) {
+	if o.mutate != nil {
+		o.mutate(cfg)
 	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt.apply(&options)
+}
+
+func (o fiberConfigNodeOption) Build() (fx.Option, error) {
+	if o.err != nil {
+		return nil, o.err
+	}
+	if o.build == nil {
+		return nil, fmt.Errorf("web: missing WithFiberConfig builder")
+	}
+	return o.build()
+}
+
+type fiberConfigConfigurerFunc func(*fiber.Config)
+
+func (f fiberConfigConfigurerFunc) MutateFiberConfig(cfg *fiber.Config) {
+	f(cfg)
+}
+
+func WithFiberConfig(configure any) FiberConfigOption {
+	switch fn := configure.(type) {
+	case func(*fiber.Config):
+		return fiberConfigNodeOption{
+			mutate: fn,
+			build: func() (fx.Option, error) {
+				return di.Provide(
+					func() FiberConfigConfigurer { return fiberConfigConfigurerFunc(fn) },
+					di.Group(FiberConfigConfigurersGroupName),
+				).Build()
+			},
+		}
+	default:
+		return fiberConfigNodeOption{
+			err: fmt.Errorf("web: unsupported WithFiberConfig signature %T", configure),
 		}
 	}
+}
 
+func WithFiberAppName(name string) FiberConfigConfigurer {
+	return fiberConfigConfigurerFunc(func(cfg *fiber.Config) {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			cfg.AppName = BuildAppName(name)
+		}
+	})
+}
+
+type FiberServer struct {
+	App    *fiber.App
+	Logger *zap.Logger
+	Config Config
+}
+
+func NewFiberApp(config FiberConfig, configurers ...FiberConfigConfigurer) *fiber.App {
 	bodyLimit, err := ParseBodyLimit(config.App.BodyLimit)
 	if err != nil {
 		bodyLimit = fiber.DefaultBodyLimit
 	}
 
-	return fiber.New(fiber.Config{
+	appCfg := fiber.Config{
 		ServerHeader:       config.App.ServerHeader,
 		BodyLimit:          bodyLimit,
-		AppName:            buildAppName(options.name),
+		AppName:            BuildAppName(meta.Name),
 		ReadTimeout:        config.App.ReadTimeout,
 		WriteTimeout:       config.App.WriteTimeout,
 		IdleTimeout:        config.App.IdleTimeout,
@@ -98,86 +133,63 @@ func NewFiberAppWithOptions(config FiberConfig, opts ...FiberAppOption) *fiber.A
 		TrustProxyConfig:   config.Proxy.TrustProxyConfig,
 		CaseSensitive:      config.CaseSensitive,
 		StrictRouting:      config.StrictRouting,
-	})
+	}
+	for _, configurer := range configurers {
+		if configurer != nil {
+			configurer.MutateFiberConfig(&appCfg)
+		}
+	}
+
+	return fiber.New(appCfg)
 }
 
-func buildAppName(name string) string {
-	return fmt.Sprintf("%s (%s %s %s)", name, meta.Version, meta.Commit, meta.BuildDate)
-}
-
-func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
+func NewFiberServer(app *fiber.App, logger *zap.Logger, config Config) *FiberServer {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	return &FiberServer{
+		App:    app,
+		Logger: logger,
+		Config: config,
+	}
+}
+
+func (s *FiberServer) Listen() error {
+	listenCfg, err := BuildFiberListenConfig(s.Config)
+	if err != nil {
+		return err
+	}
+
+	addr := ListenAddress(s.Config)
+	s.Logger.Info("fiber listener starting",
+		zap.String("address", addr),
+		zap.String("network", listenCfg.ListenerNetwork),
+		zap.Bool("prefork", listenCfg.EnablePrefork),
+	)
+
+	if err := s.App.Listen(addr, listenCfg); err != nil {
+		return err
+	}
+	s.Logger.Info("fiber listener stopped")
+	return nil
+}
+
+func (s *FiberServer) Shutdown(ctx context.Context) error {
+	return s.App.ShutdownWithContext(ctx)
+}
+
+func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
+	server := NewFiberServer(app, logger, config)
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			go func() {
-				addr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
-				listenCfg := fiber.ListenConfig{
-					ListenerNetwork:       config.Listen.ListenerNetwork,
-					ShutdownTimeout:       config.Listen.ShutdownTimeout,
-					DisableStartupMessage: config.Listen.DisableStartupMessage,
-					EnablePrefork:         config.Listen.EnablePrefork,
-					EnablePrintRoutes:     config.Listen.EnablePrintRoutes,
+				if err := server.Listen(); err != nil {
+					server.Logger.Error("failed to start fiber app", zap.Error(err))
 				}
-				if config.TLS.CertFile != "" || config.TLS.CertKeyFile != "" || config.TLS.CertClientFile != "" {
-					tlsVersion, err := ParseTLSMinVersion(config.TLS.TLSMinVersion)
-					if err != nil {
-						logger.Error("invalid tls_min_version", zap.String("tls_min_version", config.TLS.TLSMinVersion), zap.Error(err))
-						return
-					}
-					listenCfg.CertFile = config.TLS.CertFile
-					listenCfg.CertKeyFile = config.TLS.CertKeyFile
-					listenCfg.CertClientFile = config.TLS.CertClientFile
-					listenCfg.TLSMinVersion = tlsVersion
-				}
-
-				logger.Info("fiber listener starting",
-					zap.String("address", addr),
-					zap.String("network", listenCfg.ListenerNetwork),
-					zap.Bool("prefork", listenCfg.EnablePrefork),
-				)
-
-				err := app.Listen(addr, listenCfg)
-				if err != nil {
-					logger.Error("failed to start fiber app", zap.Error(err))
-					return
-				}
-				logger.Info("fiber listener stopped")
 			}()
 			return nil
 		},
-		OnStop: func(ctx context.Context) error {
-			return app.ShutdownWithContext(ctx)
-		},
+		OnStop: server.Shutdown,
 	})
-}
-
-func ParseTLSMinVersion(v string) (uint16, error) {
-	switch v {
-	case "", "1.2":
-		return tls.VersionTLS12, nil
-	case "1.3":
-		return tls.VersionTLS13, nil
-	default:
-		return 0, fmt.Errorf("unsupported tls version %q (expected 1.2 or 1.3)", v)
-	}
-}
-
-func ParseBodyLimit(v string) (int, error) {
-	s := strings.TrimSpace(v)
-	if s == "" {
-		return fiber.DefaultBodyLimit, nil
-	}
-
-	n, err := humanize.ParseBytes(s)
-	if err != nil {
-		return 0, err
-	}
-	if n > uint64(math.MaxInt) {
-		return 0, fmt.Errorf("body limit overflows int")
-	}
-
-	return int(n), nil
 }

@@ -2,6 +2,7 @@ package web
 
 import (
 	"reflect"
+	"strings"
 	"sync"
 )
 
@@ -47,6 +48,7 @@ type RequestBodyMetadata struct {
 	Type              reflect.Type
 	Required          bool
 	ContentTypes      []string
+	Content           map[string]reflect.Type
 	RequireAtLeastOne bool
 }
 
@@ -54,6 +56,10 @@ type RequestBodyMetadata struct {
 type ResponseMetadata struct {
 	Type        reflect.Type
 	ContentType string
+	Content     map[string]reflect.Type
+	// ContentVariants stores multiple possible model types for a media type.
+	// This is rendered as OpenAPI oneOf when more than one type exists.
+	ContentVariants map[string][]reflect.Type
 	NoContent   bool
 	Description string
 	Headers     map[string]ResponseHeaderMetadata
@@ -71,18 +77,11 @@ type MetadataRegistry struct {
 	routes map[string]*RouteMetadata // "METHOD:path" -> metadata
 }
 
-func newMetadataRegistry() *MetadataRegistry {
+// NewMetadataRegistry creates an isolated route metadata registry.
+func NewMetadataRegistry() *MetadataRegistry {
 	return &MetadataRegistry{
 		routes: make(map[string]*RouteMetadata),
 	}
-}
-
-// Global registry instance
-var globalRegistry = newMetadataRegistry()
-
-// GetGlobalRegistry returns the global metadata registry
-func GetGlobalRegistry() *MetadataRegistry {
-	return globalRegistry
 }
 
 // RegisterRoute stores metadata for a route
@@ -90,7 +89,7 @@ func (r *MetadataRegistry) RegisterRoute(method, path string, metadata *RouteMet
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := method + ":" + path
+	key := strings.ToUpper(strings.TrimSpace(method)) + ":" + normalizeRegistryPath(path)
 	r.routes[key] = metadata
 }
 
@@ -99,7 +98,7 @@ func (r *MetadataRegistry) GetRoute(method, path string) *RouteMetadata {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	key := method + ":" + path
+	key := strings.ToUpper(strings.TrimSpace(method)) + ":" + normalizeRegistryPath(path)
 	return r.routes[key]
 }
 
@@ -121,4 +120,21 @@ func (r *MetadataRegistry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.routes = make(map[string]*RouteMetadata)
+}
+
+func normalizeRegistryPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+	if path == "" {
+		return "/"
+	}
+	return path
 }

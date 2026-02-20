@@ -2,6 +2,7 @@ package buildinfo
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/meta"
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -47,7 +48,7 @@ func NewHandler(opts ...Option) *Handler {
 	return h
 }
 
-func (h *Handler) Handle(r fiber.Router) {
+func (h *Handler) Handle(r web.Router) {
 	r.Get(h.defaultPath, func(c fiber.Ctx) error {
 		resp := BuildInfoResponse{
 			Name:        meta.Name,

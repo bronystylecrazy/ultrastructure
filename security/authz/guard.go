@@ -23,8 +23,13 @@ func RequireAnyPrincipal() fiber.Handler {
 	}
 }
 
-func ResolvePolicy(policy ConflictPolicy) fiber.Handler {
+func ResolvePolicy(policy ConflictPolicy, opts ...RouteScopeOption) fiber.Handler {
 	cfg := defaultRouteScopeConfig()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
 	return func(c fiber.Ctx) error {
 		p, err := principalByPolicy(c, policy)
 		if err != nil {

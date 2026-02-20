@@ -142,14 +142,12 @@ func TestResolvePolicyAutoEnforcesRouteScopes(t *testing.T) {
 
 	app := fiber.New()
 	container := web.NewRegistryContainer()
-	web.ActivateRegistryContainer(container)
-	defer web.ResetDefaultRegistryContainer()
 	r := web.NewRouterWithRegistry(app, container.Metadata)
 
 	r.Get(
 		"/p",
 		authn.Any(authn.UserTokenAuthenticator(userM)),
-		authz.ResolvePolicy(authz.PolicyPreferUser),
+		authz.ResolvePolicy(authz.PolicyPreferUser, authz.WithScopeRegistry(container.Metadata)),
 		func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) },
 	).Scopes("BearerAuth", "not:granted")
 	if meta := container.Metadata.GetRoute("GET", "/p"); meta == nil || len(meta.Security) == 0 {

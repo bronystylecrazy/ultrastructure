@@ -8,13 +8,13 @@ import (
 )
 
 func TestRouteBuilder_StandardErrorsAddsCommonResponses(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/preset", func(c fiber.Ctx) error { return c.SendStatus(200) }).StandardErrors()
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/preset")
+	meta := registry.GetRoute("GET", "/preset")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -24,20 +24,20 @@ func TestRouteBuilder_StandardErrorsAddsCommonResponses(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected response %d to be present", code)
 		}
-		if resp.Type != reflect.TypeOf(OpenAPIErrorResponse{}) {
-			t.Fatalf("expected response %d type OpenAPIErrorResponse, got %v", code, resp.Type)
+		if resp.Type != reflect.TypeOf(Error{}) {
+			t.Fatalf("expected response %d type Error, got %v", code, resp.Type)
 		}
 	}
 }
 
 func TestRouteBuilder_ValidationErrorsAddsValidationResponses(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Post("/validate", func(c fiber.Ctx) error { return c.SendStatus(201) }).ValidationErrors()
 
-	meta := GetGlobalRegistry().GetRoute("POST", "/validate")
+	meta := registry.GetRoute("POST", "/validate")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -47,26 +47,26 @@ func TestRouteBuilder_ValidationErrorsAddsValidationResponses(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected response %d to be present", code)
 		}
-		if resp.Type != reflect.TypeOf(OpenAPIErrorResponse{}) {
-			t.Fatalf("expected response %d type OpenAPIErrorResponse, got %v", code, resp.Type)
+		if resp.Type != reflect.TypeOf(Error{}) {
+			t.Fatalf("expected response %d type Error, got %v", code, resp.Type)
 		}
 	}
 }
 
 func TestRouteBuilder_StandardErrorsDoesNotOverrideExplicitResponse(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	type customNotFound struct {
 		Reason string `json:"reason"`
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/custom", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		Produces(customNotFound{}, 404).
 		StandardErrors()
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/custom")
+	meta := registry.GetRoute("GET", "/custom")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -81,17 +81,17 @@ func TestRouteBuilder_StandardErrorsDoesNotOverrideExplicitResponse(t *testing.T
 }
 
 func TestRouteBuilder_PaginatedSetsPaginationMetadata(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	type user struct {
 		ID string `json:"id"`
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(200) }).Paginated(user{})
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/users")
+	meta := registry.GetRoute("GET", "/users")
 	if meta == nil || meta.Pagination == nil {
 		t.Fatalf("expected pagination metadata")
 	}
@@ -101,17 +101,17 @@ func TestRouteBuilder_PaginatedSetsPaginationMetadata(t *testing.T) {
 }
 
 func TestRouteBuilder_BodyAtLeastOneSetsRequestBodyConstraint(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	type patchUser struct {
 		Name *string `json:"name,omitempty"`
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Patch("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).BodyAtLeastOne(patchUser{})
 
-	meta := GetGlobalRegistry().GetRoute("PATCH", "/users/:id")
+	meta := registry.GetRoute("PATCH", "/users/:id")
 	if meta == nil || meta.RequestBody == nil {
 		t.Fatalf("expected request body metadata")
 	}
@@ -120,8 +120,8 @@ func TestRouteBuilder_BodyAtLeastOneSetsRequestBodyConstraint(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_ApplyComposesRouteOptions(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_WithComposesRouteOptions(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	withUsersTag := func() RouteOption {
 		return func(b *RouteBuilder) *RouteBuilder {
@@ -135,11 +135,11 @@ func TestRouteBuilder_ApplyComposesRouteOptions(t *testing.T) {
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/apply", func(c fiber.Ctx) error { return c.SendStatus(200) }).
-		Apply(withUsersTag(), withAuthHeader())
+		With(withUsersTag(), withAuthHeader())
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/apply")
+	meta := registry.GetRoute("GET", "/apply")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -160,21 +160,23 @@ func TestRouteBuilder_ApplyComposesRouteOptions(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_ApplyComposesMetadataRouteOptions(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_WithComposesMetadataRouteOptions(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/apply-meta", func(c fiber.Ctx) error { return c.SendStatus(200) }).
-		Apply(
+		With(
 			Name("GetApplyMeta"),
 			Tag("System"),
 			Tags("Users"),
-			Summary("Get apply metadata"),
-			Description("Demonstrates Name/Tag/Summary/Description route options"),
+			func(b *RouteBuilder) *RouteBuilder { return b.Summary("Get apply metadata") },
+			func(b *RouteBuilder) *RouteBuilder {
+				return b.Description("Demonstrates Name/Tag/Summary/Description route options")
+			},
 		)
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/apply-meta")
+	meta := registry.GetRoute("GET", "/apply-meta")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -192,16 +194,16 @@ func TestRouteBuilder_ApplyComposesMetadataRouteOptions(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_NameWithTagPrefix(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_TaggedName(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		Tags("Users").
-		NameWithTagPrefix("GetUserByID")
+		TaggedName("GetUserByID")
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/users/:id")
+	meta := registry.GetRoute("GET", "/users/:id")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -210,18 +212,18 @@ func TestRouteBuilder_NameWithTagPrefix(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_ApplyNameWithTagPrefix(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_WithTaggedName(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).
-		Apply(
+		With(
 			Tag("Users"),
-			NameWithTagPrefix("GetUserByID"),
+			TaggedName("GetUserByID"),
 		)
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/users/:id")
+	meta := registry.GetRoute("GET", "/users/:id")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -231,15 +233,15 @@ func TestRouteBuilder_ApplyNameWithTagPrefix(t *testing.T) {
 }
 
 func TestRouteBuilder_HeaderAndCookieExtStoreParameterExtensions(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/ext-params", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		HeaderRequiredExt("X-Tenant-ID", "", "x-nullable,x-owner=platform,!x-omitempty", "Tenant header").
 		CookieExt("session_id", "", "x-format=legacy", "Session cookie")
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/ext-params")
+	meta := registry.GetRoute("GET", "/ext-params")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -261,8 +263,8 @@ func TestRouteBuilder_HeaderAndCookieExtStoreParameterExtensions(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_ApplyWithGenericRouteOptions(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_WithGenericRouteOptions(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	type createReq struct {
 		Name string `json:"name"`
@@ -275,16 +277,16 @@ func TestRouteBuilder_ApplyWithGenericRouteOptions(t *testing.T) {
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Post("/apply-generic", func(c fiber.Ctx) error { return c.SendStatus(201) }).
-		Apply(
-			Body(createReq{}),
-			Query[listQ](),
-			Produce[userResp](),    // default 200
-			Produce[userResp](201), // explicit status
+		With(
+			func(b *RouteBuilder) *RouteBuilder { return b.Body(createReq{}) },
+			func(b *RouteBuilder) *RouteBuilder { return b.Query(listQ{}) },
+			func(b *RouteBuilder) *RouteBuilder { return b.Produces(userResp{}, 200) },
+			func(b *RouteBuilder) *RouteBuilder { return b.Produces(userResp{}, 201) },
 		)
 
-	meta := GetGlobalRegistry().GetRoute("POST", "/apply-generic")
+	meta := registry.GetRoute("POST", "/apply-generic")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -303,14 +305,14 @@ func TestRouteBuilder_ApplyWithGenericRouteOptions(t *testing.T) {
 }
 
 func TestRouteBuilder_StatusConvenienceMethods(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	type okResp struct{ OK bool }
 	type createdResp struct{ ID string }
 	type errResp struct{ Error string }
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Post("/status-methods", func(c fiber.Ctx) error { return c.SendStatus(201) }).
 		Ok(okResp{}, "Success payload").
 		Create(createdResp{}, "Created payload").
@@ -318,7 +320,7 @@ func TestRouteBuilder_StatusConvenienceMethods(t *testing.T) {
 		NotFound(errResp{}).
 		InternalError(errResp{})
 
-	meta := GetGlobalRegistry().GetRoute("POST", "/status-methods")
+	meta := registry.GetRoute("POST", "/status-methods")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -349,23 +351,27 @@ func TestRouteBuilder_StatusConvenienceMethods(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_ApplyWithStatusGenericOptions(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_WithStatusGenericOptions(t *testing.T) {
+	registry := NewMetadataRegistry()
 
 	type createdResp struct{ ID string }
 	type errResp struct{ Error string }
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Post("/status-options", func(c fiber.Ctx) error { return c.SendStatus(201) }).
-		Apply(
-			Create[createdResp]("Created from options"),
-			Conflict[errResp]("Conflict from options"),
-			NotFound[errResp](),
-			InternalError[errResp](),
+		With(
+			func(b *RouteBuilder) *RouteBuilder {
+				return b.ProducesWithDescription(createdResp{}, 201, "Created from options")
+			},
+			func(b *RouteBuilder) *RouteBuilder {
+				return b.ProducesWithDescription(errResp{}, 409, "Conflict from options")
+			},
+			func(b *RouteBuilder) *RouteBuilder { return b.Produces(errResp{}, 404) },
+			func(b *RouteBuilder) *RouteBuilder { return b.Produces(errResp{}, 500) },
 		)
 
-	meta := GetGlobalRegistry().GetRoute("POST", "/status-options")
+	meta := registry.GetRoute("POST", "/status-options")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -391,20 +397,20 @@ func TestRouteBuilder_ApplyWithStatusGenericOptions(t *testing.T) {
 }
 
 func TestRouteBuilder_SetHeadersAndSetCookiesMetadata(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	type okResp struct {
 		OK bool `json:"ok"`
 	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/response-headers", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		Ok(okResp{}).
 		SetHeaders(200, "X-Request-ID", "", "Request correlation ID").
 		SetCookies(200, "session_id")
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/response-headers")
+	meta := registry.GetRoute("GET", "/response-headers")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -420,11 +426,71 @@ func TestRouteBuilder_SetHeadersAndSetCookiesMetadata(t *testing.T) {
 	}
 }
 
-func TestRouteBuilder_PluralHeadersAndCookiesUseMap(t *testing.T) {
-	GetGlobalRegistry().Clear()
+func TestRouteBuilder_OkChainTracksMultipleContentTypesOnSameStatus(t *testing.T) {
+	registry := NewMetadataRegistry()
+
+	type jsonResp struct {
+		OK bool `json:"ok"`
+	}
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
+	router.Get("/multi-content", func(c fiber.Ctx) error { return c.SendStatus(200) }).
+		Ok("").
+		Ok(jsonResp{})
+
+	meta := registry.GetRoute("GET", "/multi-content")
+	if meta == nil {
+		t.Fatalf("expected route metadata")
+	}
+	resp := meta.Responses[200]
+	if resp.Content == nil {
+		t.Fatalf("expected 200 response content map")
+	}
+	if got := resp.Content["text/plain"]; got != reflect.TypeOf("") {
+		t.Fatalf("expected text/plain type string, got %v", got)
+	}
+	if got := resp.Content["application/json"]; got != reflect.TypeOf(jsonResp{}) {
+		t.Fatalf("expected application/json type jsonResp, got %v", got)
+	}
+}
+
+func TestRouteBuilder_RequestBodyChainTracksMultipleContentTypes(t *testing.T) {
+	registry := NewMetadataRegistry()
+
+	type jsonReq struct {
+		Name string `json:"name"`
+	}
+	type formReq struct {
+		Name string `form:"name"`
+	}
+
+	app := fiber.New()
+	router := NewRouterWithRegistry(app, registry)
+	router.Post("/multi-body", func(c fiber.Ctx) error { return c.SendStatus(200) }).
+		Body(jsonReq{}).
+		Form(formReq{})
+
+	meta := registry.GetRoute("POST", "/multi-body")
+	if meta == nil || meta.RequestBody == nil {
+		t.Fatalf("expected request body metadata")
+	}
+	if meta.RequestBody.Content == nil {
+		t.Fatalf("expected request body content map")
+	}
+	if got := meta.RequestBody.Content["application/json"]; got != reflect.TypeOf(jsonReq{}) {
+		t.Fatalf("expected application/json body type jsonReq, got %v", got)
+	}
+	if got := meta.RequestBody.Content["application/x-www-form-urlencoded"]; got != reflect.TypeOf(formReq{}) {
+		t.Fatalf("expected form body type formReq, got %v", got)
+	}
+}
+
+func TestRouteBuilder_PluralHeadersAndCookiesUseMap(t *testing.T) {
+	registry := NewMetadataRegistry()
+
+	app := fiber.New()
+	router := NewRouterWithRegistry(app, registry)
 	router.Get("/map-params", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		Headers(map[string]any{
 			"X-Request-ID": "",
@@ -434,7 +500,7 @@ func TestRouteBuilder_PluralHeadersAndCookiesUseMap(t *testing.T) {
 			"session_id": "",
 		})
 
-	meta := GetGlobalRegistry().GetRoute("GET", "/map-params")
+	meta := registry.GetRoute("GET", "/map-params")
 	if meta == nil {
 		t.Fatalf("expected route metadata")
 	}
@@ -456,10 +522,10 @@ func TestRouteBuilder_PluralHeadersAndCookiesUseMap(t *testing.T) {
 }
 
 func TestRouteBuilder_GroupRoutesRegisterFullPathMetadata(t *testing.T) {
-	GetGlobalRegistry().Clear()
+	registry := NewMetadataRegistry()
 
 	app := fiber.New()
-	router := NewRouter(app)
+	router := NewRouterWithRegistry(app, registry)
 	users := router.Group("/users")
 
 	users.Post("", func(c fiber.Ctx) error { return c.SendStatus(201) }).
@@ -467,13 +533,13 @@ func TestRouteBuilder_GroupRoutesRegisterFullPathMetadata(t *testing.T) {
 	users.Get("/:id", func(c fiber.Ctx) error { return c.SendStatus(200) }).
 		Name("GetUserByID")
 
-	if got := GetGlobalRegistry().GetRoute("POST", "/users"); got == nil {
+	if got := registry.GetRoute("POST", "/users"); got == nil {
 		t.Fatalf("expected metadata key POST:/users to exist")
 	}
-	if got := GetGlobalRegistry().GetRoute("GET", "/users/:id"); got == nil {
+	if got := registry.GetRoute("GET", "/users/:id"); got == nil {
 		t.Fatalf("expected metadata key GET:/users/:id to exist")
 	}
-	if got := GetGlobalRegistry().GetRoute("POST", ""); got != nil {
+	if got := registry.GetRoute("POST", ""); got != nil {
 		t.Fatalf("did not expect relative metadata key POST:\"\"")
 	}
 }

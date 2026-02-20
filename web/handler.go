@@ -1,13 +1,6 @@
 package web
 
-import (
-	"sort"
-
-	"github.com/bronystylecrazy/ultrastructure/otel"
-	"github.com/gofiber/fiber/v3"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
-)
+import "go.uber.org/fx"
 
 type Handler interface {
 	Handle(r Router)
@@ -15,33 +8,13 @@ type Handler interface {
 
 type setupHandlersIn struct {
 	fx.In
-	Attached otel.Attached `optional:"true"`
-	App      *fiber.App
-	Registry *RegistryContainer
+	Router   Router
 	Handlers []Handler `group:"us.handlers"`
 }
 
 func SetupHandlers(in setupHandlersIn) {
-
-	ordered := append([]Handler(nil), in.Handlers...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return resolvePriority(ordered[i]) < resolvePriority(ordered[j])
-	})
-
-	// Create router wrapper for fluent API
-	var metadataRegistry *MetadataRegistry
-	if in.Registry != nil {
-		metadataRegistry = in.Registry.Metadata
+	orderedHandlers := Prioritize(in.Handlers)
+	for i := range orderedHandlers {
+		orderedHandlers[i].Handle(in.Router)
 	}
-	router := NewRouterWithRegistry(in.App, metadataRegistry)
-
-	for _, handler := range ordered {
-		handler.Handle(router)
-	}
-
-	logger := in.Attached.Logger
-	if logger == nil {
-		logger = zap.NewNop()
-	}
-	logger.Debug("auto setup handlers", zap.Int("count", len(in.Handlers)))
 }

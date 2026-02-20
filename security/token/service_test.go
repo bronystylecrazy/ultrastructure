@@ -119,7 +119,7 @@ func TestRefreshHandler(t *testing.T) {
 	}
 
 	app := fiber.New()
-	NewRefreshHandler(svc).Handle(usweb.NewRouter(app))
+	NewRefreshHandler(svc).Handle(usweb.NewRouterWithRegistry(app, usweb.NewMetadataRegistry()))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.Header.Set("Authorization", "Bearer "+pair.RefreshToken)
@@ -158,7 +158,7 @@ func TestRefreshHandlerCookieDeliverer(t *testing.T) {
 			AccessCookieTemplate:  fiber.Cookie{HTTPOnly: true, Secure: true, Path: "/"},
 			RefreshCookieTemplate: fiber.Cookie{HTTPOnly: true, Secure: true, Path: "/"},
 		})).
-		Handle(usweb.NewRouter(app))
+		Handle(usweb.NewRouterWithRegistry(app, usweb.NewMetadataRegistry()))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.Header.Set("Authorization", "Bearer "+pair.RefreshToken)
@@ -193,7 +193,7 @@ func TestRefreshHandlerHeaderDeliverer(t *testing.T) {
 	app := fiber.New()
 	NewRefreshHandler(svc).
 		WithDeliverer(HeaderPairDeliverer(HeaderPairDelivererConfig{})).
-		Handle(usweb.NewRouter(app))
+		Handle(usweb.NewRouterWithRegistry(app, usweb.NewMetadataRegistry()))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.Header.Set("Authorization", "Bearer "+pair.RefreshToken)
@@ -240,7 +240,7 @@ func TestRefreshHandlerResolverByClient(t *testing.T) {
 			}
 			return apiDeliverer
 		})).
-		Handle(usweb.NewRouter(app))
+		Handle(usweb.NewRouterWithRegistry(app, usweb.NewMetadataRegistry()))
 
 	reqWeb := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	reqWeb.Header.Set("Authorization", "Bearer "+pair.RefreshToken)

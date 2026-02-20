@@ -40,6 +40,7 @@ func TestSetupHandlersPriorityOrder(t *testing.T) {
 		di.AutoGroup[Handler](HandlersGroupName),
 		di.Supply(app),
 		di.Provide(NewRegistryContainer),
+		di.Provide(NewModuleRouter),
 		di.Supply(h1),
 		di.Supply(h2, Priority(Later)),
 		di.Supply(h3, Priority(Earlier)),
@@ -87,6 +88,7 @@ func TestSetupHandlersWebPriorityIsIndependentFromDIPriority(t *testing.T) {
 		di.AutoGroup[Handler](HandlersGroupName),
 		di.Supply(app),
 		di.Provide(NewRegistryContainer),
+		di.Provide(NewModuleRouter),
 		di.Supply(h1, di.Priority(di.Earliest)),
 		di.Supply(h2, Priority(Earlier), di.Priority(di.Latest)),
 		di.Supply(h3),
@@ -117,6 +119,7 @@ func TestSetupHandlersWebPriorityLastWins(t *testing.T) {
 		di.AutoGroup[Handler](HandlersGroupName),
 		di.Supply(app),
 		di.Provide(NewRegistryContainer),
+		di.Provide(NewModuleRouter),
 		di.Supply(h1, Priority(Earlier), Priority(Latest)),
 		di.Supply(h2),
 		di.Invoke(SetupHandlers),
@@ -130,6 +133,28 @@ func TestSetupHandlersWebPriorityLastWins(t *testing.T) {
 	for i := range want {
 		if order[i] != want[i] {
 			t.Fatalf("order[%d]=%q want %q (%v)", i, order[i], want[i], order)
+		}
+	}
+}
+
+func TestPrioritizeReturnsCopyAndKeepsStableOrderByDefault(t *testing.T) {
+	order := []string{}
+	h1 := &recordHandler1{recordHandler{id: "h1", order: &order}}
+	h2 := &recordHandler2{recordHandler{id: "h2", order: &order}}
+	h3 := &recordHandler3{recordHandler{id: "h3", order: &order}}
+
+	in := []Handler{h1, h2, h3}
+	out := Prioritize(in)
+
+	if len(out) != len(in) {
+		t.Fatalf("length mismatch: got %d want %d", len(out), len(in))
+	}
+	if &out[0] == &in[0] {
+		t.Fatal("Prioritize must return a copied slice")
+	}
+	for i := range in {
+		if out[i] != in[i] {
+			t.Fatalf("out[%d] changed order: got %T want %T", i, out[i], in[i])
 		}
 	}
 }

@@ -15,20 +15,27 @@ var (
 	currentDefaultCmd = defaultCommandName
 )
 
-// Use conditionally includes nodes for the selected CLI command.
+// OnRun conditionally includes nodes for the selected CLI command.
 // Selection is inferred from process args (defaults to "serve" when no command is provided).
 // Nested commands are supported via prefix matching, for example:
-// Use("user") matches "user list", and Use("user list") matches "user list active".
-func Use(name string, nodes ...di.Node) di.Node {
+// OnRun("user") matches "user list", and OnRun("user list") matches "user list active".
+func OnRun(name string, nodes ...di.Node) di.Node {
 	selected := currentCommandPathFromArgs(os.Args[1:])
 	want := normalizePath(name)
 	return di.If(matchesPathPrefix(selected, want), di.Options(di.ConvertAnys(nodes)...))
 }
 
-// Serve is simply an alias for Use("serve", ...)
+// Use is a backward-compatible alias for OnRun.
+//
+// Deprecated: use OnRun instead.
+func Use(name string, nodes ...di.Node) di.Node {
+	return OnRun(name, nodes...)
+}
+
+// Run is simply an alias for OnRun("serve", ...)
 // This is the default command that is run when no command is provided.
 func Run(nodes ...di.Node) di.Node {
-	return Use("serve", di.Options(di.ConvertAnys(nodes)...))
+	return OnRun("serve", di.Options(di.ConvertAnys(nodes)...))
 }
 
 // WithDefaultName configures the default command used when no subcommand is provided.

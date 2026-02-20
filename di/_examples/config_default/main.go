@@ -22,7 +22,7 @@ func main() {
 				di.ConfigName("config"),
 				di.ConfigDefault("service.name", "test"),
 			),
-			di.Replace(ServiceConfig{Name: "Sirawit", Port: 4545}),
+			di.Replace(ServiceConfig{Name: "CONNECTEDTECH", Port: 4545}),
 			di.Invoke(func(cfg ServiceConfig) {
 				log.Println("service", cfg.Name, cfg.Port)
 			}),

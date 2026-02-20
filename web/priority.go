@@ -1,6 +1,10 @@
 package web
 
-import "github.com/bronystylecrazy/ultrastructure/di"
+import (
+	"sort"
+
+	"github.com/bronystylecrazy/ultrastructure/di"
+)
 
 type PriorityLevel = di.PriorityLevel
 
@@ -24,7 +28,7 @@ func Between(lower, upper PriorityLevel) PriorityLevel {
 	return di.Between(lower, upper)
 }
 
-func resolvePriority(handler Handler) int {
+func ResolvePriority(handler Handler) int {
 	priority := int(Normal)
 	values := di.FindAllMetadata[webPriority](handler)
 	if len(values) > 0 {
@@ -35,4 +39,13 @@ func resolvePriority(handler Handler) int {
 		order = o
 	}
 	return priority*1_000_000 + order
+}
+
+// Prioritize returns a stably sorted copy of handlers by web priority and DI order index.
+func Prioritize(handlers []Handler) []Handler {
+	ordered := append([]Handler(nil), handlers...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ResolvePriority(ordered[i]) < ResolvePriority(ordered[j])
+	})
+	return ordered
 }

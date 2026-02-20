@@ -91,7 +91,7 @@ func TestScopeCatalogHandler(t *testing.T) {
 
 	app := fiber.New()
 	h := authz.NewScopeCatalogHandler(reg)
-	h.Handle(web.NewRouter(app))
+	h.Handle(web.NewRouterWithRegistry(app, reg))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/authz/scopes", nil)
 	res, err := app.Test(req)
@@ -102,7 +102,7 @@ func TestScopeCatalogHandler(t *testing.T) {
 		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
 	}
 
-	meta := web.GetGlobalRegistry().GetRoute("GET", "/api/v1/authz/scopes")
+	meta := reg.GetRoute("GET", "/api/v1/authz/scopes")
 	if meta == nil {
 		t.Fatalf("expected route metadata for scope catalog")
 	}

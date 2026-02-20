@@ -19,6 +19,9 @@ type Router interface {
 	// Group creates a sub-router with a prefix
 	Group(prefix string, handlers ...fiber.Handler) Router
 
+	// With returns a router that applies route options to every new route builder.
+	With(opts ...RouteOption) Router
+
 	// Tags sets default tags for all routes created from this router
 	Tags(tags ...string) Router
 
@@ -30,19 +33,14 @@ type Router interface {
 type routerWrapper struct {
 	fiberRouter   fiber.Router
 	inheritedTags []string
+	defaultOpts   []RouteOption
 	registry      *MetadataRegistry
 }
 
-// NewRouter creates a new Router wrapper
-func NewRouter(fiberRouter fiber.Router) Router {
-	return NewRouterWithRegistry(fiberRouter, nil)
-}
-
 // NewRouterWithRegistry creates a router wrapper bound to a specific metadata registry.
-// If registry is nil, it falls back to the global registry.
 func NewRouterWithRegistry(fiberRouter fiber.Router, registry *MetadataRegistry) Router {
 	if registry == nil {
-		registry = GetGlobalRegistry()
+		registry = NewMetadataRegistry()
 	}
 	return &routerWrapper{
 		fiberRouter: fiberRouter,
@@ -52,37 +50,37 @@ func NewRouterWithRegistry(fiberRouter fiber.Router, registry *MetadataRegistry)
 
 // Get registers a GET route and returns RouteBuilder for chaining
 func (r *routerWrapper) Get(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("GET", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("GET", path, handlers...)
 }
 
 // Post registers a POST route and returns RouteBuilder for chaining
 func (r *routerWrapper) Post(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("POST", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("POST", path, handlers...)
 }
 
 // Put registers a PUT route and returns RouteBuilder for chaining
 func (r *routerWrapper) Put(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("PUT", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("PUT", path, handlers...)
 }
 
 // Delete registers a DELETE route and returns RouteBuilder for chaining
 func (r *routerWrapper) Delete(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("DELETE", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("DELETE", path, handlers...)
 }
 
 // Patch registers a PATCH route and returns RouteBuilder for chaining
 func (r *routerWrapper) Patch(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("PATCH", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("PATCH", path, handlers...)
 }
 
 // Head registers a HEAD route and returns RouteBuilder for chaining
 func (r *routerWrapper) Head(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("HEAD", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("HEAD", path, handlers...)
 }
 
 // Options registers an OPTIONS route and returns RouteBuilder for chaining
 func (r *routerWrapper) Options(path string, handlers ...fiber.Handler) *RouteBuilder {
-	return newRouteBuilder("OPTIONS", path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	return r.newBuilder("OPTIONS", path, handlers...)
 }
 
 // All registers a route for all HTTP methods.
@@ -115,7 +113,23 @@ func (r *routerWrapper) Group(prefix string, handlers ...fiber.Handler) Router {
 	// Inherit tags from parent router
 	wrapper := NewRouterWithRegistry(groupRouter, r.registry).(*routerWrapper)
 	wrapper.inheritedTags = append([]string{}, r.inheritedTags...)
+	wrapper.defaultOpts = append([]RouteOption{}, r.defaultOpts...)
 	return wrapper
+}
+
+// With returns a router that inherits this router and applies opts to every new route.
+func (r *routerWrapper) With(opts ...RouteOption) Router {
+	if len(opts) == 0 {
+		return r
+	}
+	out := &routerWrapper{
+		fiberRouter:   r.fiberRouter,
+		registry:      r.registry,
+		inheritedTags: append([]string{}, r.inheritedTags...),
+		defaultOpts:   append([]RouteOption{}, r.defaultOpts...),
+	}
+	out.defaultOpts = append(out.defaultOpts, opts...)
+	return out
 }
 
 // Tags sets default tags for all routes created from this router
@@ -128,4 +142,12 @@ func (r *routerWrapper) Tags(tags ...string) Router {
 func (r *routerWrapper) Use(args ...interface{}) Router {
 	r.fiberRouter.Use(args...)
 	return r
+}
+
+func (r *routerWrapper) newBuilder(method, path string, handlers ...fiber.Handler) *RouteBuilder {
+	b := newRouteBuilder(method, path, r.fiberRouter, r.registry, r.inheritedTags, handlers)
+	if len(r.defaultOpts) > 0 {
+		b.With(r.defaultOpts...)
+	}
+	return b
 }

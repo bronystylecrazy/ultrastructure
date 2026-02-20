@@ -9,6 +9,7 @@ import (
 
 	"log/slog"
 
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gorilla/websocket"
@@ -120,11 +121,11 @@ func (l *Websocket) Init(log *slog.Logger) error {
 	return nil
 }
 
-func (l *Websocket) Handle(r fiber.Router) {
+func (l *Websocket) Handle(r web.Router) {
 	if l.Authorizer == nil {
-		l.App.All(l.Path, adaptor.HTTPHandlerFunc(l.Handler))
+		r.All(l.Path, adaptor.HTTPHandlerFunc(l.Handler))
 	} else {
-		l.App.All(l.Path, l.Authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.Handler))
+		r.All(l.Path, l.Authorizer.Authorize(), adaptor.HTTPHandlerFunc(l.Handler))
 	}
 }
 

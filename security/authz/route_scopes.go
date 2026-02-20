@@ -18,7 +18,7 @@ type routeScopeConfig struct {
 
 func defaultRouteScopeConfig() routeScopeConfig {
 	return routeScopeConfig{
-		registry: web.GetGlobalRegistry(),
+		registry: nil,
 		userSchemes: toSet(
 			"BearerAuth",
 			"OAuth2",
@@ -63,9 +63,6 @@ func RequireRouteScopes(opts ...RouteScopeOption) fiber.Handler {
 		if opt != nil {
 			opt(&cfg)
 		}
-	}
-	if cfg.registry == nil {
-		cfg.registry = web.GetGlobalRegistry()
 	}
 
 	return func(c fiber.Ctx) error {

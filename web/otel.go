@@ -32,7 +32,7 @@ func NewOtelMiddleware(config otel.Config, lp *otel.LoggerProvider) *OtelMiddlew
 	}
 }
 
-func (h *OtelMiddleware) Handle(r fiber.Router) {
+func (h *OtelMiddleware) Handle(r Router) {
 	r.Use(h.WrapObserver)
 	r.Use(fiberzap.New(fiberzap.Config{
 		Logger: h.Obs.Logger,

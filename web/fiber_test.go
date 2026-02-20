@@ -1,6 +1,18 @@
 package web
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gofiber/fiber/v3"
+)
+
+type testFiberConfigurer struct {
+	appName string
+}
+
+func (c *testFiberConfigurer) MutateFiberConfig(cfg *fiber.Config) {
+	cfg.AppName = c.appName
+}
 
 func TestParseBodyLimit(t *testing.T) {
 	tests := []struct {

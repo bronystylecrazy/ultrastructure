@@ -5,7 +5,6 @@
 package web
 
 import (
-	"github.com/gofiber/fiber/v3"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -37,7 +36,7 @@ func (_m *MockHandler) EXPECT() *MockHandler_Expecter {
 }
 
 // Handle provides a mock function for the type MockHandler
-func (_mock *MockHandler) Handle(r fiber.Router) {
+func (_mock *MockHandler) Handle(r Router) {
 	_mock.Called(r)
 	return
 }
@@ -48,16 +47,16 @@ type MockHandler_Handle_Call struct {
 }
 
 // Handle is a helper method to define mock.On call
-//   - r fiber.Router
+//   - r Router
 func (_e *MockHandler_Expecter) Handle(r interface{}) *MockHandler_Handle_Call {
 	return &MockHandler_Handle_Call{Call: _e.mock.On("Handle", r)}
 }
 
-func (_c *MockHandler_Handle_Call) Run(run func(r fiber.Router)) *MockHandler_Handle_Call {
+func (_c *MockHandler_Handle_Call) Run(run func(r Router)) *MockHandler_Handle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 fiber.Router
+		var arg0 Router
 		if args[0] != nil {
-			arg0 = args[0].(fiber.Router)
+			arg0 = args[0].(Router)
 		}
 		run(
 			arg0,
@@ -71,7 +70,7 @@ func (_c *MockHandler_Handle_Call) Return() *MockHandler_Handle_Call {
 	return _c
 }
 
-func (_c *MockHandler_Handle_Call) RunAndReturn(run func(r fiber.Router)) *MockHandler_Handle_Call {
+func (_c *MockHandler_Handle_Call) RunAndReturn(run func(r Router)) *MockHandler_Handle_Call {
 	_c.Run(run)
 	return _c
 }

@@ -6,20 +6,17 @@ import (
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/x/autoswag"
 	"go.uber.org/fx"
 )
 
 func UseScopeCatalogRoute(path string) di.Node {
 	return di.Provide(func(container *web.RegistryContainer, scopeRegistry *ScopeRegistry, policyRegistry *PolicyRegistry) *ScopeCatalogHandler {
-		registry := web.GetGlobalRegistry()
-		if container != nil && container.Metadata != nil {
-			registry = container.Metadata
-		}
-		return NewScopeCatalogHandler(registry).
+		return NewScopeCatalogHandler(container.Metadata).
 			WithPath(path).
 			WithScopeRegistry(scopeRegistry).
 			WithPolicyRegistry(policyRegistry)
-	}, di.Params(di.Optional(), di.Optional(), di.Optional()))
+	}, di.Params(``, di.Optional(), di.Optional()))
 }
 
 func UseScopeGovernance(defs ...ScopeDefinition) di.Node {
@@ -31,14 +28,10 @@ func UseScopeGovernance(defs ...ScopeDefinition) di.Node {
 		di.Invoke(func(lc fx.Lifecycle, container *web.RegistryContainer, scopeRegistry *ScopeRegistry) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					registry := web.GetGlobalRegistry()
-					if container != nil && container.Metadata != nil {
-						registry = container.Metadata
-					}
-					return ValidateRouteScopes(registry, scopeRegistry)
+					return ValidateRouteScopes(container.Metadata, scopeRegistry)
 				},
 			})
-		}, di.Params(``, di.Optional(), ``)),
+		}, di.Params(``, ``, ``)),
 	)
 }
 
@@ -55,23 +48,19 @@ func UsePolicyGovernance(defs ...PolicyDefinition) di.Node {
 		di.Invoke(func(lc fx.Lifecycle, container *web.RegistryContainer, policyRegistry *PolicyRegistry, scopeRegistry *ScopeRegistry) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					registry := web.GetGlobalRegistry()
-					if container != nil && container.Metadata != nil {
-						registry = container.Metadata
-					}
-					if err := ValidateRoutePolicies(registry, policyRegistry); err != nil {
+					if err := ValidateRoutePolicies(container.Metadata, policyRegistry); err != nil {
 						return err
 					}
-					ExpandRoutePolicies(registry, policyRegistry)
+					ExpandRoutePolicies(container.Metadata, policyRegistry)
 					if scopeRegistry != nil {
-						if err := ValidateRouteScopes(registry, scopeRegistry); err != nil {
+						if err := ValidateRouteScopes(container.Metadata, scopeRegistry); err != nil {
 							return err
 						}
 					}
 					return nil
 				},
 			})
-		}, di.Params(``, di.Optional(), ``, di.Optional())),
+		}, di.Params(``, ``, ``, di.Optional())),
 	)
 }
 
@@ -96,7 +85,7 @@ func registerScopeEnum(defs ...ScopeDefinition) {
 		return
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	web.RegisterEnum[ScopeName](out...)
+	autoswag.RegisterEnum[ScopeName](out...)
 }
 
 func registerPolicyEnum(defs ...PolicyDefinition) {
@@ -120,5 +109,5 @@ func registerPolicyEnum(defs ...PolicyDefinition) {
 		return
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	web.RegisterEnum[PolicyName](out...)
+	autoswag.RegisterEnum[PolicyName](out...)
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gorilla/websocket"
 	"log/slog"
@@ -40,7 +41,7 @@ func TestWebsocketAuthorizeRejectsBlocksEstablish(t *testing.T) {
 		establishCalled.Store(true)
 		return nil
 	})
-	ws.Handle(app)
+	ws.Handle(web.NewRouterWithRegistry(app, web.NewMetadataRegistry()))
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

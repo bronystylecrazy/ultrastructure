@@ -10,7 +10,6 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/ustest"
 	"github.com/bronystylecrazy/ultrastructure/web"
-	"github.com/gofiber/fiber/v3"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/fx"
@@ -173,7 +172,7 @@ func TestNewRun(t *testing.T) {
 
 func TestNewProvidesDefaultModules(t *testing.T) {
 	var root *cmd.Root
-	var router fiber.Router
+	var router web.Router
 
 	app := ustest.New(t,
 		di.Populate(&root),
@@ -185,6 +184,6 @@ func TestNewProvidesDefaultModules(t *testing.T) {
 		t.Fatal("expected cmd root from default modules")
 	}
 	if router == nil {
-		t.Fatal("expected fiber router from default modules")
+		t.Fatal("expected web router from default modules")
 	}
 }

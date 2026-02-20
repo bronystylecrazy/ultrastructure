@@ -11,13 +11,15 @@ func NewRegistryLifecycle(reg *RegistryContainer) *registryLifecycle {
 }
 
 func (r *registryLifecycle) Start(context.Context) error {
-	ActivateRegistryContainer(r.reg)
-	resetModuleStartRegistries(r.reg)
+	if r.reg != nil && r.reg.Metadata != nil {
+		r.reg.Metadata.Clear()
+	}
 	return nil
 }
 
 func (r *registryLifecycle) Stop(context.Context) error {
-	resetModuleStopRegistries(r.reg)
-	ResetDefaultRegistryContainer()
+	if r.reg != nil && r.reg.Metadata != nil {
+		r.reg.Metadata.Clear()
+	}
 	return nil
 }
