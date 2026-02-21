@@ -148,6 +148,13 @@ func TestAnalyze_RouteVariants_AssignDeclAndMultiContentResponses(t *testing.T) 
 			if len(route.PathParams) != 1 || route.PathParams[0].Name != "slug" || route.PathParams[0].Type != "string" || route.PathParams[0].Description != "Slug identifier" {
 				t.Fatalf("unexpected route pathparam override: %+v", route.PathParams)
 			}
+			if len(route.ResponseHeaders) != 1 {
+				t.Fatalf("expected route header override from @autoswag:header, got %+v", route.ResponseHeaders)
+			}
+			header := route.ResponseHeaders[0]
+			if header.Status != 204 || header.Name != "X-Request-ID" || header.Type != "string" || header.Description != "Correlation id" {
+				t.Fatalf("unexpected route header override: %+v", route.ResponseHeaders)
+			}
 		}
 		delete(expectedRoutes, key)
 	}
@@ -643,4 +650,117 @@ func TestAnalyze_IgnoreFileDirectiveSkipsAllRouteAutoDetection(t *testing.T) {
 	if len(p.Routes) != 0 {
 		t.Fatalf("expected no routes when @autoswag:ignore-file is present, got %+v", p.Routes)
 	}
+}
+
+func TestAnalyze_DetectsResponseHeadersFromSetAndCookie(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:      ".",
+		Patterns: []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/headers"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 || len(report.Packages[0].Handlers) == 0 {
+		t.Fatalf("expected one package with handlers, got %+v", report.Packages)
+	}
+
+	var get *HandlerReport
+	for i := range report.Packages[0].Handlers {
+		if report.Packages[0].Handlers[i].Name == "Get" {
+			get = &report.Packages[0].Handlers[i]
+			break
+		}
+	}
+	if get == nil {
+		t.Fatalf("expected Get handler in report, got %+v", report.Packages[0].Handlers)
+	}
+	if len(get.Responses) == 0 {
+		t.Fatalf("expected detected responses for Get handler")
+	}
+
+	found201 := false
+	for _, resp := range get.Responses {
+		if resp.Status != 201 || resp.ContentType != "application/json" {
+			continue
+		}
+		found201 = true
+		if len(resp.Headers) == 0 {
+			t.Fatalf("expected response headers on 201 response, got %+v", resp)
+		}
+		if h, ok := resp.Headers["X-Request-ID"]; !ok || h.Type != "string" {
+			t.Fatalf("expected X-Request-ID string header, got %+v", resp.Headers)
+		}
+		if h, ok := resp.Headers["Set-Cookie"]; !ok || h.Type != "string" {
+			t.Fatalf("expected Set-Cookie string header, got %+v", resp.Headers)
+		}
+	}
+	if !found201 {
+		t.Fatalf("expected 201 application/json response, got %+v", get.Responses)
+	}
+}
+
+func TestAnalyze_GroupTagsAndCommentTagDescription(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:      ".",
+		Patterns: []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/grouptagdesc"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 || len(report.Packages[0].Routes) != 1 {
+		t.Fatalf("expected one route binding, got %+v", report.Packages)
+	}
+	route := report.Packages[0].Routes[0]
+	if len(route.Tags) != 1 || route.Tags[0] != "PeopleExperience" {
+		t.Fatalf("expected inherited group tag PeopleExperience, got %+v", route.Tags)
+	}
+	if route.TagDescriptions["PeopleExperience"] != "this is example for Sirawit" {
+		t.Fatalf("expected inherited group tag description, got %+v", route.TagDescriptions)
+	}
+}
+
+func TestAnalyze_DisableCommentDetection(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:                     ".",
+		Patterns:                []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/grouptagdesc"},
+		DisableCommentDetection: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 || len(report.Packages[0].Routes) != 1 {
+		t.Fatalf("expected one route binding, got %+v", report.Packages)
+	}
+	route := report.Packages[0].Routes[0]
+	if len(route.Tags) != 1 || route.Tags[0] != "PeopleExperience" {
+		t.Fatalf("expected inherited group tag PeopleExperience, got %+v", route.Tags)
+	}
+	if len(route.TagDescriptions) != 0 {
+		t.Fatalf("expected no tag descriptions when comment detection is disabled, got %+v", route.TagDescriptions)
+	}
+}
+
+func TestAnalyze_DisableDirectiveDetection(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:                       ".",
+		Patterns:                  []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/routevariants"},
+		DisableDirectiveDetection: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected 1 package, got %d", len(report.Packages))
+	}
+	p := report.Packages[0]
+	for _, route := range p.Routes {
+		if route.Path != "/v/pathonly/{slug}" {
+			continue
+		}
+		if route.Name != "" || route.Description != "" || len(route.Tags) != 0 || len(route.Responses) != 0 || len(route.PathParams) != 0 || len(route.ResponseHeaders) != 0 {
+			t.Fatalf("expected directives to be ignored when disabled, got %+v", route)
+		}
+		return
+	}
+	t.Fatalf("expected /v/pathonly/{slug} route in report")
 }

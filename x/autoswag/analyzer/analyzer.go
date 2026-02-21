@@ -21,6 +21,8 @@ type Options struct {
 	Patterns          []string
 	Tags              string
 	StrictDI          bool
+	DisableCommentDetection bool
+	DisableDirectiveDetection bool
 	IndexScope        string
 	LoadDeps          bool
 	ExplicitOnly      bool
@@ -30,6 +32,22 @@ type Options struct {
 	Progress          func(message string)
 	PackageCacheLoad  func(pkgPath, fingerprint string) (*PackageCacheEntry, bool)
 	PackageCacheStore func(pkgPath, fingerprint string, entry PackageCacheEntry)
+}
+
+type OptionsMutator func(*Options)
+
+func DisableDirective() OptionsMutator {
+	return func(o *Options) {
+		if o != nil {
+			o.DisableDirectiveDetection = true
+		}
+	}
+}
+
+func (o *Options) DisableDirective() {
+	if o != nil {
+		o.DisableDirectiveDetection = true
+	}
 }
 
 type Report struct {
@@ -100,6 +118,15 @@ type RouteBindingReport struct {
 	Tags        []string             `json:"tags,omitempty"`
 	Responses   []ResponseTypeReport `json:"responses,omitempty"`
 	PathParams  []PathParamReport    `json:"path_params,omitempty"`
+	ResponseHeaders []RouteResponseHeaderReport `json:"response_headers,omitempty"`
+	TagDescriptions map[string]string `json:"tag_descriptions,omitempty"`
+}
+
+type RouteResponseHeaderReport struct {
+	Status      int    `json:"status"`
+	Name        string `json:"name"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type RequestReport struct {
@@ -127,6 +154,14 @@ type ResponseTypeReport struct {
 	Description string   `json:"description,omitempty"`
 	Confidence  string   `json:"confidence,omitempty"`
 	Trace       []string `json:"trace,omitempty"`
+	Headers     map[string]ResponseHeaderReport `json:"headers,omitempty"`
+}
+
+type ResponseHeaderReport struct {
+	Type        string   `json:"type,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Confidence  string   `json:"confidence,omitempty"`
+	Trace       []string `json:"trace,omitempty"`
 }
 
 type detectedResponse struct {
@@ -136,6 +171,13 @@ type detectedResponse struct {
 	description string
 	confidence  string
 	trace       []string
+	headers     map[string]ResponseHeaderReport
+}
+
+type detectedHeaderMutation struct {
+	status int
+	name   string
+	header ResponseHeaderReport
 }
 
 const (
@@ -157,6 +199,7 @@ type helperResolver struct {
 	inStack       map[string]bool
 	cache         map[string][]detectedResponse
 	dispatchCache map[string][]string
+	commentDetection bool
 }
 
 type helperFuncDecl struct {
@@ -367,8 +410,8 @@ func shouldIgnoreAutoswagGeneratedFile(path string) bool {
 	return strings.Contains(base, "autoswag_hook") && strings.HasSuffix(base, ".gen.go")
 }
 
-func extractNearbyCommentForNode(pkg *packages.Package, node ast.Node) string {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func extractNearbyCommentForNode(pkg *packages.Package, node ast.Node, enabled bool) string {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return ""
 	}
 	file := fileForNode(pkg, node)
@@ -438,8 +481,8 @@ func normalizeCommentText(s string) string {
 	return strings.TrimSpace(strings.Join(fields, " "))
 }
 
-func hasAutoswagIgnoreDirective(pkg *packages.Package, node ast.Node) bool {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func hasAutoswagIgnoreDirective(pkg *packages.Package, node ast.Node, enabled bool) bool {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return false
 	}
 	file := fileForNode(pkg, node)
@@ -535,8 +578,8 @@ func lineHasNonWhitespacePrefix(path string, line, column int) bool {
 	return false
 }
 
-func autoswagDirectiveValue(pkg *packages.Package, node ast.Node, key string) string {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func autoswagDirectiveValue(pkg *packages.Package, node ast.Node, key string, enabled bool) string {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return ""
 	}
 	file := fileForNode(pkg, node)
@@ -612,8 +655,8 @@ func autoswagDirectiveValue(pkg *packages.Package, node ast.Node, key string) st
 	return parseValue(bestText)
 }
 
-func autoswagDirectiveValues(pkg *packages.Package, node ast.Node, key string) []string {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func autoswagDirectiveValues(pkg *packages.Package, node ast.Node, key string, enabled bool) []string {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return nil
 	}
 	file := fileForNode(pkg, node)
@@ -699,8 +742,8 @@ func autoswagDirectiveValues(pkg *packages.Package, node ast.Node, key string) [
 	return parseValues(bestText)
 }
 
-func autoswagDirectiveResponses(pkg *packages.Package, node ast.Node) []ResponseTypeReport {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func autoswagDirectiveResponses(pkg *packages.Package, node ast.Node, enabled bool) []ResponseTypeReport {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return nil
 	}
 	file := fileForNode(pkg, node)
@@ -805,8 +848,8 @@ func autoswagDirectiveResponses(pkg *packages.Package, node ast.Node) []Response
 	return parseResponses(bestText)
 }
 
-func autoswagDirectivePathParams(pkg *packages.Package, node ast.Node) []PathParamReport {
-	if pkg == nil || pkg.Fset == nil || node == nil {
+func autoswagDirectivePathParams(pkg *packages.Package, node ast.Node, enabled bool) []PathParamReport {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
 		return nil
 	}
 	file := fileForNode(pkg, node)
@@ -903,6 +946,118 @@ func autoswagDirectivePathParams(pkg *packages.Package, node ast.Node) []PathPar
 	return parseParams(bestText)
 }
 
+func autoswagDirectiveHeaders(pkg *packages.Package, node ast.Node, enabled bool) []RouteResponseHeaderReport {
+	if !enabled || pkg == nil || pkg.Fset == nil || node == nil {
+		return nil
+	}
+	file := fileForNode(pkg, node)
+	if file == nil || len(file.Comments) == 0 {
+		return nil
+	}
+	parseHeaders := func(text string) []RouteResponseHeaderReport {
+		out := []RouteResponseHeaderReport{}
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			lower := strings.ToLower(l)
+			prefix := "@autoswag:header"
+			legacyPrefix := "@autoswag:response-header"
+			matchPrefix := ""
+			if strings.HasPrefix(lower, prefix) {
+				matchPrefix = prefix
+			}
+			if strings.HasPrefix(lower, legacyPrefix) {
+				matchPrefix = legacyPrefix
+			}
+			if matchPrefix == "" {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(matchPrefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			fields := strings.Fields(rest)
+			if len(fields) < 2 {
+				continue
+			}
+			status, err := strconv.Atoi(strings.TrimSpace(fields[0]))
+			if err != nil {
+				continue
+			}
+			name := strings.TrimSpace(fields[1])
+			if name == "" {
+				continue
+			}
+			typ := "string"
+			desc := ""
+			if len(fields) >= 3 {
+				v := strings.TrimSpace(strings.ToLower(fields[2]))
+				switch v {
+				case "string", "integer", "number", "boolean":
+					typ = v
+					if len(fields) > 3 {
+						desc = strings.TrimSpace(strings.Join(fields[3:], " "))
+					}
+				default:
+					desc = strings.TrimSpace(strings.Join(fields[2:], " "))
+				}
+			}
+			out = append(out, RouteResponseHeaderReport{
+				Status:      status,
+				Name:        name,
+				Type:        typ,
+				Description: desc,
+			})
+		}
+		return out
+	}
+
+	nodePos := pkg.Fset.Position(node.Pos())
+	nodeEnd := pkg.Fset.Position(node.End())
+	if !nodePos.IsValid() {
+		return nil
+	}
+	if nodeEnd.IsValid() {
+		for _, cg := range file.Comments {
+			if cg == nil {
+				continue
+			}
+			start := pkg.Fset.Position(cg.Pos())
+			if !start.IsValid() {
+				continue
+			}
+			if start.Line == nodePos.Line && start.Column >= nodeEnd.Column {
+				if out := parseHeaders(cg.Text()); len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+	bestEndLine := -1
+	bestText := ""
+	for _, cg := range file.Comments {
+		if cg == nil {
+			continue
+		}
+		start := pkg.Fset.Position(cg.Pos())
+		end := pkg.Fset.Position(cg.End())
+		if !end.IsValid() || end.Line >= nodePos.Line {
+			continue
+		}
+		if nodePos.Line-end.Line > 1 {
+			continue
+		}
+		if start.IsValid() && lineHasNonWhitespacePrefix(start.Filename, start.Line, start.Column) {
+			continue
+		}
+		if end.Line > bestEndLine {
+			bestEndLine = end.Line
+			bestText = cg.Text()
+		}
+	}
+	return parseHeaders(bestText)
+}
+
 func annotateDiagnosticsRoutes(diags []AnalyzerDiagnostic, routes []RouteBindingReport) {
 	if len(diags) == 0 || len(routes) == 0 {
 		return
@@ -961,7 +1116,7 @@ func isFiberCtxHandler(fn *ast.FuncDecl, info *types.Info) bool {
 	return t != nil && t.String() == "github.com/gofiber/fiber/v3.Ctx"
 }
 
-func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolver) HandlerReport {
+func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolver, commentDetection bool) HandlerReport {
 	out := HandlerReport{Name: fn.Name.Name}
 	out.Key = handlerDeclKey(pkg, fn)
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
@@ -977,6 +1132,7 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 	reqConfidence := ""
 	reqContentTypes := map[string]struct{}{}
 	responses := []detectedResponse{}
+	headerMutations := []detectedHeaderMutation{}
 
 	withResolverHandlerContext(resolver, out.Key, func() {
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -988,10 +1144,14 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 				recordRequestContentType(node, reqContentTypes)
 				recordQueryType(node, pkg.TypesInfo, varTypes, &queryType, &queryConfidence)
 				recordResponseTypeFromAssign(node, pkg.TypesInfo, &responses, resolver)
+				recordResponseHeaderMutationsFromAssign(node, pkg.TypesInfo, &headerMutations)
 			case *ast.DeclStmt:
 				recordDeclTypes(node, pkg.TypesInfo, varTypes)
+			case *ast.ExprStmt:
+				recordResponseHeaderMutationsFromExpr(node.X, pkg.TypesInfo, &headerMutations)
 			case *ast.ReturnStmt:
-				recordResponseTypeFromReturn(node, pkg, pkg.TypesInfo, &responses, resolver)
+				recordResponseTypeFromReturn(node, pkg, pkg.TypesInfo, &responses, resolver, commentDetection)
+				recordResponseHeaderMutationsFromReturn(node, pkg.TypesInfo, &headerMutations)
 			}
 			return true
 		})
@@ -1034,6 +1194,7 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 	}
 
 	if len(responses) > 0 {
+		responses = applyHeaderMutations(responses, headerMutations)
 		out.Responses = toResponseTypeReports(responses)
 	}
 
@@ -1055,14 +1216,18 @@ func isRouterHandleMethod(fn *ast.FuncDecl, info *types.Info) bool {
 	return t.String() == "github.com/bronystylecrazy/ultrastructure/web.Router"
 }
 
-func extractRouteBindings(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolver) ([]RouteBindingReport, []HandlerReport) {
+func extractRouteBindings(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolver, commentDetection bool, directiveDetection bool) ([]RouteBindingReport, []HandlerReport) {
 	if fn.Body == nil || fn.Type == nil || fn.Type.Params == nil || len(fn.Type.Params.List) == 0 {
 		return nil, nil
 	}
 	prefixByVar := map[string]string{}
+	groupTagsByVar := map[string][]string{}
+	groupTagDescByVar := map[string]map[string]string{}
 	firstParam := fn.Type.Params.List[0]
 	if len(firstParam.Names) > 0 {
 		prefixByVar[firstParam.Names[0].Name] = ""
+		groupTagsByVar[firstParam.Names[0].Name] = nil
+		groupTagDescByVar[firstParam.Names[0].Name] = nil
 	}
 
 	out := []RouteBindingReport{}
@@ -1073,7 +1238,7 @@ func extractRouteBindings(pkg *packages.Package, fn *ast.FuncDecl, resolver *hel
 			for i, rhs := range node.Rhs {
 				groupCall, ok := unwrapGroupCall(rhs)
 				if !ok || len(groupCall.Args) == 0 {
-					out, inline = appendRouteBindingFromExpr(rhs, pkg, fn, resolver, prefixByVar, out, inline)
+					out, inline = appendRouteBindingFromExpr(rhs, pkg, fn, resolver, prefixByVar, groupTagsByVar, groupTagDescByVar, commentDetection, directiveDetection, out, inline)
 					continue
 				}
 				receiverVar, ok := selectorRootIdent(groupCall.Fun)
@@ -1085,14 +1250,24 @@ func extractRouteBindings(pkg *packages.Package, fn *ast.FuncDecl, resolver *hel
 					continue
 				}
 				base := prefixByVar[receiverVar]
+				baseTags := groupTagsByVar[receiverVar]
+				baseTagDesc := groupTagDescByVar[receiverVar]
+				mergedTags := append([]string(nil), baseTags...)
+				mergedTags = appendUniqueStrings(mergedTags, groupTagsFromExpr(rhs)...)
+				mergedTagDesc := copyStringMap(baseTagDesc)
+				for k, v := range groupTagDescriptionsFromExpr(pkg, rhs, mergedTags, commentDetection, directiveDetection) {
+					mergedTagDesc[k] = v
+				}
 				if i < len(node.Lhs) {
 					if ident, ok := node.Lhs[i].(*ast.Ident); ok && ident.Name != "_" {
 						prefixByVar[ident.Name] = joinRoutePath(base, groupPath)
+						groupTagsByVar[ident.Name] = mergedTags
+						groupTagDescByVar[ident.Name] = mergedTagDesc
 					}
 				}
 			}
 		case *ast.ExprStmt:
-			out, inline = appendRouteBindingFromExpr(node.X, pkg, fn, resolver, prefixByVar, out, inline)
+			out, inline = appendRouteBindingFromExpr(node.X, pkg, fn, resolver, prefixByVar, groupTagsByVar, groupTagDescByVar, commentDetection, directiveDetection, out, inline)
 		case *ast.DeclStmt:
 			gen, ok := node.Decl.(*ast.GenDecl)
 			if !ok {
@@ -1104,7 +1279,7 @@ func extractRouteBindings(pkg *packages.Package, fn *ast.FuncDecl, resolver *hel
 					continue
 				}
 				for _, value := range vs.Values {
-					out, inline = appendRouteBindingFromExpr(value, pkg, fn, resolver, prefixByVar, out, inline)
+					out, inline = appendRouteBindingFromExpr(value, pkg, fn, resolver, prefixByVar, groupTagsByVar, groupTagDescByVar, commentDetection, directiveDetection, out, inline)
 				}
 			}
 		}
@@ -1119,17 +1294,23 @@ func appendRouteBindingFromExpr(
 	owner *ast.FuncDecl,
 	resolver *helperResolver,
 	prefixByVar map[string]string,
+	groupTagsByVar map[string][]string,
+	groupTagDescByVar map[string]map[string]string,
+	commentDetection bool,
+	directiveDetection bool,
 	out []RouteBindingReport,
 	inline []HandlerReport,
 ) ([]RouteBindingReport, []HandlerReport) {
-	if hasAutoswagIgnoreDirective(pkg, expr) {
+	if hasAutoswagIgnoreDirective(pkg, expr, directiveDetection) {
 		return out, inline
 	}
-	routeName := autoswagDirectiveValue(pkg, expr, "name")
-	routeDescription := autoswagDirectiveValue(pkg, expr, "description")
-	routeTags := autoswagDirectiveValues(pkg, expr, "tag")
-	routeResponses := autoswagDirectiveResponses(pkg, expr)
-	routePathParams := autoswagDirectivePathParams(pkg, expr)
+	routeName := autoswagDirectiveValue(pkg, expr, "name", directiveDetection)
+	routeDescription := autoswagDirectiveValue(pkg, expr, "description", directiveDetection)
+	routeTags := autoswagDirectiveValues(pkg, expr, "tag", directiveDetection)
+	routeResponses := autoswagDirectiveResponses(pkg, expr, directiveDetection)
+	routePathParams := autoswagDirectivePathParams(pkg, expr, directiveDetection)
+	routeHeaders := autoswagDirectiveHeaders(pkg, expr, directiveDetection)
+	routeTagDescriptions := map[string]string{}
 	routeCall, method, ok := unwrapRouteCall(expr)
 	if !ok || len(routeCall.Args) < 2 {
 		return out, inline
@@ -1137,6 +1318,12 @@ func appendRouteBindingFromExpr(
 	receiverVar, ok := selectorRootIdent(routeCall.Fun)
 	if !ok {
 		return out, inline
+	}
+	if len(routeTags) == 0 {
+		routeTags = append([]string(nil), groupTagsByVar[receiverVar]...)
+	}
+	for k, v := range groupTagDescByVar[receiverVar] {
+		routeTagDescriptions[k] = v
 	}
 	rawPath, ok := literalString(routeCall.Args[0])
 	if !ok {
@@ -1151,19 +1338,22 @@ func appendRouteBindingFromExpr(
 	if resolver != nil {
 		if decl, ok := resolver.declByKey[handlerKey]; ok && decl.fn != nil && decl.pkg != nil {
 			if strings.TrimSpace(routeName) == "" {
-				routeName = autoswagDirectiveValue(decl.pkg, decl.fn, "name")
+				routeName = autoswagDirectiveValue(decl.pkg, decl.fn, "name", directiveDetection)
 			}
 			if strings.TrimSpace(routeDescription) == "" {
-				routeDescription = autoswagDirectiveValue(decl.pkg, decl.fn, "description")
+				routeDescription = autoswagDirectiveValue(decl.pkg, decl.fn, "description", directiveDetection)
 			}
 			if len(routeTags) == 0 {
-				routeTags = autoswagDirectiveValues(decl.pkg, decl.fn, "tag")
+				routeTags = autoswagDirectiveValues(decl.pkg, decl.fn, "tag", directiveDetection)
 			}
 			if len(routeResponses) == 0 {
-				routeResponses = autoswagDirectiveResponses(decl.pkg, decl.fn)
+				routeResponses = autoswagDirectiveResponses(decl.pkg, decl.fn, directiveDetection)
 			}
 			if len(routePathParams) == 0 {
-				routePathParams = autoswagDirectivePathParams(decl.pkg, decl.fn)
+				routePathParams = autoswagDirectivePathParams(decl.pkg, decl.fn, directiveDetection)
+			}
+			if len(routeHeaders) == 0 {
+				routeHeaders = autoswagDirectiveHeaders(decl.pkg, decl.fn, directiveDetection)
 			}
 		}
 	}
@@ -1179,8 +1369,99 @@ func appendRouteBindingFromExpr(
 		Tags:        routeTags,
 		Responses:   routeResponses,
 		PathParams:  routePathParams,
+		ResponseHeaders: routeHeaders,
+		TagDescriptions: routeTagDescriptions,
 	})
 	return out, inline
+}
+
+func groupTagsFromExpr(expr ast.Expr) []string {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return nil
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil {
+		return nil
+	}
+	base := groupTagsFromExpr(sel.X)
+	if sel.Sel.Name != "Tags" {
+		return base
+	}
+	for _, arg := range call.Args {
+		s, ok := literalString(arg)
+		if !ok {
+			continue
+		}
+		for _, tag := range strings.Split(s, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				continue
+			}
+			base = appendUniqueString(base, tag)
+		}
+	}
+	return base
+}
+
+func groupTagDescriptionsFromExpr(pkg *packages.Package, expr ast.Expr, currentTags []string, commentDetection bool, directiveDetection bool) map[string]string {
+	out := map[string]string{}
+	text := extractNearbyCommentForNode(pkg, expr, commentDetection || directiveDetection)
+	if text == "" {
+		return out
+	}
+	if directiveDetection && strings.Contains(strings.ToLower(text), "@autoswag:tag-description") {
+		for _, line := range strings.Split(text, "\n") {
+			l := strings.TrimSpace(line)
+			if l == "" {
+				continue
+			}
+			prefix := "@autoswag:tag-description"
+			if !strings.HasPrefix(strings.ToLower(l), prefix) {
+				continue
+			}
+			rest := strings.TrimSpace(l[len(prefix):])
+			rest = strings.TrimSpace(strings.TrimLeft(rest, ":="))
+			if rest == "" {
+				continue
+			}
+			fields := strings.Fields(rest)
+			if len(fields) == 0 {
+				continue
+			}
+			if len(fields) >= 2 {
+				tag := strings.TrimSpace(fields[0])
+				desc := strings.TrimSpace(strings.Join(fields[1:], " "))
+				if tag != "" && desc != "" {
+					out[tag] = desc
+				}
+			}
+		}
+		return out
+	}
+	if commentDetection && len(currentTags) == 1 {
+		out[currentTags[0]] = text
+	}
+	return out
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	out := append([]string(nil), existing...)
+	for _, v := range values {
+		out = appendUniqueString(out, v)
+	}
+	return out
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func unwrapGroupCall(expr ast.Expr) (*ast.CallExpr, bool) {
@@ -1314,6 +1595,7 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 	reqConfidence := ""
 	reqContentTypes := map[string]struct{}{}
 	responses := []detectedResponse{}
+	headerMutations := []detectedHeaderMutation{}
 
 	withResolverHandlerContext(resolver, key, func() {
 		ast.Inspect(lit.Body, func(n ast.Node) bool {
@@ -1325,10 +1607,18 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 				recordRequestContentType(node, reqContentTypes)
 				recordQueryType(node, pkg.TypesInfo, varTypes, &queryType, &queryConfidence)
 				recordResponseTypeFromAssign(node, pkg.TypesInfo, &responses, resolver)
+				recordResponseHeaderMutationsFromAssign(node, pkg.TypesInfo, &headerMutations)
 			case *ast.DeclStmt:
 				recordDeclTypes(node, pkg.TypesInfo, varTypes)
+			case *ast.ExprStmt:
+				recordResponseHeaderMutationsFromExpr(node.X, pkg.TypesInfo, &headerMutations)
 			case *ast.ReturnStmt:
-				recordResponseTypeFromReturn(node, pkg, pkg.TypesInfo, &responses, resolver)
+				commentDetection := true
+				if resolver != nil {
+					commentDetection = resolver.commentDetection
+				}
+				recordResponseTypeFromReturn(node, pkg, pkg.TypesInfo, &responses, resolver, commentDetection)
+				recordResponseHeaderMutationsFromReturn(node, pkg.TypesInfo, &headerMutations)
 			}
 			return true
 		})
@@ -1369,6 +1659,7 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 		}
 	}
 	if len(responses) > 0 {
+		responses = applyHeaderMutations(responses, headerMutations)
 		out.Responses = toResponseTypeReports(responses)
 	}
 	return out
@@ -1579,8 +1870,8 @@ func recordResponseTypeFromAssign(node *ast.AssignStmt, info *types.Info, respon
 	}
 }
 
-func recordResponseTypeFromReturn(node *ast.ReturnStmt, pkg *packages.Package, info *types.Info, responses *[]detectedResponse, resolver *helperResolver) {
-	description := extractNearbyCommentForNode(pkg, node)
+func recordResponseTypeFromReturn(node *ast.ReturnStmt, pkg *packages.Package, info *types.Info, responses *[]detectedResponse, resolver *helperResolver, commentDetection bool) {
+	description := extractNearbyCommentForNode(pkg, node, commentDetection)
 	for _, expr := range node.Results {
 		call, ok := expr.(*ast.CallExpr)
 		if !ok {
@@ -1593,6 +1884,187 @@ func recordResponseTypeFromReturn(node *ast.ReturnStmt, pkg *packages.Package, i
 		detected = applyResponseDescription(detected, description)
 		*responses = appendDetectedResponses(*responses, detected)
 	}
+}
+
+func recordResponseHeaderMutationsFromAssign(node *ast.AssignStmt, info *types.Info, headers *[]detectedHeaderMutation) {
+	for _, rhs := range node.Rhs {
+		call, ok := rhs.(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+		detected := parseHeaderMutationCall(call, info)
+		*headers = appendHeaderMutations(*headers, detected)
+	}
+}
+
+func recordResponseHeaderMutationsFromExpr(expr ast.Expr, info *types.Info, headers *[]detectedHeaderMutation) {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return
+	}
+	detected := parseHeaderMutationCall(call, info)
+	*headers = appendHeaderMutations(*headers, detected)
+}
+
+func recordResponseHeaderMutationsFromReturn(node *ast.ReturnStmt, info *types.Info, headers *[]detectedHeaderMutation) {
+	for _, expr := range node.Results {
+		call, ok := expr.(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+		detected := parseHeaderMutationCall(call, info)
+		*headers = appendHeaderMutations(*headers, detected)
+	}
+}
+
+func parseHeaderMutationCall(call *ast.CallExpr, info *types.Info) []detectedHeaderMutation {
+	baseFun := baseCallFunExpr(call.Fun)
+	sel, ok := baseFun.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil {
+		return nil
+	}
+
+	switch sel.Sel.Name {
+	case "Set":
+		if len(call.Args) != 2 {
+			return nil
+		}
+		name, ok := literalString(call.Args[0])
+		if !ok {
+			return nil
+		}
+		name = strings.TrimSpace(name)
+		if name == "" || strings.EqualFold(name, "Content-Type") {
+			return nil
+		}
+		status := 0
+		if inner, ok := sel.X.(*ast.CallExpr); ok {
+			status, _ = extractStatusAndContentTypeFromChain(inner, info, status, "")
+		}
+		t := "string"
+		if tv := info.TypeOf(call.Args[1]); tv != nil {
+			t = openAPITypeFromTypeString(tv.String())
+		}
+		return []detectedHeaderMutation{{
+			status: status,
+			name:   name,
+			header: ResponseHeaderReport{
+				Type:       t,
+				Confidence: responseConfidenceExact,
+				Trace:      []string{"fiber.Ctx.Set"},
+			},
+		}}
+	case "Cookie":
+		status := 0
+		if inner, ok := sel.X.(*ast.CallExpr); ok {
+			status, _ = extractStatusAndContentTypeFromChain(inner, info, status, "")
+		}
+		description := "Auto-detected"
+		if len(call.Args) > 0 {
+			if name := detectCookieName(call.Args[0]); name != "" {
+				description = "Auto-detected cookie: " + name
+			}
+		}
+		return []detectedHeaderMutation{{
+			status: status,
+			name:   "Set-Cookie",
+			header: ResponseHeaderReport{
+				Type:        "string",
+				Description: description,
+				Confidence:  responseConfidenceExact,
+				Trace:       []string{"fiber.Ctx.Cookie"},
+			},
+		}}
+	default:
+		return nil
+	}
+}
+
+func detectCookieName(expr ast.Expr) string {
+	lit, ok := expr.(*ast.UnaryExpr)
+	if ok && lit.Op == token.AND {
+		expr = lit.X
+	}
+	cl, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return ""
+	}
+	for _, elt := range cl.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		keyIdent, ok := kv.Key.(*ast.Ident)
+		if !ok || keyIdent.Name != "Name" {
+			continue
+		}
+		name, ok := literalString(kv.Value)
+		if !ok {
+			continue
+		}
+		return strings.TrimSpace(name)
+	}
+	return ""
+}
+
+func openAPITypeFromTypeString(typeName string) string {
+	t := strings.ToLower(strings.TrimSpace(typeName))
+	switch {
+	case strings.HasPrefix(t, "int"), strings.HasPrefix(t, "uint"):
+		return "integer"
+	case strings.HasPrefix(t, "float"):
+		return "number"
+	case t == "bool":
+		return "boolean"
+	default:
+		return "string"
+	}
+}
+
+func appendHeaderMutations(existing []detectedHeaderMutation, in []detectedHeaderMutation) []detectedHeaderMutation {
+	for _, item := range in {
+		if strings.TrimSpace(item.name) == "" {
+			continue
+		}
+		existing = append(existing, item)
+	}
+	return existing
+}
+
+func applyHeaderMutations(responses []detectedResponse, headers []detectedHeaderMutation) []detectedResponse {
+	if len(responses) == 0 || len(headers) == 0 {
+		return responses
+	}
+	out := make([]detectedResponse, 0, len(responses))
+	for _, item := range responses {
+		resp := item
+		if resp.headers == nil {
+			resp.headers = map[string]ResponseHeaderReport{}
+		}
+		for _, hm := range headers {
+			if hm.status != 0 && hm.status != resp.status {
+				continue
+			}
+			name := strings.TrimSpace(hm.name)
+			if name == "" {
+				continue
+			}
+			existing := resp.headers[name]
+			if strings.TrimSpace(existing.Type) == "" {
+				existing.Type = hm.header.Type
+			}
+			if strings.TrimSpace(existing.Description) == "" {
+				existing.Description = hm.header.Description
+			}
+			existing.Confidence = normalizeInferenceConfidence(firstNonEmpty(existing.Confidence, hm.header.Confidence))
+			if len(existing.Trace) == 0 && len(hm.header.Trace) > 0 {
+				existing.Trace = append([]string(nil), hm.header.Trace...)
+			}
+			resp.headers[name] = existing
+		}
+		out = append(out, resp)
+	}
+	return out
 }
 
 func applyResponseDescription(in []detectedResponse, description string) []detectedResponse {
@@ -1633,28 +2105,34 @@ func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperRes
 		}
 		status := 200
 		contentType := "application/json"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
 		t := info.TypeOf(call.Args[0])
 		if t == nil {
 			return nil, false
 		}
-		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.JSON"}}}, true
+		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.JSON"}, headers: headersToReportMap(headers)}}, true
 	case "SendString":
 		status := 200
 		contentType := "text/plain"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
-		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.SendString"}}}, true
+		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.SendString"}, headers: headersToReportMap(headers)}}, true
 	case "Send":
 		status := 200
 		contentType := "application/octet-stream"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
-		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.Send"}}}, true
+		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.Send"}, headers: headersToReportMap(headers)}}, true
 	case "SendStatus":
 		status := 200
 		if len(call.Args) == 1 {
@@ -1662,22 +2140,28 @@ func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperRes
 				status = code
 			}
 		}
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, _ = extractStatusAndContentTypeFromChain(inner, info, status, "")
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
-		return []detectedResponse{{status: status, typ: "", contentType: "", confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.SendStatus"}}}, true
+		return []detectedResponse{{status: status, typ: "", contentType: "", confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.SendStatus"}, headers: headersToReportMap(headers)}}, true
 	case "SendFile", "SendStream", "SendStreamWriter", "Download":
 		status := 200
 		contentType := "application/octet-stream"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
-		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx." + sel.Sel.Name}}}, true
+		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx." + sel.Sel.Name}, headers: headersToReportMap(headers)}}, true
 	case "XML":
 		status := 200
 		contentType := "application/xml"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
 		if len(call.Args) != 1 {
 			return nil, false
@@ -1686,12 +2170,14 @@ func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperRes
 		if t == nil {
 			return nil, false
 		}
-		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.XML"}}}, true
+		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.XML"}, headers: headersToReportMap(headers)}}, true
 	case "JSONP":
 		status := 200
 		contentType := "application/javascript"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
 		if len(call.Args) == 0 {
 			return nil, false
@@ -1700,14 +2186,16 @@ func parseResponseCall(call *ast.CallExpr, info *types.Info, resolver *helperRes
 		if t == nil {
 			return nil, false
 		}
-		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.JSONP"}}}, true
+		return []detectedResponse{{status: status, typ: canonicalTypeName(t), contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.JSONP"}, headers: headersToReportMap(headers)}}, true
 	case "Render":
 		status := 200
 		contentType := "text/html"
+		headers := []detectedHeaderMutation{}
 		if inner, ok := sel.X.(*ast.CallExpr); ok {
 			status, contentType = extractStatusAndContentTypeFromChain(inner, info, status, contentType)
+			headers = extractHeaderMutationsFromChain(inner, info, status)
 		}
-		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.Render"}}}, true
+		return []detectedResponse{{status: status, typ: "string", contentType: contentType, confidence: responseConfidenceExact, trace: []string{"fiber.Ctx.Render"}, headers: headersToReportMap(headers)}}, true
 	default:
 		if resolver != nil {
 			if resolver.explicitOnly {
@@ -1850,6 +2338,102 @@ func extractStatusAndContentTypeFromChain(call *ast.CallExpr, info *types.Info, 
 		cur = next
 	}
 	return status, contentType
+}
+
+func extractHeaderMutationsFromChain(call *ast.CallExpr, info *types.Info, status int) []detectedHeaderMutation {
+	out := []detectedHeaderMutation{}
+	cur := call
+	for cur != nil {
+		sel, ok := cur.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel == nil {
+			break
+		}
+		switch sel.Sel.Name {
+		case "Set":
+			if len(cur.Args) == 2 {
+				name, ok := literalString(cur.Args[0])
+				if ok {
+					name = strings.TrimSpace(name)
+					if name != "" && !strings.EqualFold(name, "Content-Type") {
+						t := "string"
+						if tv := info.TypeOf(cur.Args[1]); tv != nil {
+							t = openAPITypeFromTypeString(tv.String())
+						}
+						out = append(out, detectedHeaderMutation{
+							status: status,
+							name:   name,
+							header: ResponseHeaderReport{
+								Type:       t,
+								Confidence: responseConfidenceExact,
+								Trace:      []string{"fiber.Ctx.Set"},
+							},
+						})
+					}
+				}
+			}
+		case "Cookie":
+			description := "Auto-detected"
+			if len(cur.Args) > 0 {
+				if name := detectCookieName(cur.Args[0]); name != "" {
+					description = "Auto-detected cookie: " + name
+				}
+			}
+			out = append(out, detectedHeaderMutation{
+				status: status,
+				name:   "Set-Cookie",
+				header: ResponseHeaderReport{
+					Type:        "string",
+					Description: description,
+					Confidence:  responseConfidenceExact,
+					Trace:       []string{"fiber.Ctx.Cookie"},
+				},
+			})
+		}
+		next, ok := sel.X.(*ast.CallExpr)
+		if !ok {
+			break
+		}
+		cur = next
+	}
+	return out
+}
+
+func headersToReportMap(items []detectedHeaderMutation) map[string]ResponseHeaderReport {
+	if len(items) == 0 {
+		return nil
+	}
+	out := map[string]ResponseHeaderReport{}
+	for _, item := range items {
+		name := strings.TrimSpace(item.name)
+		if name == "" {
+			continue
+		}
+		existing := out[name]
+		if strings.TrimSpace(existing.Type) == "" {
+			existing.Type = item.header.Type
+		}
+		if strings.TrimSpace(existing.Description) == "" {
+			existing.Description = item.header.Description
+		}
+		existing.Confidence = normalizeInferenceConfidence(firstNonEmpty(existing.Confidence, item.header.Confidence))
+		if len(existing.Trace) == 0 && len(item.header.Trace) > 0 {
+			existing.Trace = append([]string(nil), item.header.Trace...)
+		}
+		out[name] = existing
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func contentTypeFromExt(ext string) string {
@@ -2591,7 +3175,7 @@ func candidateVariants(t types.Type) []types.Type {
 	return dedup
 }
 
-func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []providedBinding, pkgPath string, strictDI bool, explicitOnly bool, sourceByInfo map[*types.Info]diagnosticSource) *helperResolver {
+func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []providedBinding, pkgPath string, strictDI bool, explicitOnly bool, commentDetection bool, sourceByInfo map[*types.Info]diagnosticSource) *helperResolver {
 	if len(globalDecls) == 0 {
 		return nil
 	}
@@ -2607,6 +3191,7 @@ func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []provide
 		inStack:       map[string]bool{},
 		cache:         map[string][]detectedResponse{},
 		dispatchCache: map[string][]string{},
+		commentDetection: commentDetection,
 	}
 }
 
@@ -3057,7 +3642,7 @@ func dedupeDetectedResponses(in []detectedResponse) []detectedResponse {
 	seen := map[string]struct{}{}
 	out := make([]detectedResponse, 0, len(in))
 	for _, item := range in {
-		key := strconv.Itoa(item.status) + "|" + item.typ + "|" + item.contentType + "|" + normalizeResponseConfidence(item.confidence) + "|" + traceKey(item.trace)
+		key := strconv.Itoa(item.status) + "|" + item.typ + "|" + item.contentType + "|" + normalizeResponseConfidence(item.confidence) + "|" + traceKey(item.trace) + "|" + headersKey(item.headers)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -3087,7 +3672,7 @@ func appendDetectedResponses(existing []detectedResponse, detected []detectedRes
 }
 
 func detectedResponseKey(item detectedResponse) string {
-	return strconv.Itoa(item.status) + "|" + item.typ + "|" + item.contentType + "|" + normalizeResponseConfidence(item.confidence) + "|" + traceKey(item.trace)
+	return strconv.Itoa(item.status) + "|" + item.typ + "|" + item.contentType + "|" + normalizeResponseConfidence(item.confidence) + "|" + traceKey(item.trace) + "|" + headersKey(item.headers)
 }
 
 func toResponseTypeReports(in []detectedResponse) []ResponseTypeReport {
@@ -3123,6 +3708,7 @@ func toResponseTypeReports(in []detectedResponse) []ResponseTypeReport {
 			Description: item.description,
 			Confidence:  confidence,
 			Trace:       append([]string(nil), item.trace...),
+			Headers:     cloneResponseHeaderReportMap(item.headers),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -3135,6 +3721,38 @@ func toResponseTypeReports(in []detectedResponse) []ResponseTypeReport {
 		return out[i].Type < out[j].Type
 	})
 	return out
+}
+
+func cloneResponseHeaderReportMap(in map[string]ResponseHeaderReport) map[string]ResponseHeaderReport {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]ResponseHeaderReport, len(in))
+	for name, header := range in {
+		copyHeader := header
+		if len(header.Trace) > 0 {
+			copyHeader.Trace = append([]string(nil), header.Trace...)
+		}
+		out[name] = copyHeader
+	}
+	return out
+}
+
+func headersKey(headers map[string]ResponseHeaderReport) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, strings.TrimSpace(name))
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		h := headers[name]
+		parts = append(parts, name+"|"+h.Type+"|"+h.Description+"|"+normalizeInferenceConfidence(h.Confidence)+"|"+traceKey(h.Trace))
+	}
+	return strings.Join(parts, "||")
 }
 
 func traceKey(trace []string) string {

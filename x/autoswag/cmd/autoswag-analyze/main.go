@@ -28,7 +28,7 @@ func main() {
 	var pattern string
 	var emitHook bool
 	var hookPackage string
-	var hookFunc string
+	var hookName string
 	var out string
 	var tags string
 	var exactOnly bool
@@ -44,6 +44,8 @@ func main() {
 	var diagGrouped bool
 	var lint bool
 	var lintSeverity string
+	var disableCommentDetection bool
+	var disableDirectiveDetection bool
 	var cacheDir string
 	var noCache bool
 	var cachePrune bool
@@ -53,7 +55,7 @@ func main() {
 	flag.StringVar(&pattern, "patterns", ".", "comma-separated go package patterns")
 	flag.BoolVar(&emitHook, "emit-hook", false, "emit autoswag WithCustomize hook source instead of JSON report")
 	flag.StringVar(&hookPackage, "hook-package", "autoswaggen", "package name for generated hook source")
-	flag.StringVar(&hookFunc, "hook-func", "AutoDetectedSwaggerHook", "function name for generated hook source")
+	flag.StringVar(&hookName, "emit-hook-name", "AutoSwagGenerator", "function name for generated hook source")
 	flag.StringVar(&out, "out", "", "write output to file path (default: stdout)")
 	flag.StringVar(&tags, "tags", "", "build tags for package loading (comma-separated or go -tags expression)")
 	flag.BoolVar(&exactOnly, "exact-only", false, "when -emit-hook is enabled, include only exact-confidence detections")
@@ -69,6 +71,8 @@ func main() {
 	flag.BoolVar(&diagGrouped, "diag-grouped", true, "group diagnostics by route/package in -diag-only output")
 	flag.BoolVar(&lint, "lint", false, "run analyzer lint checks and exit non-zero when diagnostics meet severity threshold")
 	flag.StringVar(&lintSeverity, "lint-severity", "warning", "lint failure threshold: warning|error")
+	flag.BoolVar(&disableCommentDetection, "disable-comment-detection", false, "disable non-directive comment-based detection (e.g. nearby description comments)")
+	flag.BoolVar(&disableDirectiveDetection, "disable-directive-detection", false, "disable @autoswag:* directive detection")
 	flag.StringVar(&cacheDir, "cache-dir", defaultCacheDir(), "directory for analysis cache")
 	flag.BoolVar(&noCache, "no-cache", false, "disable reading/writing analysis cache")
 	flag.BoolVar(&cachePrune, "cache-prune", false, "delete cache directory and exit")
@@ -151,7 +155,7 @@ func main() {
 				printDiagnostics(report.Diagnostics, diagGrouped)
 				return nil
 			}
-			payload, err := buildPayload(report, emitHook, hookPackage, hookFunc, exactOnly)
+			payload, err := buildPayload(report, emitHook, hookPackage, hookName, exactOnly, toolVersion)
 			if err != nil {
 				return err
 			}
@@ -159,7 +163,7 @@ func main() {
 		}
 		watchScopeIdx := 0
 		newWatchSession := func(scope string) (*analyzer.Session, error) {
-			return newAnalyzeSession(dir, patterns, tags, strictDI, explicitOnly, explicitScope, scope, toolVersion, verbose, cacheEnabled, cacheRoot)
+			return newAnalyzeSession(dir, patterns, tags, strictDI, explicitOnly, explicitScope, scope, toolVersion, verbose, cacheEnabled, cacheRoot, disableCommentDetection, disableDirectiveDetection)
 		}
 		var session *analyzer.Session
 		recycleWatchSession := func(reason string) error {
@@ -277,7 +281,7 @@ func main() {
 	cachePath := ""
 	cacheEnabled := !noCache && cacheRoot != ""
 	if cacheEnabled {
-		cacheKey, err = computeCacheKey(dir, patterns, tags, strictDI, scope, toolVersion)
+		cacheKey, err = computeCacheKey(dir, patterns, tags, strictDI, scope, toolVersion, disableCommentDetection, disableDirectiveDetection)
 		if err == nil && cacheKey != "" {
 			cachePath = filepath.Join(cacheRoot, cacheKey+".json")
 			if cached, readErr := readCachedReport(cachePath); readErr == nil && cached != nil {
@@ -298,6 +302,8 @@ func main() {
 				Patterns:      patterns,
 				Tags:          tags,
 				StrictDI:      strictDI,
+				DisableCommentDetection: disableCommentDetection,
+				DisableDirectiveDetection: disableDirectiveDetection,
 				ExplicitOnly:  explicitOnly,
 				ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, runScope),
 				IndexScope:    runScope,
@@ -384,7 +390,7 @@ func main() {
 		return
 	}
 
-	payload, err := buildPayload(report, emitHook, hookPackage, hookFunc, exactOnly)
+	payload, err := buildPayload(report, emitHook, hookPackage, hookName, exactOnly, toolVersion)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -398,12 +404,14 @@ func main() {
 	}
 }
 
-func newAnalyzeSession(dir string, patterns []string, tags string, strictDI bool, explicitOnly bool, explicitScope string, scope string, toolVersion string, verbose bool, cacheEnabled bool, cacheRoot string) (*analyzer.Session, error) {
+func newAnalyzeSession(dir string, patterns []string, tags string, strictDI bool, explicitOnly bool, explicitScope string, scope string, toolVersion string, verbose bool, cacheEnabled bool, cacheRoot string, disableCommentDetection bool, disableDirectiveDetection bool) (*analyzer.Session, error) {
 	opts := analyzer.Options{
 		Dir:           dir,
 		Patterns:      patterns,
 		Tags:          tags,
 		StrictDI:      strictDI,
+		DisableCommentDetection: disableCommentDetection,
+		DisableDirectiveDetection: disableDirectiveDetection,
 		ExplicitOnly:  explicitOnly,
 		ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, scope),
 		IndexScope:    scope,
@@ -430,12 +438,13 @@ func newAnalyzeSession(dir string, patterns []string, tags string, strictDI bool
 	return analyzer.NewSession(opts)
 }
 
-func buildPayload(report *analyzer.Report, emitHook bool, hookPackage, hookFunc string, exactOnly bool) ([]byte, error) {
+func buildPayload(report *analyzer.Report, emitHook bool, hookPackage, hookFunc string, exactOnly bool, toolVersion string) ([]byte, error) {
 	if emitHook {
 		src, err := analyzer.GenerateHookSource(report, analyzer.GenerateOptions{
 			PackageName: hookPackage,
 			FuncName:    hookFunc,
 			ExactOnly:   exactOnly,
+			ToolVersion: toolVersion,
 		})
 		if err != nil {
 			return nil, err
@@ -565,7 +574,7 @@ func printDiagnostic(d analyzer.AnalyzerDiagnostic) {
 	}
 }
 
-func computeCacheKey(dir string, patterns []string, tags string, strictDI bool, scope string, toolVersion string) (string, error) {
+func computeCacheKey(dir string, patterns []string, tags string, strictDI bool, scope string, toolVersion string, disableCommentDetection bool, disableDirectiveDetection bool) (string, error) {
 	const schemaVersion = "autoswag-cache-v1"
 	absDir, err := filepath.Abs(strings.TrimSpace(dir))
 	if err != nil {
@@ -581,6 +590,8 @@ func computeCacheKey(dir string, patterns []string, tags string, strictDI bool, 
 		"patterns=" + strings.Join(patterns, ","),
 		"tags=" + strings.TrimSpace(tags),
 		fmt.Sprintf("strict_di=%t", strictDI),
+		fmt.Sprintf("disable_comment_detection=%t", disableCommentDetection),
+		fmt.Sprintf("disable_directive_detection=%t", disableDirectiveDetection),
 		"scope=" + strings.TrimSpace(scope),
 		"tool_version=" + strings.TrimSpace(toolVersion),
 		"workspace=" + fingerprint,

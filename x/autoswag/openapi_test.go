@@ -1798,6 +1798,8 @@ func TestSwaggerContext_HelpersAndOperationSpecCustomization(t *testing.T) {
 			ctx.SetSummary("Custom summary")
 			ctx.SetDescription("Custom description")
 			ctx.SetOperationID("Users_GetUserByID")
+			ctx.AddTag("users")
+			ctx.AddTagDescription("users", "Users endpoints")
 			ctx.AddParameter(ParameterMetadata{
 				Name:     "X-Request-ID",
 				In:       "header",
@@ -1810,6 +1812,7 @@ func TestSwaggerContext_HelpersAndOperationSpecCustomization(t *testing.T) {
 			ctx.SetResponse(418, struct {
 				Message string `json:"message"`
 			}{}, "Teapot")
+			ctx.AddResponseHeader(418, "X-Request-ID", "", "Request correlation id")
 			ctx.SetOperationField("deprecated", true)
 			ctx.Spec.Info.Version = "2.0.0"
 		},
@@ -1843,10 +1846,26 @@ func TestSwaggerContext_HelpersAndOperationSpecCustomization(t *testing.T) {
 	if !foundHeader {
 		t.Fatalf("expected header parameter from context helper")
 	}
+	foundUsersTagDescription := false
+	for _, tag := range spec.Tags {
+		if tag.Name == "users" && tag.Description == "Users endpoints" {
+			foundUsersTagDescription = true
+			break
+		}
+	}
+	if !foundUsersTagDescription {
+		t.Fatalf("expected users tag description from context helper, got %+v", spec.Tags)
+	}
 
 	responses := getUser["responses"].(map[string]interface{})
-	if _, ok := responses["418"]; !ok {
+	resp418raw, ok := responses["418"]
+	if !ok {
 		t.Fatalf("expected 418 response from context helper")
+	}
+	resp418 := resp418raw.(map[string]interface{})
+	headers := resp418["headers"].(map[string]interface{})
+	if _, ok := headers["X-Request-ID"]; !ok {
+		t.Fatalf("expected X-Request-ID response header from context helper")
 	}
 
 	if spec.Info.Version != "2.0.0" {

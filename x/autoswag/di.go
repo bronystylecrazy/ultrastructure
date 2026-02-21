@@ -2,12 +2,17 @@ package autoswag
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
+	"gopkg.in/yaml.v3"
 	"go.uber.org/zap"
 )
 
@@ -15,6 +20,7 @@ import (
 type Middleware struct {
 	config              web.Config
 	path                string
+	emitFiles           []string
 	versionedDocs       []VersionedDocsOption
 	registry            *web.MetadataRegistry
 	modelRegistry       *SwaggerModelRegistry
@@ -57,6 +63,7 @@ func Use(opts ...Option) di.Node {
 			return &Middleware{
 				config:              config,
 				path:                cfg.Path,
+				emitFiles:           append([]string(nil), cfg.EmitFiles...),
 				versionedDocs:       append([]VersionedDocsOption(nil), cfg.VersionedDocs...),
 				registry:            metadataRegistry,
 				modelRegistry:       modelRegistry,
@@ -142,6 +149,7 @@ func Use(opts ...Option) di.Node {
 				zap.String("ui_path", middleware.path),
 				zap.String("spec_path", middleware.path+"/swagger.json"),
 			)
+			middleware.emitSpecFiles()
 			middleware.Handle(web.NewRouterWithRegistry(app, middleware.registry))
 		}, web.Priority(web.Latest), di.Params(
 			``,
@@ -152,6 +160,176 @@ func Use(opts ...Option) di.Node {
 			di.Group(PostCustomizersGroupName),
 		)),
 	)
+}
+
+func (m *Middleware) emitSpecFiles() {
+	if m == nil || len(m.emitFiles) == 0 {
+		return
+	}
+	if !emitFilesEnabledByTag {
+		return
+	}
+	if !meta.IsDevelopment() {
+		return
+	}
+
+	for _, file := range m.emitFiles {
+		path := strings.TrimSpace(file)
+		if path == "" {
+			continue
+		}
+		if m.spec != nil {
+			if err := emitOpenAPIFile(path, m.spec); err != nil {
+				m.logger.Warn("auto-swagger: failed to emit spec file",
+					zap.String("path", path),
+					zap.Error(err),
+				)
+			} else {
+				m.logger.Info("auto-swagger: emitted OpenAPI spec file",
+					zap.String("path", path),
+				)
+			}
+		}
+		for _, mounted := range m.versionedSpecs {
+			target, ok := deriveVersionedEmitPath(path, m.path, mounted.path)
+			if !ok {
+				m.logger.Warn("auto-swagger: skipped versioned spec emit path",
+					zap.String("base_emit", path),
+					zap.String("docs_path", m.path),
+					zap.String("versioned_docs_path", mounted.path),
+				)
+				continue
+			}
+			if err := emitOpenAPIFile(target, mounted.spec); err != nil {
+				m.logger.Warn("auto-swagger: failed to emit versioned spec file",
+					zap.String("path", target),
+					zap.Error(err),
+				)
+				continue
+			}
+			m.logger.Info("auto-swagger: emitted versioned OpenAPI spec file",
+				zap.String("path", target),
+				zap.String("versioned_docs_path", mounted.path),
+			)
+		}
+	}
+}
+
+func deriveVersionedEmitPath(baseEmitFile, docsPath, versionedDocsPath string) (string, bool) {
+	baseEmitFile = filepath.Clean(strings.TrimSpace(baseEmitFile))
+	if baseEmitFile == "." || baseEmitFile == "" {
+		return "", false
+	}
+
+	docsPath = normalizeDocsPath(docsPath)
+	versionedDocsPath = normalizeDocsPath(versionedDocsPath)
+	if docsPath == "" || versionedDocsPath == "" {
+		return "", false
+	}
+	if docsPath == versionedDocsPath {
+		return baseEmitFile, true
+	}
+	if !strings.HasPrefix(versionedDocsPath, docsPath+"/") {
+		return "", false
+	}
+
+	relative := strings.TrimPrefix(versionedDocsPath, docsPath)
+	relative = strings.TrimPrefix(relative, "/")
+	if strings.TrimSpace(relative) == "" {
+		return baseEmitFile, true
+	}
+
+	baseDir := filepath.Dir(baseEmitFile)
+	fileName := filepath.Base(baseEmitFile)
+	return filepath.Join(baseDir, filepath.FromSlash(relative), fileName), true
+}
+
+func emitOpenAPIFile(path string, spec *OpenAPISpec) error {
+	if spec == nil {
+		return fmt.Errorf("openapi spec is nil")
+	}
+
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" {
+		return fmt.Errorf("invalid emit path")
+	}
+
+	data, err := marshalOpenAPIForPath(path, spec)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func marshalOpenAPIForPath(path string, spec *OpenAPISpec) ([]byte, error) {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(path)))
+	switch ext {
+	case ".yaml", ".yml":
+		body, err := yaml.Marshal(spec)
+		if err != nil {
+			return nil, err
+		}
+		return append([]byte(buildEmitBannerComment(spec)), body...), nil
+	case ".json", "":
+		return json.MarshalIndent(spec, "", "  ")
+	default:
+		return nil, fmt.Errorf("unsupported emit file extension %q (use .json, .yaml, or .yml)", ext)
+	}
+}
+
+func buildEmitBannerComment(spec *OpenAPISpec) string {
+	return strings.Join([]string{
+		"# Generated by Ultrastructure AutoSwag v" + emitVersion(),
+		"# Do not edit manually.",
+		"# Project: " + emitProjectName(spec),
+		"# OpenAPI spec version: " + emitOpenAPIVersion(spec),
+		"",
+	}, "\n")
+}
+
+func emitVersion() string {
+	v := strings.TrimSpace(meta.Version)
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
+func emitProjectName(spec *OpenAPISpec) string {
+	if spec == nil {
+		return "unknown"
+	}
+	name := strings.TrimSpace(spec.Info.Title)
+	if name == "" {
+		return "unknown"
+	}
+	return name
+}
+
+func emitOpenAPIVersion(spec *OpenAPISpec) string {
+	if spec == nil {
+		return "unknown"
+	}
+	v := strings.TrimSpace(spec.OpenAPI)
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
 
 // Handle registers the auto-swagger routes.

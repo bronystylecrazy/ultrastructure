@@ -42,6 +42,14 @@ func WithPath(path string) Option {
 	return autoswag.WithPath(path)
 }
 
+func WithEmitFiles(paths ...string) Option {
+	return autoswag.WithEmitFiles(paths...)
+}
+
+func WithEmitFile(path string) Option {
+	return autoswag.WithEmitFile(path)
+}
+
 func WithVersionedDocs(path, prefix, name string) Option {
 	return autoswag.WithVersionedDocs(path, prefix, name)
 }

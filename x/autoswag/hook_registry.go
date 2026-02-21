@@ -59,6 +59,19 @@ func (c *SwaggerContext) AddTag(tags ...string) {
 	c.Metadata.Tags = append(c.Metadata.Tags, tags...)
 }
 
+func (c *SwaggerContext) AddTagDescription(name, description string) {
+	c.ensureMetadata()
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	if name == "" || description == "" {
+		return
+	}
+	if c.Metadata.TagDescriptions == nil {
+		c.Metadata.TagDescriptions = map[string]string{}
+	}
+	c.Metadata.TagDescriptions[name] = description
+}
+
 func (c *SwaggerContext) AddParameter(parameter ParameterMetadata) {
 	c.ensureMetadata()
 	c.Metadata.Parameters = append(c.Metadata.Parameters, parameter)
@@ -155,6 +168,43 @@ func (c *SwaggerContext) SetResponseAs(statusCode int, model any, contentType, d
 		}
 		resp.Description = description
 	}
+	c.Metadata.Responses[statusCode] = resp
+}
+
+func (c *SwaggerContext) AddResponseHeader(statusCode int, name string, model any, description string) {
+	c.ensureMetadata()
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if c.Metadata.Responses == nil {
+		c.Metadata.Responses = make(map[int]ResponseMetadata)
+	}
+
+	resp := c.Metadata.Responses[statusCode]
+	if resp.Headers == nil {
+		resp.Headers = make(map[string]ResponseHeaderMetadata)
+	}
+
+	headerType := normalizeSwaggerModelInput(model)
+	if existing, ok := resp.Headers[name]; ok && existing.Type != nil && headerType != nil && existing.Type != headerType {
+		c.addConflictf(
+			"response header conflict on %s %s [%d %s]: existing type %s differs from auto-detected %s",
+			c.Method,
+			c.Path,
+			statusCode,
+			name,
+			existing.Type.String(),
+			headerType.String(),
+		)
+	}
+
+	header := resp.Headers[name]
+	header.Type = headerType
+	if strings.TrimSpace(description) != "" {
+		header.Description = strings.TrimSpace(description)
+	}
+	resp.Headers[name] = header
 	c.Metadata.Responses[statusCode] = resp
 }
 

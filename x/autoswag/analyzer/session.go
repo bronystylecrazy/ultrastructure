@@ -650,7 +650,7 @@ func (s *Session) analyzeRootPackages(rootPaths []string) (*Report, error) {
 			}
 		}
 		if !cacheHit {
-			resolver := newHelperResolver(decls, provided, pkg.PkgPath, s.opts.StrictDI, s.explicitOnly, s.sourceByInfo)
+			resolver := newHelperResolver(decls, provided, pkg.PkgPath, s.opts.StrictDI, s.explicitOnly, !s.opts.DisableCommentDetection, s.sourceByInfo)
 			for _, file := range pkg.Syntax {
 				for _, decl := range file.Decls {
 					fn, ok := decl.(*ast.FuncDecl)
@@ -659,13 +659,13 @@ func (s *Session) analyzeRootPackages(rootPaths []string) (*Report, error) {
 					}
 					if !isFiberCtxHandler(fn, pkg.TypesInfo) {
 						if isRouterHandleMethod(fn, pkg.TypesInfo) {
-							routes, inlineHandlers := extractRouteBindings(pkg, fn, resolver)
+							routes, inlineHandlers := extractRouteBindings(pkg, fn, resolver, !s.opts.DisableCommentDetection, !s.opts.DisableDirectiveDetection)
 							out.Routes = append(out.Routes, routes...)
 							out.Handlers = append(out.Handlers, inlineHandlers...)
 						}
 						continue
 					}
-					out.Handlers = append(out.Handlers, analyzeFunc(pkg, fn, resolver))
+					out.Handlers = append(out.Handlers, analyzeFunc(pkg, fn, resolver, !s.opts.DisableCommentDetection))
 				}
 			}
 			if resolver != nil && len(resolver.diagnostics) > 0 {

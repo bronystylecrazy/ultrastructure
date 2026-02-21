@@ -197,6 +197,15 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 		hookModels.Add(initial...)
 	}
 	usedOperationIDs := make(map[string]struct{})
+	accumTagDescriptions := map[string]string{}
+	for k, v := range opts.TagDescriptions {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" {
+			continue
+		}
+		accumTagDescriptions[k] = v
+	}
 
 	for _, route := range routes {
 		openAPIPath := normalizeOpenAPIPath(route.Path)
@@ -253,6 +262,14 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 		var baseOperationID string
 		generatedOperationID := true
 		if metadata != nil {
+			for tag, description := range metadata.TagDescriptions {
+				tag = strings.TrimSpace(tag)
+				description = strings.TrimSpace(description)
+				if tag == "" || description == "" {
+					continue
+				}
+				accumTagDescriptions[tag] = description
+			}
 			if metadata.OperationID != "" {
 				baseOperationID = metadata.OperationID
 				generatedOperationID = false
@@ -376,7 +393,7 @@ func buildOpenAPISpecWithRegistryAndOptions(routes []RouteInfo, config Config, r
 		spec.Security = security
 	}
 
-	spec.Tags = buildSpecTags(spec.Paths, opts.TagDescriptions)
+	spec.Tags = buildSpecTags(spec.Paths, accumTagDescriptions)
 
 	return spec
 }
@@ -412,6 +429,12 @@ func cloneRouteMetadata(meta *RouteMetadata) *RouteMetadata {
 	cloned := *meta
 	if meta.Tags != nil {
 		cloned.Tags = append([]string{}, meta.Tags...)
+	}
+	if meta.TagDescriptions != nil {
+		cloned.TagDescriptions = make(map[string]string, len(meta.TagDescriptions))
+		for k, v := range meta.TagDescriptions {
+			cloned.TagDescriptions[k] = v
+		}
 	}
 	if meta.Parameters != nil {
 		cloned.Parameters = append([]ParameterMetadata{}, meta.Parameters...)

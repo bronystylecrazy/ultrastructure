@@ -7,9 +7,12 @@ import (
 
 type Option func(*options)
 
+const defaultEmitFilePath = "./docs/openapi.json"
+
 type options struct {
 	config              Config
 	path                string
+	emitFiles           []string
 	versionedDocs       []VersionedDocsOption
 	securitySchemes     map[string]interface{}
 	defaultSecurity     []SecurityRequirement
@@ -28,6 +31,7 @@ type options struct {
 type ResolvedOptions struct {
 	Config              Config
 	Path                string
+	EmitFiles           []string
 	VersionedDocs       []VersionedDocsOption
 	SecuritySchemes     map[string]interface{}
 	DefaultSecurity     []SecurityRequirement
@@ -59,6 +63,7 @@ func ResolveOptions(defaultPath string, opts ...Option) ResolvedOptions {
 	return ResolvedOptions{
 		Config:              cfg.config,
 		Path:                cfg.path,
+		EmitFiles:           append([]string(nil), cfg.emitFiles...),
 		VersionedDocs:       append([]VersionedDocsOption(nil), cfg.versionedDocs...),
 		SecuritySchemes:     cfg.securitySchemes,
 		DefaultSecurity:     append([]SecurityRequirement(nil), cfg.defaultSecurity...),
@@ -81,6 +86,33 @@ func WithConfig(config Config) Option {
 
 func WithPath(path string) Option {
 	return func(o *options) { o.path = path }
+}
+
+// WithEmitFiles writes the generated OpenAPI spec to file paths in development mode only.
+// File format is selected by extension: .json, .yaml, .yml.
+func WithEmitFiles(paths ...string) Option {
+	return func(o *options) {
+		if len(paths) == 0 {
+			o.emitFiles = append(o.emitFiles, defaultEmitFilePath)
+			return
+		}
+		before := len(o.emitFiles)
+		for _, path := range paths {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			o.emitFiles = append(o.emitFiles, path)
+		}
+		if len(o.emitFiles) == before {
+			o.emitFiles = append(o.emitFiles, defaultEmitFilePath)
+		}
+	}
+}
+
+// WithEmitFile is a compatibility wrapper around WithEmitFiles(path).
+func WithEmitFile(path string) Option {
+	return WithEmitFiles(path)
 }
 
 // WithVersionedDocs mounts an additional Swagger UI/spec for a route prefix.

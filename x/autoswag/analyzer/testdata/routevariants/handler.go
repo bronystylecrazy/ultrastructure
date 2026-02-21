@@ -64,6 +64,7 @@ func (h *Handler) IgnoredInlineResponse(c fiber.Ctx) error {
 // @autoswag:description Path-only endpoint
 // @autoswag:tag pathonly, demo
 // @autoswag:response 204 string text/plain No content for path-only
+// @autoswag:header 204 X-Request-ID string Correlation id
 // @autoswag:param slug string Slug identifier
 func (h *Handler) PathOnly(c fiber.Ctx) error {
 	slug := c.Params("slug")

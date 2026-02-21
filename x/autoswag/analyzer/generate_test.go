@@ -27,15 +27,26 @@ func TestGenerateHookSource_IncludesDetectedMetadata(t *testing.T) {
 		"func GeneratedHook(ctx *autoswag.Context)",
 		"switch routeKey {",
 		"case \"POST /templates/{template_id}/bulk\":",
-		"ctx.SetRequestBody(sample.CreateBulkRequest{}, true, \"application/json\")",
+		"ctx.SetRequestBody(sample.CreateBulkRequest{}, true, fiber.MIMEApplicationJSON)",
 		"ctx.AddParameter(autoswag.ParameterMetadata{Name: \"template_id\", In: \"path\", Type: reflect.TypeOf(int64(0)), Required: true})",
-		"ctx.SetResponseAs(400, web.Error{}, \"application/json\", \"Auto-detected\")",
-		"ctx.SetResponseAs(201, web.Response{}, \"application/json\", \"Auto-detected\")",
+		"ctx.SetResponseAs(http.StatusBadRequest, web.Error{}, fiber.MIMEApplicationJSON, \"Auto-detected\")",
+		"ctx.SetResponseAs(http.StatusCreated, web.Response{}, fiber.MIMEApplicationJSON, \"Auto-detected\")",
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(src, want) {
 			t.Fatalf("expected generated source to contain %q\nsource:\n%s", want, src)
 		}
+	}
+}
+
+func TestGenerateHookSource_DefaultFuncNameIsAutoSwagGenerator(t *testing.T) {
+	report := &Report{}
+	src, err := GenerateHookSource(report, GenerateOptions{})
+	if err != nil {
+		t.Fatalf("GenerateHookSource returned error: %v", err)
+	}
+	if !strings.Contains(src, "func AutoSwagGenerator(ctx *autoswag.Context)") {
+		t.Fatalf("expected default generated function name AutoSwagGenerator, source:\n%s", src)
 	}
 }
 
@@ -88,8 +99,8 @@ func TestGenerateHookSource_ImportAliasCollision(t *testing.T) {
 	mustContain := []string{
 		"model \"example.com/a/model\"",
 		"model2 \"example.com/b/model\"",
-		"ctx.SetResponseAs(200, model.User{}, \"application/json\", \"Auto-detected\")",
-		"ctx.SetResponseAs(200, model2.User{}, \"application/json\", \"Auto-detected\")",
+		"ctx.SetResponseAs(http.StatusOK, model.User{}, fiber.MIMEApplicationJSON, \"Auto-detected\")",
+		"ctx.SetResponseAs(http.StatusOK, model2.User{}, fiber.MIMEApplicationJSON, \"Auto-detected\")",
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(src, want) {
@@ -130,10 +141,10 @@ func TestGenerateHookSource_ExactOnlySkipsNonExactResponses(t *testing.T) {
 		t.Fatalf("GenerateHookSource returned error: %v", err)
 	}
 
-	if !strings.Contains(src, "ctx.SetResponseAs(200, web.Response{}, \"application/json\", \"Auto-detected\")") {
+	if !strings.Contains(src, "ctx.SetResponseAs(http.StatusOK, web.Response{}, fiber.MIMEApplicationJSON, \"Auto-detected\")") {
 		t.Fatalf("expected exact response to be emitted, source:\n%s", src)
 	}
-	if strings.Contains(src, "ctx.SetResponseAs(500, web.Error{}, \"application/json\", \"Auto-detected\")") {
+	if strings.Contains(src, "ctx.SetResponseAs(http.StatusInternalServerError, web.Error{}, fiber.MIMEApplicationJSON, \"Auto-detected\")") {
 		t.Fatalf("expected inferred response to be skipped in exact-only mode, source:\n%s", src)
 	}
 }
@@ -247,6 +258,9 @@ func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
 						Name:        "ListX",
 						Description: "Lists x resources",
 						Tags:        []string{"users", "v1"},
+						TagDescriptions: map[string]string{
+							"users": "Users API",
+						},
 						Responses: []ResponseTypeReport{
 							{
 								Status:      201,
@@ -261,6 +275,9 @@ func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
 								Type:        "string",
 								Description: "Resource ID",
 							},
+						},
+						ResponseHeaders: []RouteResponseHeaderReport{
+							{Status: 201, Name: "X-Request-ID", Type: "string", Description: "Correlation id"},
 						},
 					},
 				},
@@ -284,8 +301,14 @@ func TestGenerateHookSource_EmitsRouteNameAndDescription(t *testing.T) {
 	if !strings.Contains(src, "ctx.AddTag(\"users\", \"v1\")") {
 		t.Fatalf("expected route tag emission, source:\n%s", src)
 	}
-	if !strings.Contains(src, "ctx.SetResponseAs(201, \"\", \"text/plain\", \"Created text\")") {
+	if !strings.Contains(src, "ctx.AddTagDescription(\"users\", \"Users API\")") {
+		t.Fatalf("expected route tag description emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.SetResponseAs(http.StatusCreated, \"\", fiber.MIMETextPlain, \"Created text\")") {
 		t.Fatalf("expected route response override emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddResponseHeader(http.StatusCreated, \"X-Request-ID\", reflect.TypeOf(\"\"), \"Correlation id\")") {
+		t.Fatalf("expected route response header override emission, source:\n%s", src)
 	}
 	if !strings.Contains(src, "ctx.AddParameter(autoswag.ParameterMetadata{Name: \"id\", In: \"path\", Type: reflect.TypeOf(\"\"), Required: true, Description: \"Resource ID\"})") {
 		t.Fatalf("expected route path param override emission, source:\n%s", src)
@@ -326,7 +349,95 @@ func TestGenerateHookSource_UsesDetectedResponseDescription(t *testing.T) {
 		t.Fatalf("GenerateHookSource returned error: %v", err)
 	}
 
-	if !strings.Contains(src, "ctx.SetResponseAs(200, \"\", \"text/plain\", \"This is example command\")") {
+	if !strings.Contains(src, "ctx.SetResponseAs(http.StatusOK, \"\", fiber.MIMETextPlain, \"This is example command\")") {
 		t.Fatalf("expected generated source to use detected response description, source:\n%s", src)
+	}
+}
+
+func TestGenerateHookSource_MergesDuplicateRouteBodies(t *testing.T) {
+	report := &Report{
+		Packages: []PackageReport{
+			{
+				Path: "example/pkg",
+				Handlers: []HandlerReport{
+					{
+						Name: "H",
+						Key:  "k",
+						Responses: []ResponseTypeReport{
+							{
+								Status:      200,
+								Type:        "string",
+								ContentType: "text/plain",
+								Description: "Auto-detected",
+							},
+						},
+					},
+				},
+				Routes: []RouteBindingReport{
+					{Method: "GET", Path: "/healthz", HandlerKey: "k"},
+					{Method: "GET", Path: "/readyz", HandlerKey: "k"},
+				},
+			},
+		},
+	}
+
+	src, err := GenerateHookSource(report, GenerateOptions{
+		PackageName: "autodoc",
+		FuncName:    "GeneratedHook",
+	})
+	if err != nil {
+		t.Fatalf("GenerateHookSource returned error: %v", err)
+	}
+
+	if !strings.Contains(src, "case \"GET /healthz\", \"GET /readyz\":") {
+		t.Fatalf("expected merged case labels for identical bodies, source:\n%s", src)
+	}
+}
+
+func TestGenerateHookSource_EmitsResponseHeaders(t *testing.T) {
+	report := &Report{
+		Packages: []PackageReport{
+			{
+				Path: "example/pkg",
+				Handlers: []HandlerReport{
+					{
+						Name: "H",
+						Key:  "k",
+						Responses: []ResponseTypeReport{
+							{
+								Status:      201,
+								Type:        "web.Response",
+								ContentType: "application/json",
+								Headers: map[string]ResponseHeaderReport{
+									"X-Request-ID": {Type: "string", Description: "Auto-detected"},
+									"X-Retry-After": {Type: "integer", Description: "Retry delay"},
+								},
+							},
+						},
+					},
+				},
+				Routes: []RouteBindingReport{
+					{Method: "POST", Path: "/x", HandlerKey: "k"},
+				},
+				Imports: map[string]string{
+					"web": "github.com/bronystylecrazy/ultrastructure/web",
+				},
+			},
+		},
+	}
+
+	src, err := GenerateHookSource(report, GenerateOptions{
+		PackageName: "autodoc",
+		FuncName:    "GeneratedHook",
+	})
+	if err != nil {
+		t.Fatalf("GenerateHookSource returned error: %v", err)
+	}
+
+	if !strings.Contains(src, "ctx.AddResponseHeader(http.StatusCreated, \"X-Request-ID\", reflect.TypeOf(\"\"), \"Auto-detected\")") {
+		t.Fatalf("expected AddResponseHeader string emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddResponseHeader(http.StatusCreated, \"X-Retry-After\", reflect.TypeOf(int64(0)), \"Retry delay\")") {
+		t.Fatalf("expected AddResponseHeader integer emission, source:\n%s", src)
 	}
 }

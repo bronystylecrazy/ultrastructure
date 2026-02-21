@@ -10,6 +10,7 @@ import (
 type RouteMetadata struct {
 	OperationID string
 	Tags        []string
+	TagDescriptions map[string]string
 	Summary     string
 	Description string
 	RequestBody *RequestBodyMetadata
