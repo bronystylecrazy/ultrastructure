@@ -90,8 +90,8 @@ func WithCustomize(hook HookFunc) Option {
 	return autoswag.WithCustomize(hook)
 }
 
-func RegisterHook(hook ...HookFunc) Option {
-	return autoswag.RegisterHook(hook...)
+func WitHook(hook ...HookFunc) Option {
+	return autoswag.WitHook(hook...)
 }
 
 func WithExtraModels(models ...any) Option {

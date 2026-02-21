@@ -258,7 +258,7 @@ func WithCustomize(hook HookFunc) Option {
 	}
 }
 
-func RegisterHook(hook ...HookFunc) Option {
+func WitHook(hook ...HookFunc) Option {
 	if len(hook) == 0 || hook[0] == nil {
 		return nil
 	}
