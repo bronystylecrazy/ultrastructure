@@ -217,6 +217,8 @@ func (e *SchemaExtractor) extractStructSchema(t reflect.Type) map[string]interfa
 		// Add description from struct tags if available
 		if desc := field.Tag.Get("description"); desc != "" {
 			fieldSchema["description"] = desc
+		} else if desc, ok := getRegisteredFieldDescription(t, field.Name); ok && strings.TrimSpace(desc) != "" {
+			fieldSchema["description"] = desc
 		}
 
 		applyValidationTags(fieldSchema, field.Type, field.Tag.Get("validate"))

@@ -294,6 +294,7 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 			} else {
 				b.WriteString("\t\tctx.SetRequestBody(" + reqExpr + ", true)\n")
 			}
+			emitModelFieldDescriptions(b, reqExpr, h.Request.Fields)
 		}
 	}
 	if h.Query != nil && h.Query.Type != "" {
@@ -301,6 +302,7 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 			queryExpr := typeInitExpr(h.Query.Type, localPkg, aliasRemap)
 			if queryExpr != "" {
 				b.WriteString("\t\tctx.SetQuery(" + queryExpr + ")\n")
+				emitModelFieldDescriptions(b, queryExpr, h.Query.Fields)
 			}
 		}
 	}
@@ -341,6 +343,7 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 		} else {
 			b.WriteString("\t\tctx.SetResponse(" + renderStatusExpr(r.Status, httpAlias) + ", " + modelExpr + ", " + strconv.Quote(description) + ")\n")
 		}
+		emitModelFieldDescriptions(b, modelExpr, r.Fields)
 		if len(r.Headers) > 0 {
 			names := make([]string, 0, len(r.Headers))
 			for name := range r.Headers {
@@ -367,6 +370,32 @@ func emitHandlerMetadata(b *strings.Builder, h HandlerReport, localPkg string, a
 				)
 			}
 		}
+	}
+}
+
+func emitModelFieldDescriptions(b *strings.Builder, modelExpr string, fields map[string]string) {
+	if b == nil || len(fields) == 0 {
+		return
+	}
+	modelExpr = strings.TrimSpace(modelExpr)
+	if modelExpr == "" {
+		return
+	}
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		desc := strings.TrimSpace(fields[name])
+		if desc == "" {
+			continue
+		}
+		b.WriteString("\t\tctx.AddModelFieldDescription(" + modelExpr + ", " + strconv.Quote(name) + ", " + strconv.Quote(desc) + ")\n")
 	}
 }
 

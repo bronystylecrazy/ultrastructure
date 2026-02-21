@@ -777,6 +777,8 @@ func extractQueryParams(queryType reflect.Type) []map[string]interface{} {
 
 		if desc := field.Tag.Get("description"); desc != "" {
 			param["description"] = desc
+		} else if desc, ok := getRegisteredFieldDescription(queryType, field.Name); ok && strings.TrimSpace(desc) != "" {
+			param["description"] = desc
 		}
 
 		params = append(params, param)

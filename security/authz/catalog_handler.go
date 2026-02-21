@@ -42,7 +42,7 @@ func (h *ScopeCatalogHandler) WithPolicyRegistry(policyRegistry *PolicyRegistry)
 }
 
 func (h *ScopeCatalogHandler) Handle(r web.Router) {
-	r.Get(h.path, h.List).Apply(
+	r.Get(h.path, h.List).With(
 		web.Tag("Authz"),
 		web.Name("Authz_GetScopeCatalog"),
 		web.Summary("Get authorization catalog"),

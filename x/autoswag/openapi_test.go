@@ -49,6 +49,10 @@ type queryExtensions struct {
 	Tenant string `query:"tenant" extensions:"x-nullable,x-owner=platform,!x-omitempty"`
 }
 
+type queryCommentOverride struct {
+	Name string `query:"name"`
+}
+
 type queryReplaceSkip struct {
 	Age  sql.NullInt64  `query:"age"`
 	Name sql.NullString `query:"name"`
@@ -237,6 +241,33 @@ func TestBuildOpenAPISpec_GeneratesQueryAndPathParameters(t *testing.T) {
 	if _, ok := byKey["query:sort_by"]; !ok {
 		t.Fatalf("expected fallback from json tag for sort_by")
 	}
+}
+
+func TestBuildOpenAPISpec_UsesRegisteredFieldDescriptionsForQuery(t *testing.T) {
+	GetGlobalRegistry().Clear()
+	clearFieldDescriptionRegistry()
+	defer clearFieldDescriptionRegistry()
+
+	RegisterFieldDescription(queryCommentOverride{}, "Name", "inline comment style description")
+	GetGlobalRegistry().RegisterRoute("GET", "/comments", &RouteMetadata{
+		QueryType: reflect.TypeOf(queryCommentOverride{}),
+	})
+
+	spec := BuildOpenAPISpec([]RouteInfo{
+		{Method: "GET", Path: "/comments"},
+	}, Config{Name: "Test API"})
+
+	getOp := spec.Paths["/comments"]["get"].(map[string]interface{})
+	params := getOp["parameters"].([]map[string]interface{})
+	for _, p := range params {
+		if p["in"] == "query" && p["name"] == "name" {
+			if p["description"] != "inline comment style description" {
+				t.Fatalf("unexpected query description: %+v", p)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected query param name to be present: %+v", params)
 }
 
 func TestBuildOpenAPISpec_QuerySwaggerIgnoreExcludesField(t *testing.T) {

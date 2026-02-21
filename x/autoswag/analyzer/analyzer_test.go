@@ -764,3 +764,41 @@ func TestAnalyze_DisableDirectiveDetection(t *testing.T) {
 	}
 	t.Fatalf("expected /v/pathonly/{slug} route in report")
 }
+
+func TestAnalyze_ExtractsInlineStructFieldComments(t *testing.T) {
+	report, err := Analyze(Options{
+		Dir:      ".",
+		Patterns: []string{"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer/testdata/fieldcomments"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if len(report.Packages) != 1 || len(report.Packages[0].Handlers) == 0 {
+		t.Fatalf("expected one package with handlers, got %+v", report.Packages)
+	}
+	var create *HandlerReport
+	for i := range report.Packages[0].Handlers {
+		if report.Packages[0].Handlers[i].Name == "Create" {
+			create = &report.Packages[0].Handlers[i]
+			break
+		}
+	}
+	if create == nil {
+		t.Fatalf("expected Create handler report, got %+v", report.Packages[0].Handlers)
+	}
+	if create.Query == nil || create.Query.Fields["Name"] != "this is example for sirawit" {
+		t.Fatalf("expected query field comment extraction, got %+v", create.Query)
+	}
+	if create.Request == nil || create.Request.Fields["Title"] != "payload title" {
+		t.Fatalf("expected request body field comment extraction, got %+v", create.Request)
+	}
+	foundRespField := false
+	for _, resp := range create.Responses {
+		if resp.Status == 201 && resp.Fields["Message"] == "response message" {
+			foundRespField = true
+		}
+	}
+	if !foundRespField {
+		t.Fatalf("expected response field comment extraction, got %+v", create.Responses)
+	}
+}

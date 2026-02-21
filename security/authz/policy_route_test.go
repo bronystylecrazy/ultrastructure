@@ -33,7 +33,7 @@ func TestPolicyRouteOptionStoresPoliciesInMetadata(t *testing.T) {
 	r := web.NewRouterWithRegistry(app, registry)
 
 	r.Get("/orders", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Apply(
+		With(
 			Policy(" orders.read "),
 			Policies("orders.write"),
 		)

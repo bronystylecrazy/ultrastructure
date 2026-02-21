@@ -441,3 +441,66 @@ func TestGenerateHookSource_EmitsResponseHeaders(t *testing.T) {
 		t.Fatalf("expected AddResponseHeader integer emission, source:\n%s", src)
 	}
 }
+
+func TestGenerateHookSource_EmitsModelFieldDescriptions(t *testing.T) {
+	report := &Report{
+		Packages: []PackageReport{
+			{
+				Path: "example/pkg",
+				Handlers: []HandlerReport{
+					{
+						Name: "H",
+						Key:  "k",
+						Request: &RequestReport{
+							Type:         "web.Response",
+							ContentTypes: []string{"application/json"},
+							Fields: map[string]string{
+								"Message": "payload message",
+							},
+						},
+						Query: &TypeReport{
+							Type: "web.Error",
+							Fields: map[string]string{
+								"Error": "query error",
+							},
+						},
+						Responses: []ResponseTypeReport{
+							{
+								Status:      200,
+								Type:        "web.Response",
+								ContentType: "application/json",
+								Fields: map[string]string{
+									"Message": "response message",
+								},
+							},
+						},
+					},
+				},
+				Routes: []RouteBindingReport{
+					{Method: "GET", Path: "/x", HandlerKey: "k"},
+				},
+				Imports: map[string]string{
+					"web": "github.com/bronystylecrazy/ultrastructure/web",
+				},
+			},
+		},
+	}
+
+	src, err := GenerateHookSource(report, GenerateOptions{
+		PackageName: "autodoc",
+		FuncName:    "GeneratedHook",
+	})
+	if err != nil {
+		t.Fatalf("GenerateHookSource returned error: %v", err)
+	}
+
+	if !strings.Contains(src, "ctx.AddModelFieldDescription(web.Response{}, \"Message\", \"payload message\")") {
+		t.Fatalf("expected request model field description emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddModelFieldDescription(web.Error{}, \"Error\", \"query error\")") {
+		t.Fatalf("expected query model field description emission, source:\n%s", src)
+	}
+	if !strings.Contains(src, "ctx.AddModelFieldDescription(web.Response{}, \"Message\", \"response message\")") {
+		t.Fatalf("expected response model field description emission, source:\n%s", src)
+	}
+}

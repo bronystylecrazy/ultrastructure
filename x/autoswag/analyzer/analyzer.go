@@ -133,11 +133,13 @@ type RequestReport struct {
 	Type         string   `json:"type"`
 	ContentTypes []string `json:"content_types,omitempty"`
 	Confidence   string   `json:"confidence,omitempty"`
+	Fields       map[string]string `json:"fields,omitempty"`
 }
 
 type TypeReport struct {
 	Type       string `json:"type"`
 	Confidence string `json:"confidence,omitempty"`
+	Fields     map[string]string `json:"fields,omitempty"`
 }
 
 type PathParamReport struct {
@@ -155,6 +157,7 @@ type ResponseTypeReport struct {
 	Confidence  string   `json:"confidence,omitempty"`
 	Trace       []string `json:"trace,omitempty"`
 	Headers     map[string]ResponseHeaderReport `json:"headers,omitempty"`
+	Fields      map[string]string `json:"fields,omitempty"`
 }
 
 type ResponseHeaderReport struct {
@@ -172,6 +175,7 @@ type detectedResponse struct {
 	confidence  string
 	trace       []string
 	headers     map[string]ResponseHeaderReport
+	fields      map[string]string
 }
 
 type detectedHeaderMutation struct {
@@ -1161,6 +1165,7 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 		out.Request = &RequestReport{
 			Type:       reqType,
 			Confidence: normalizeInferenceConfidence(reqConfidence),
+			Fields:     extractFieldDescriptionsForCanonicalType(pkg, reqType),
 		}
 		if len(reqContentTypes) == 0 {
 			reqContentTypes["application/json"] = struct{}{}
@@ -1176,6 +1181,7 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 		out.Query = &TypeReport{
 			Type:       queryType,
 			Confidence: normalizeInferenceConfidence(queryConfidence),
+			Fields:     extractFieldDescriptionsForCanonicalType(pkg, queryType),
 		}
 	}
 
@@ -1194,6 +1200,9 @@ func analyzeFunc(pkg *packages.Package, fn *ast.FuncDecl, resolver *helperResolv
 	}
 
 	if len(responses) > 0 {
+		for i := range responses {
+			responses[i].fields = extractFieldDescriptionsForCanonicalType(pkg, responses[i].typ)
+		}
 		responses = applyHeaderMutations(responses, headerMutations)
 		out.Responses = toResponseTypeReports(responses)
 	}
@@ -1628,6 +1637,7 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 		out.Request = &RequestReport{
 			Type:       reqType,
 			Confidence: normalizeInferenceConfidence(reqConfidence),
+			Fields:     extractFieldDescriptionsForCanonicalType(pkg, reqType),
 		}
 		if len(reqContentTypes) == 0 {
 			reqContentTypes["application/json"] = struct{}{}
@@ -1643,6 +1653,7 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 		out.Query = &TypeReport{
 			Type:       queryType,
 			Confidence: normalizeInferenceConfidence(queryConfidence),
+			Fields:     extractFieldDescriptionsForCanonicalType(pkg, queryType),
 		}
 	}
 	if len(pathTypes) > 0 {
@@ -1659,6 +1670,9 @@ func analyzeFuncLit(pkg *packages.Package, lit *ast.FuncLit, key string, resolve
 		}
 	}
 	if len(responses) > 0 {
+		for i := range responses {
+			responses[i].fields = extractFieldDescriptionsForCanonicalType(pkg, responses[i].typ)
+		}
 		responses = applyHeaderMutations(responses, headerMutations)
 		out.Responses = toResponseTypeReports(responses)
 	}
@@ -3545,6 +3559,111 @@ func readLineAndCaret(file string, line, column, endLine, endColumn int) (string
 	return lineText, caret
 }
 
+func extractFieldDescriptionsForCanonicalType(pkg *packages.Package, canonical string) map[string]string {
+	if pkg == nil || strings.TrimSpace(canonical) == "" {
+		return nil
+	}
+	t := resolveTypeByCanonicalName(pkg, canonical)
+	if t == nil {
+		return nil
+	}
+	under := t.Underlying()
+	st, ok := under.(*types.Struct)
+	if !ok {
+		return nil
+	}
+
+	posByName := map[string]token.Pos{}
+	for i := 0; i < st.NumFields(); i++ {
+		f := st.Field(i)
+		if f == nil || !f.Exported() {
+			continue
+		}
+		posByName[f.Name()] = f.Pos()
+	}
+	if len(posByName) == 0 {
+		return nil
+	}
+
+	out := map[string]string{}
+	for _, file := range pkg.Syntax {
+		ast.Inspect(file, func(n ast.Node) bool {
+			stNode, ok := n.(*ast.StructType)
+			if !ok || stNode.Fields == nil {
+				return true
+			}
+			for _, field := range stNode.Fields.List {
+				if len(field.Names) == 0 {
+					continue
+				}
+				comment := normalizeFieldComment(field)
+				if comment == "" {
+					continue
+				}
+				for _, name := range field.Names {
+					if name == nil {
+						continue
+					}
+					if _, exists := posByName[name.Name]; !exists {
+						continue
+					}
+					out[name.Name] = comment
+				}
+			}
+			return true
+		})
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeFieldComment(field *ast.Field) string {
+	if field == nil {
+		return ""
+	}
+	text := ""
+	if field.Comment != nil {
+		text = strings.TrimSpace(field.Comment.Text())
+	}
+	if text == "" && field.Doc != nil {
+		text = strings.TrimSpace(field.Doc.Text())
+	}
+	if text == "" {
+		return ""
+	}
+	parts := strings.Fields(text)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func resolveTypeByCanonicalName(pkg *packages.Package, canonical string) types.Type {
+	canonical = strings.TrimSpace(canonical)
+	if canonical == "" {
+		return nil
+	}
+	for strings.HasPrefix(canonical, "*") {
+		canonical = strings.TrimPrefix(canonical, "*")
+	}
+	parts := strings.Split(canonical, ".")
+	if len(parts) != 2 {
+		return nil
+	}
+	typeName := strings.TrimSpace(parts[1])
+	if typeName == "" || pkg.Types == nil {
+		return nil
+	}
+	obj := pkg.Types.Scope().Lookup(typeName)
+	if obj == nil {
+		return nil
+	}
+	return obj.Type()
+}
+
 func clampColumn(column int, lineText string) int {
 	if column < 1 {
 		return 1
@@ -3709,6 +3828,7 @@ func toResponseTypeReports(in []detectedResponse) []ResponseTypeReport {
 			Confidence:  confidence,
 			Trace:       append([]string(nil), item.trace...),
 			Headers:     cloneResponseHeaderReportMap(item.headers),
+			Fields:      cloneStringMap(item.fields),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -3753,6 +3873,17 @@ func headersKey(headers map[string]ResponseHeaderReport) string {
 		parts = append(parts, name+"|"+h.Type+"|"+h.Description+"|"+normalizeInferenceConfidence(h.Confidence)+"|"+traceKey(h.Trace))
 	}
 	return strings.Join(parts, "||")
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func traceKey(trace []string) string {

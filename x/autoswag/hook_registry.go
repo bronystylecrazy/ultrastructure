@@ -72,6 +72,10 @@ func (c *SwaggerContext) AddTagDescription(name, description string) {
 	c.Metadata.TagDescriptions[name] = description
 }
 
+func (c *SwaggerContext) AddModelFieldDescription(model any, fieldName, description string) {
+	RegisterFieldDescription(model, fieldName, description)
+}
+
 func (c *SwaggerContext) AddParameter(parameter ParameterMetadata) {
 	c.ensureMetadata()
 	c.Metadata.Parameters = append(c.Metadata.Parameters, parameter)
