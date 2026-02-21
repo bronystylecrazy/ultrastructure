@@ -6,17 +6,15 @@ import (
 
 func UseServiceCommands() di.Node {
 	return di.Options(
-		OnRun("service",
-			UseServiceController(),
-			di.Provide(NewServiceCommand),
-		),
+		di.Provide(NewServiceCommand),
+		OnRun("service", UseServiceController()),
 	)
 }
 
 func UseBasicCommands() di.Node {
 	return di.Options(
-		OnRun("healthcheck", di.Provide(NewHealthcheckCommand)),
-		OnRun("help", di.Provide(NewHelpCommand)),
-		OnRun("version", di.Provide(NewVersionCommand)),
+		di.Provide(NewHealthcheckCommand),
+		di.Provide(NewHelpCommand),
+		di.Provide(NewVersionCommand),
 	)
 }
