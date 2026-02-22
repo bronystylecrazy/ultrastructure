@@ -14,12 +14,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type SignerVerifier interface {
+type Signer interface {
 	Sign(claims map[string]any) (string, error)
-	Verify(tokenValue string) (Claims, error)
 }
 
-type Signer struct {
+type JWTSigner struct {
 	config        Config
 	signingAlg    string
 	signingMethod jwtgo.SigningMethod
@@ -28,15 +27,15 @@ type Signer struct {
 	now           func() time.Time
 }
 
-var _ SignerVerifier = (*Signer)(nil)
+var _ Signer = (*JWTSigner)(nil)
 
-func NewSigner(config Config) (*Signer, error) {
+func NewSigner(config Config) (*JWTSigner, error) {
 	cfg := config.withDefaults()
 	signingMethod, signingKey, verifyKey, err := newSigningConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Signer{
+	return &JWTSigner{
 		config:        cfg,
 		signingAlg:    cfg.Algorithm,
 		signingMethod: signingMethod,
@@ -46,7 +45,7 @@ func NewSigner(config Config) (*Signer, error) {
 	}, nil
 }
 
-func (s *Signer) Sign(claims map[string]any) (string, error) {
+func (s *JWTSigner) Sign(claims map[string]any) (string, error) {
 	now := s.now().UTC().Unix()
 	out := jwtgo.MapClaims{}
 	for k, v := range claims {
@@ -69,31 +68,6 @@ func (s *Signer) Sign(claims map[string]any) (string, error) {
 
 	t := jwtgo.NewWithClaims(s.signingMethod, out)
 	return t.SignedString(s.signingKey)
-}
-
-func (s *Signer) Verify(tokenValue string) (Claims, error) {
-	token, err := jwtgo.Parse(tokenValue, func(token *jwtgo.Token) (any, error) {
-		gotAlg := ""
-		if token != nil && token.Method != nil {
-			gotAlg = token.Method.Alg()
-		}
-		if gotAlg != s.signingAlg {
-			return nil, fmt.Errorf("%w: got=%s want=%s", ErrUnexpectedTokenAlg, gotAlg, s.signingAlg)
-		}
-		return s.verifyKey, nil
-	})
-	if err != nil {
-		return Claims{}, err
-	}
-	if !token.Valid {
-		return Claims{}, jwtgo.ErrTokenInvalidClaims
-	}
-
-	claims, ok := token.Claims.(jwtgo.MapClaims)
-	if !ok {
-		return Claims{}, ErrInvalidClaims
-	}
-	return claimsFromJWT(claims), nil
 }
 
 func newSigningConfig(cfg Config) (jwtgo.SigningMethod, any, any, error) {

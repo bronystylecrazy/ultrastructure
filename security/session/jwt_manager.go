@@ -18,7 +18,7 @@ const defaultRefreshTokenTTL = 720 * time.Hour
 
 type JWTManager struct {
 	config jws.Config
-	signer jws.SignerVerifier
+	jws    jws.SignerVerifier
 	now    func() time.Time
 
 	mu                      sync.RWMutex
@@ -29,8 +29,8 @@ type JWTManager struct {
 
 var _ Manager = (*JWTManager)(nil)
 
-func NewJWTManager(config jws.Config, signer jws.SignerVerifier) (*JWTManager, error) {
-	if signer == nil {
+func NewJWTManager(config jws.Config, signerVerifier jws.SignerVerifier) (*JWTManager, error) {
+	if signerVerifier == nil {
 		return nil, ErrSignerNotConfigured
 	}
 	if config.AccessTokenTTL <= 0 {
@@ -41,7 +41,7 @@ func NewJWTManager(config jws.Config, signer jws.SignerVerifier) (*JWTManager, e
 	}
 	return &JWTManager{
 		config:                  config,
-		signer:                  signer,
+		jws:                     signerVerifier,
 		now:                     time.Now,
 		defaultAccessExtractor:  defaultAccessExtractor(),
 		defaultRefreshExtractor: defaultRefreshExtractor(),
@@ -147,7 +147,7 @@ func (s *JWTManager) RotateAccess(accessToken string, opts ...GenerateOption) (s
 }
 
 func (s *JWTManager) Validate(tokenValue string, expectedType string) (Claims, error) {
-	out, err := s.signer.Verify(tokenValue)
+	out, err := s.jws.Verify(tokenValue)
 	if err != nil {
 		return Claims{}, err
 	}
@@ -272,7 +272,7 @@ func (s *JWTManager) signToken(subject, tokenType string, expiresAt time.Time, c
 	for k, v := range customClaims {
 		claims[k] = v
 	}
-	return s.signer.Sign(claims)
+	return s.jws.Sign(claims)
 }
 
 func fromJWSClaims(in jws.Claims) Claims {
