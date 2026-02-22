@@ -11,7 +11,7 @@ import (
 
 func Providers(opts ...di.Node) di.Node {
 	nodes := []any{
-		cfg.Config[jws.Config]("token", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
+		cfg.Config[jws.Config]("jwt", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		di.Provide(jws.NewSigner, di.AsSelf[jws.SignerVerifier]()),
 		di.Provide(
 			newJWTManagerWithDefaultRevocation,

@@ -62,7 +62,7 @@ without_query_variables = true
 without_metrics = false
 include_dry_run_spans = false
 
-[token]
+[jwt]
 algorithm = "HS256" # "HS256" | "EdDSA"
 secret = "change-me"
 private_key = "" # required for EdDSA (PEM or base64 ed25519 private key)
