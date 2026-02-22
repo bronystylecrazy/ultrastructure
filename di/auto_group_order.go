@@ -175,7 +175,7 @@ func autoGroupOrderIndex(value any) int {
 	if !ok {
 		return math.MaxInt
 	}
-	priority := math.MaxInt
+	priority := int64(math.MaxInt64)
 	order := math.MaxInt
 	switch v := raw.(type) {
 	case []any:
@@ -192,11 +192,11 @@ func autoGroupOrderIndex(value any) int {
 	case []string:
 		_ = v
 	}
-	if priority != math.MaxInt {
+	if priority != int64(math.MaxInt64) {
 		if order == math.MaxInt {
-			return priority * 1_000_000
+			return int(priority * 1_000_000)
 		}
-		return priority*1_000_000 + order
+		return int(priority*1_000_000 + int64(order))
 	}
 	return order
 }

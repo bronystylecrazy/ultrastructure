@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
@@ -67,7 +66,7 @@ func WithCacheRedisKeyPrefix(prefix string) CacheOption {
 }
 
 func UseCachedLookup(opts ...CacheOption) di.Node {
-	return di.Decorate(func(base KeyLookup, config Config, redisClient rd.RedisClient) KeyLookup {
+	return di.Decorate(func(base KeyLookup, config Config, cacheStore CacheStore) KeyLookup {
 		cfg := CachedLookupConfig{
 			Namespace: strings.TrimSpace(config.KeyPrefix),
 		}
@@ -76,7 +75,7 @@ func UseCachedLookup(opts ...CacheOption) di.Node {
 				opt(&cfg)
 			}
 		}
-		return NewCachedLookup(base, redisClient, cfg)
+		return NewCachedLookup(base, cacheStore, cfg)
 	}, di.Params(``, ``, di.Optional()))
 }
 

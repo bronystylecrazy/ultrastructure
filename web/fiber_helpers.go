@@ -39,7 +39,7 @@ func BuildFiberListenConfig(config Config) (fiber.ListenConfig, error) {
 	return out, nil
 }
 
-func ListenAddress(config Config) string {
+func ParseAddr(config Config) string {
 	return fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
 }
 

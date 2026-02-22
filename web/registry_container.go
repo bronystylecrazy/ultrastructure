@@ -1,7 +1,7 @@
 package web
 
 // RegistryContainer groups mutable runtime registries for web routing metadata.
-// It is DI-provided and activated by web.Module lifecycle.
+// It is DI-provided and activated by web.Module lc.
 type RegistryContainer struct {
 	Metadata *MetadataRegistry
 }

@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -45,5 +47,47 @@ func TestParseBodyLimit(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("ParseBodyLimit(%q): got=%d want=%d", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestFiberServerWaitSignalsWhenListening(t *testing.T) {
+	server := NewFiberServer(
+		Config{
+			Server: ServerConfig{
+				Host: "127.0.0.1",
+				Port: 0,
+			},
+			Listen: ListenConfig{
+				DisableStartupMessage: true,
+				ShutdownTimeout:       time.Second,
+			},
+		},
+		FiberConfig{},
+	)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Listen()
+	}()
+
+	select {
+	case <-server.Wait():
+	case <-time.After(5 * time.Second):
+		t.Fatal("wait signal was not emitted")
+	}
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer stopCancel()
+	if err := server.Stop(stopCtx); err != nil {
+		t.Fatalf("stop server: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("listen returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("listen did not return after stop")
 	}
 }

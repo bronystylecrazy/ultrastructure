@@ -6,37 +6,37 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
-type PriorityLevel = di.PriorityLevel
+type PriorityLevel int64
 
 const (
-	Earliest = di.Earliest
-	Earlier  = di.Earlier
-	Normal   = di.Normal
-	Later    = di.Later
-	Latest   = di.Latest
+	Earliest PriorityLevel = PriorityLevel(di.Earliest)
+	Earlier  PriorityLevel = PriorityLevel(di.Earlier)
+	Normal   PriorityLevel = PriorityLevel(di.Normal)
+	Later    PriorityLevel = PriorityLevel(di.Later)
+	Latest   PriorityLevel = PriorityLevel(di.Latest)
 )
 
 type webPriority struct {
-	Index int
+	Index int64
 }
 
 func Priority(value PriorityLevel) di.Option {
-	return di.Metadata(webPriority{Index: int(value)})
+	return di.Metadata(webPriority{Index: int64(value)})
 }
 
 func Between(lower, upper PriorityLevel) PriorityLevel {
-	return di.Between(lower, upper)
+	return PriorityLevel(di.Between(di.PriorityLevel(lower), di.PriorityLevel(upper)))
 }
 
-func ResolvePriority(handler Handler) int {
-	priority := int(Normal)
+func ResolvePriority(handler Handler) int64 {
+	priority := int64(Normal)
 	values := di.FindAllMetadata[webPriority](handler)
 	if len(values) > 0 {
 		priority = values[len(values)-1].Index
 	}
-	order := 0
+	order := int64(0)
 	if o, ok := di.OrderIndex(handler); ok {
-		order = o
+		order = int64(o)
 	}
 	return priority*1_000_000 + order
 }

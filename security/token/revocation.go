@@ -7,9 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/gofiber/fiber/v3"
-	redis "github.com/redis/go-redis/v9"
 )
 
 const defaultRevocationKeyPrefix = "token:revoked:"
@@ -17,6 +15,7 @@ const defaultRevocationNamespace = "default"
 
 var (
 	ErrRevocationStoreNotConfigured = fmt.Errorf("token: revocation store not configured")
+	ErrRevocationCacheMiss          = fmt.Errorf("token: revocation cache miss")
 	ErrMissingTokenJTI              = fmt.Errorf("token: missing jti in token")
 	ErrMissingTokenExp              = fmt.Errorf("token: missing exp in token")
 	ErrTokenRevoked                 = fmt.Errorf("token: token revoked")
@@ -27,18 +26,23 @@ type RevocationStore interface {
 	IsRevoked(ctx context.Context, jti string) (bool, error)
 }
 
+type RevocationCache interface {
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+	Get(ctx context.Context, key string) (string, error)
+}
+
 type RedisRevocationStore struct {
-	client    rd.StringManager
+	client    RevocationCache
 	keyPrefix string
 	namespace string
 	now       func() time.Time
 }
 
-func NewRedisRevocationStore(client rd.StringManager, keyPrefix string) *RedisRevocationStore {
+func NewRedisRevocationStore(client RevocationCache, keyPrefix string) *RedisRevocationStore {
 	return NewRedisRevocationStoreWithNamespace(client, keyPrefix, "")
 }
 
-func NewRedisRevocationStoreWithNamespace(client rd.StringManager, keyPrefix string, namespace string) *RedisRevocationStore {
+func NewRedisRevocationStoreWithNamespace(client RevocationCache, keyPrefix string, namespace string) *RedisRevocationStore {
 	if keyPrefix == "" {
 		keyPrefix = defaultRevocationKeyPrefix
 	}
@@ -59,13 +63,13 @@ func (r *RedisRevocationStore) Revoke(ctx context.Context, jti string, expiresAt
 	if ttl <= 0 {
 		return nil
 	}
-	return r.client.Set(ctx, r.key(jti), "1", ttl).Err()
+	return r.client.Set(ctx, r.key(jti), "1", ttl)
 }
 
 func (r *RedisRevocationStore) IsRevoked(ctx context.Context, jti string) (bool, error) {
-	_, err := r.client.Get(ctx, r.key(jti)).Result()
+	_, err := r.client.Get(ctx, r.key(jti))
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
+		if errors.Is(err, ErrRevocationCacheMiss) {
 			return false, nil
 		}
 		return false, err

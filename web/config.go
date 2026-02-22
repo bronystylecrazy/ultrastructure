@@ -16,7 +16,7 @@ type ServerConfig struct {
 
 type ListenConfig struct {
 	ListenerNetwork       string        `mapstructure:"listener_network" default:"tcp"`
-	ShutdownTimeout       time.Duration `mapstructure:"shutdown_timeout" default:"10s"`
+	ShutdownTimeout       time.Duration `mapstructure:"shutdown_timeout" default:"3s"`
 	DisableStartupMessage bool          `mapstructure:"disable_startup_message" default:"false"`
 	EnablePrefork         bool          `mapstructure:"enable_prefork" default:"false"`
 	EnablePrintRoutes     bool          `mapstructure:"enable_print_routes" default:"false"`

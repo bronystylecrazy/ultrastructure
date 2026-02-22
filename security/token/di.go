@@ -3,7 +3,6 @@ package token
 import (
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
@@ -76,8 +75,8 @@ func WithRedisRevocationNamespace(namespace string) RedisRevocationOption {
 }
 
 func UseRedisRevocation(opts ...RedisRevocationOption) di.Node {
-	return di.Provide(func(config Config, redisClient rd.StringManager) RevocationStore {
-		if redisClient == nil {
+	return di.Provide(func(config Config, cacheStore RevocationCache) RevocationStore {
+		if cacheStore == nil {
 			return nil
 		}
 		options := redisRevocationOptions{}
@@ -93,7 +92,7 @@ func UseRedisRevocation(opts ...RedisRevocationOption) di.Node {
 			namespace = strings.TrimSpace(config.Issuer)
 		}
 
-		return NewRedisRevocationStoreWithNamespace(redisClient, options.keyPrefix, namespace)
+		return NewRedisRevocationStoreWithNamespace(cacheStore, options.keyPrefix, namespace)
 	}, di.AsSelf[RevocationStore](), di.Params(``, di.Optional()))
 }
 

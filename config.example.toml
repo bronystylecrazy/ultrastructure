@@ -42,7 +42,7 @@ loopback = false
 private = false
 
 [db]
-dialect = "postgres"
+driver = "postgres"
 migrate = true
 datasource = "postgres://user:pass@localhost:5432/app?sslmode=disable"
 

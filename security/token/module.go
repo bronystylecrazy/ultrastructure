@@ -3,7 +3,7 @@ package token
 import (
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
+	"github.com/bronystylecrazy/ultrastructure/cfg"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/fx"
 )
@@ -15,8 +15,7 @@ const serviceOptionsGroupName = "us/token/service_options"
 func Module(opts ...di.Node) di.Node {
 	return di.Module(
 		"us/token",
-		di.Config[Config]("token"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+		cfg.Config[Config]("token", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		di.Provide(newServiceWithDefaultRevocation, di.AsSelf[Manager]()),
 		di.Options(di.ConvertAnys(opts)...),
 	)
@@ -26,9 +25,9 @@ type newServiceIn struct {
 	fx.In
 
 	Config      Config
-	RedisClient rd.StringManager `optional:"true"`
-	CustomStore RevocationStore  `optional:"true"`
-	ServiceOpts []ServiceOption  `group:"us/token/service_options"`
+	CacheStore  RevocationCache `optional:"true"`
+	CustomStore RevocationStore `optional:"true"`
+	ServiceOpts []ServiceOption `group:"us/token/service_options"`
 }
 
 func newServiceWithDefaultRevocation(in newServiceIn) (*Service, error) {
@@ -47,9 +46,9 @@ func newServiceWithDefaultRevocation(in newServiceIn) (*Service, error) {
 		service.SetRevocationStore(in.CustomStore)
 		return service, nil
 	}
-	if in.RedisClient != nil {
+	if in.CacheStore != nil {
 		namespace := strings.TrimSpace(service.config.Issuer)
-		service.SetRevocationStore(NewRedisRevocationStoreWithNamespace(in.RedisClient, "", namespace))
+		service.SetRevocationStore(NewRedisRevocationStoreWithNamespace(in.CacheStore, "", namespace))
 	}
 	return service, nil
 }

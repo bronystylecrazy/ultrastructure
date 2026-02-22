@@ -1,16 +1,23 @@
 package di
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 // Provide declares a constructor and options; use App(...).Build() to compile.
 func Provide(constructor any, opts ...any) Node {
-	return provideNode{constructor: constructor, opts: opts}
+	file, line := provideCallSite()
+	return provideNode{constructor: constructor, opts: opts, sourceFile: file, sourceLine: line}
 }
 
 // Supply declares a value and options; use App(...).Build() to compile.
@@ -34,6 +41,77 @@ func constructorResultType(constructor any) (reflect.Type, error) {
 		return nil, fmt.Errorf(errConstructorSecondResult)
 	}
 	return fn.Out(0), nil
+}
+
+func validateProvideParamsCount(constructor any, cfg bindConfig, sourceFile string, sourceLine int) error {
+	if !cfg.paramsSet {
+		return nil
+	}
+	if constructor == nil {
+		return nil
+	}
+	fn := reflect.TypeOf(constructor)
+	if fn == nil || fn.Kind() != reflect.Func {
+		return nil
+	}
+	expected := fn.NumIn()
+	if cfg.paramSlots == expected {
+		return nil
+	}
+	baseMsg := fmt.Sprintf(errProvideParamsCountMismatch, expected, cfg.paramSlots)
+	constructorName := "constructor"
+	wiringFile := sourceFile
+	wiringLine := sourceLine
+	if cfg.paramsSourceFile != "" && cfg.paramsSourceLine > 0 {
+		wiringFile = cfg.paramsSourceFile
+		wiringLine = cfg.paramsSourceLine
+	}
+	constructorFile := ""
+	constructorLine := 0
+	if runtimeFn := runtime.FuncForPC(reflect.ValueOf(constructor).Pointer()); runtimeFn != nil {
+		constructorName = shortFuncName(runtimeFn.Name())
+		constructorFile, constructorLine = runtimeFn.FileLine(reflect.ValueOf(constructor).Pointer())
+	}
+	hintMsg := fmt.Sprintf("hint: %s has %d params (variadic counts as one). Use di.Params(...) with %d entries.", constructorName, expected, expected)
+	if wiringFile == "" || wiringLine <= 0 {
+		if constructorFile != "" && constructorLine > 0 {
+			return fmt.Errorf("%s\n%s\n%s:%d: %s", baseMsg, hintMsg, constructorFile, constructorLine, baseMsg)
+		}
+		return errors.New(baseMsg + "\n" + hintMsg)
+	}
+	if constructorFile == wiringFile && constructorLine == wiringLine {
+		return fmt.Errorf("%s\n%s\n%s:%d: di wiring: %s", baseMsg, hintMsg, wiringFile, wiringLine, baseMsg)
+	}
+	if constructorFile != "" && constructorLine > 0 {
+		return fmt.Errorf("%s\n%s\n%s:%d: di wiring:\n%s:%d: constructor signature:", baseMsg, hintMsg, wiringFile, wiringLine, constructorFile, constructorLine)
+	}
+	return fmt.Errorf("%s\n%s\n%s:%d: di wiring:", baseMsg, hintMsg, wiringFile, wiringLine)
+}
+
+func shortFuncName(name string) string {
+	if name == "" {
+		return "constructor"
+	}
+	if idx := strings.LastIndex(name, "/"); idx >= 0 && idx+1 < len(name) {
+		name = name[idx+1:]
+	}
+	if idx := strings.Index(name, "."); idx >= 0 && idx+1 < len(name) {
+		name = name[idx+1:]
+	}
+	name = strings.TrimSuffix(name, "-fm")
+	name = filepath.Clean(name)
+	if name == "." || name == "/" || name == "" {
+		return "constructor"
+	}
+	return name
+}
+
+func provideCallSite() (string, int) {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "", 0
+	}
+	return file, line
 }
 
 type provideSpec struct {
@@ -198,6 +276,8 @@ type implementsKey struct {
 }
 
 var implementsCache sync.Map
+var ultrastructureRootOnce sync.Once
+var ultrastructureRoot string
 
 func implementsInterface(base reflect.Type, iface reflect.Type) bool {
 	if iface == nil || iface.Kind() != reflect.Interface {
@@ -248,6 +328,8 @@ func tagSetHasType(tagSets []tagSet, typ reflect.Type) bool {
 type provideNode struct {
 	constructor any
 	opts        []any
+	sourceFile  string
+	sourceLine  int
 	// paramTagsOverride rewrites constructor params to target replacement values.
 	paramTagsOverride []string
 }
@@ -255,6 +337,12 @@ type provideNode struct {
 func (n provideNode) Build() (fx.Option, error) {
 	cfg, _, extra, err := parseBindOptions(n.opts)
 	if err != nil {
+		return nil, err
+	}
+	if err := resolveVariadicBindParams(n.constructor, &cfg); err != nil {
+		return nil, err
+	}
+	if err := validateProvideParamsCount(n.constructor, cfg, n.sourceFile, n.sourceLine); err != nil {
 		return nil, err
 	}
 	constructor := n.constructor
@@ -304,6 +392,9 @@ func (n provideNode) Build() (fx.Option, error) {
 	}
 	var out []fx.Option
 	out = append(out, provideOpt)
+	if warnOpt := buildProvideAutoGroupInterfaceWarning(cfg, n.constructor, n.sourceFile, n.sourceLine); warnOpt != nil {
+		out = append(out, warnOpt)
+	}
 	out = append(out, extra...)
 	return packOptions(out), nil
 }
@@ -311,6 +402,12 @@ func (n provideNode) Build() (fx.Option, error) {
 func (n provideNode) buildConstructor() (any, bool, []fx.Option, error) {
 	cfg, _, extra, err := parseBindOptions(n.opts)
 	if err != nil {
+		return nil, false, nil, err
+	}
+	if err := resolveVariadicBindParams(n.constructor, &cfg); err != nil {
+		return nil, false, nil, err
+	}
+	if err := validateProvideParamsCount(n.constructor, cfg, n.sourceFile, n.sourceLine); err != nil {
 		return nil, false, nil, err
 	}
 	constructor := n.constructor
@@ -348,8 +445,89 @@ func (n provideNode) buildConstructor() (any, bool, []fx.Option, error) {
 	if hasAnyTag(paramTags) {
 		finalConstructor = fx.Annotate(finalConstructor, fx.ParamTags(paramTags...))
 	}
+	if warnOpt := buildProvideAutoGroupInterfaceWarning(cfg, n.constructor, n.sourceFile, n.sourceLine); warnOpt != nil {
+		extra = append(extra, warnOpt)
+	}
 	private := cfg.privateSet && cfg.privateValue
 	return finalConstructor, private, extra, nil
+}
+
+func buildProvideAutoGroupInterfaceWarning(cfg bindConfig, constructor any, sourceFile string, sourceLine int) fx.Option {
+	if constructor == nil || cfg.ignoreAuto || len(cfg.autoGroups) == 0 {
+		return nil
+	}
+	if !shouldWarnInterfaceAutoGroup(sourceFile) {
+		return nil
+	}
+	resultType, err := constructorResultType(constructor)
+	if err != nil {
+		return nil
+	}
+	if resultType.Kind() != reflect.Interface {
+		return nil
+	}
+	constructorName := "constructor"
+	if runtimeFn := runtime.FuncForPC(reflect.ValueOf(constructor).Pointer()); runtimeFn != nil {
+		constructorName = shortFuncName(runtimeFn.Name())
+	}
+	msg := fmt.Sprintf("di warning: %s returns interface %s; this may reduce auto-group matching to the interface type and miss concrete implementations", constructorName, resultType.String())
+	if sourceFile != "" && sourceLine > 0 {
+		msg = fmt.Sprintf("%s (%s:%d)", msg, sourceFile, sourceLine)
+	}
+	return fx.Invoke(func(in struct {
+		fx.In
+		Logger *zap.Logger `optional:"true"`
+	}) {
+		if in.Logger != nil {
+			in.Logger.Warn(msg)
+			return
+		}
+		fmt.Fprintln(os.Stderr, msg)
+	})
+}
+
+func shouldWarnInterfaceAutoGroup(sourceFile string) bool {
+	if os.Getenv("US_DI_WARN_INTERNAL") == "1" {
+		return true
+	}
+	if sourceFile == "" {
+		return true
+	}
+	root := ultrastructureModuleRoot()
+	if root == "" {
+		return true
+	}
+	absSource, err := filepath.Abs(sourceFile)
+	if err == nil {
+		sourceFile = absSource
+	}
+	rel, err := filepath.Rel(root, sourceFile)
+	if err != nil {
+		return true
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." {
+		return false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return true
+	}
+	return false
+}
+
+func ultrastructureModuleRoot() string {
+	ultrastructureRootOnce.Do(func() {
+		_, file, _, ok := runtime.Caller(0)
+		if !ok || file == "" {
+			return
+		}
+		root := filepath.Dir(filepath.Dir(file))
+		if abs, err := filepath.Abs(root); err == nil {
+			root = abs
+		}
+		ultrastructureRoot = filepath.Clean(root)
+	})
+	return ultrastructureRoot
 }
 
 type supplyNode struct {

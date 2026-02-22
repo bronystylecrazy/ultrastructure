@@ -751,7 +751,13 @@ func replacementNodeWithTags(spec replaceSpec, provideTags []tagSet) (Node, []ta
 	case provideNode:
 		opts := append([]any{}, n.opts...)
 		opts = append(opts, extra...)
-		node := provideNode{constructor: n.constructor, opts: opts}
+		node := provideNode{
+			constructor:       n.constructor,
+			opts:              opts,
+			sourceFile:        n.sourceFile,
+			sourceLine:        n.sourceLine,
+			paramTagsOverride: n.paramTagsOverride,
+		}
 		cfg, _, _, err := parseBindOptions(node.opts)
 		if err != nil {
 			return nil, nil, err
@@ -786,7 +792,13 @@ func replacementNodeWithTagSet(spec replaceSpec, target tagSet) (Node, error) {
 	switch n := spec.node.(type) {
 	case provideNode:
 		opts := overrideNameGroupOpts(n.opts, target)
-		return provideNode{constructor: n.constructor, opts: opts, paramTagsOverride: n.paramTagsOverride}, nil
+		return provideNode{
+			constructor:       n.constructor,
+			opts:              opts,
+			sourceFile:        n.sourceFile,
+			sourceLine:        n.sourceLine,
+			paramTagsOverride: n.paramTagsOverride,
+		}, nil
 	case supplyNode:
 		opts := overrideNameGroupOpts(n.opts, target)
 		return supplyNode{value: n.value, opts: opts}, nil

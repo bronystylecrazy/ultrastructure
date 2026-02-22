@@ -89,14 +89,14 @@ func TestBetweenPriority(t *testing.T) {
 
 func TestPriorityIndexUsesLastMetadataValue(t *testing.T) {
 	value := &priorityThingNormal{name: "normal"}
-	RegisterMetadata(value, priorityOrder{Index: int(Earlier)}, priorityOrder{Index: int(Later)})
+	RegisterMetadata(value, priorityOrder{Index: int64(Earlier)}, priorityOrder{Index: int64(Later)})
 
 	got, ok := PriorityIndex(value)
 	if !ok {
 		t.Fatalf("expected priority metadata to be found")
 	}
-	if got != int(Later) {
-		t.Fatalf("unexpected priority index: got %d want %d", got, int(Later))
+	if got != int64(Later) {
+		t.Fatalf("unexpected priority index: got %d want %d", got, int64(Later))
 	}
 }
 

@@ -11,13 +11,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/ditest"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	uss3 "github.com/bronystylecrazy/ultrastructure/storage/s3"
+	"github.com/bronystylecrazy/ultrastructure/x/gorm"
+	"github.com/bronystylecrazy/ultrastructure/x/redis"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -172,14 +173,14 @@ func startE2EApp(t *testing.T, pgURL string, redisCtr *RedisContainer, minio *Mi
 
 	app := ditest.New(t,
 		di.Diagnostics(),
-		lifecycle.Module(),
+		lc.Module(),
 		otel.Module(),
-		database.Module(),
+		xgorm.Module(),
 		rd.Module(rd.UseInterfaces()),
 		uss3.Module(uss3.UseInterfaces()),
 
 		di.Replace(database.Config{
-			Dialect:    "postgres",
+			Driver:     "postgres",
 			Datasource: pgURL,
 		}),
 		di.Replace(rd.Config{

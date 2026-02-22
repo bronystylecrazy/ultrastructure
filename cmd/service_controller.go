@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	xservice "github.com/bronystylecrazy/ultrastructure/service"
 	"github.com/kardianos/service"
@@ -23,8 +23,8 @@ func UseServiceController() di.Node {
 	return di.Provide(
 		NewServiceController,
 		di.As[ServiceController](),
-		di.AutoGroupIgnoreType[lifecycle.Starter](),
-		di.AutoGroupIgnoreType[lifecycle.Stopper](),
+		di.AutoGroupIgnoreType[lc.Starter](),
+		di.AutoGroupIgnoreType[lc.Stopper](),
 	)
 }
 

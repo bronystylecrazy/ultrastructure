@@ -3,11 +3,14 @@ package web
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/meta"
+	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -39,13 +42,13 @@ type FiberProxyConfig struct {
 }
 
 type FiberConfigOption interface {
-	FiberConfigConfigurer
+	FiberConfigurer
 	di.Node
 }
 
-const FiberConfigConfigurersGroupName = "us.web.fiber_config_configurers"
+const FiberConfigurersGroupName = "us.web.fiber_config_configurers"
 
-type FiberConfigConfigurer interface {
+type FiberConfigurer interface {
 	MutateFiberConfig(*fiber.Config)
 }
 
@@ -84,8 +87,8 @@ func WithFiberConfig(configure any) FiberConfigOption {
 			mutate: fn,
 			build: func() (fx.Option, error) {
 				return di.Provide(
-					func() FiberConfigConfigurer { return fiberConfigConfigurerFunc(fn) },
-					di.Group(FiberConfigConfigurersGroupName),
+					func() FiberConfigurer { return fiberConfigConfigurerFunc(fn) },
+					di.Group(FiberConfigurersGroupName),
 				).Build()
 			},
 		}
@@ -96,7 +99,7 @@ func WithFiberConfig(configure any) FiberConfigOption {
 	}
 }
 
-func WithFiberAppName(name string) FiberConfigConfigurer {
+func WithFiberAppName(name string) FiberConfigurer {
 	return fiberConfigConfigurerFunc(func(cfg *fiber.Config) {
 		name = strings.TrimSpace(name)
 		if name != "" {
@@ -105,13 +108,26 @@ func WithFiberAppName(name string) FiberConfigConfigurer {
 	})
 }
 
-type FiberServer struct {
-	App    *fiber.App
-	Logger *zap.Logger
-	Config Config
+type Server interface {
+	Listen() error
+	Wait() <-chan struct{}
 }
 
-func NewFiberApp(config FiberConfig, configurers ...FiberConfigConfigurer) *fiber.App {
+type FiberServer struct {
+	otel.Telemetry
+
+	App       *fiber.App
+	Config    FiberConfig
+	WebConfig Config
+
+	startedCh   chan struct{}
+	startedOnce sync.Once
+	listenDone  chan struct{}
+	listenOnce  sync.Once
+	listenErr   error
+}
+
+func NewFiberServer(webConfig Config, config FiberConfig, configurers ...FiberConfigurer) *FiberServer {
 	bodyLimit, err := ParseBodyLimit(config.App.BodyLimit)
 	if err != nil {
 		bodyLimit = fiber.DefaultBodyLimit
@@ -133,6 +149,7 @@ func NewFiberApp(config FiberConfig, configurers ...FiberConfigConfigurer) *fibe
 		TrustProxyConfig:   config.Proxy.TrustProxyConfig,
 		CaseSensitive:      config.CaseSensitive,
 		StrictRouting:      config.StrictRouting,
+		StructValidator:    NewFiberValidator(),
 	}
 	for _, configurer := range configurers {
 		if configurer != nil {
@@ -140,56 +157,87 @@ func NewFiberApp(config FiberConfig, configurers ...FiberConfigConfigurer) *fibe
 		}
 	}
 
-	return fiber.New(appCfg)
-}
-
-func NewFiberServer(app *fiber.App, logger *zap.Logger, config Config) *FiberServer {
-	if logger == nil {
-		logger = zap.NewNop()
-	}
 	return &FiberServer{
-		App:    app,
-		Logger: logger,
-		Config: config,
+		Telemetry:  otel.Nop(),
+		App:        fiber.New(appCfg),
+		Config:     config,
+		WebConfig:  webConfig,
+		startedCh:  make(chan struct{}),
+		listenDone: make(chan struct{}),
 	}
 }
 
 func (s *FiberServer) Listen() error {
-	listenCfg, err := BuildFiberListenConfig(s.Config)
+	s.listenOnce.Do(func() {
+		s.listenErr = s.listen()
+		close(s.listenDone)
+	})
+	<-s.listenDone
+	return s.listenErr
+}
+
+func (s *FiberServer) listen() error {
+	listenAddr := ParseAddr(s.WebConfig)
+	listenConfig, err := BuildFiberListenConfig(s.WebConfig)
 	if err != nil {
 		return err
 	}
 
-	addr := ListenAddress(s.Config)
-	s.Logger.Info("fiber listener starting",
-		zap.String("address", addr),
-		zap.String("network", listenCfg.ListenerNetwork),
-		zap.Bool("prefork", listenCfg.EnablePrefork),
-	)
+	s.App.Hooks().OnListen(func(data fiber.ListenData) error {
+		s.markStarted()
 
-	if err := s.App.Listen(addr, listenCfg); err != nil {
-		return err
-	}
-	s.Logger.Info("fiber listener stopped")
-	return nil
-}
+		scheme := "http"
+		if data.TLS {
+			scheme = "https"
+		}
 
-func (s *FiberServer) Shutdown(ctx context.Context) error {
-	return s.App.ShutdownWithContext(ctx)
-}
+		host := strings.TrimSpace(data.Host)
+		port := strings.TrimSpace(data.Port)
+		address := listenAddr
+		if host != "" && port != "" {
+			address = net.JoinHostPort(host, port)
+		}
 
-func RegisterFiberApp(lc fx.Lifecycle, app *fiber.App, logger *zap.Logger, config Config) {
-	server := NewFiberServer(app, logger, config)
-
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			go func() {
-				if err := server.Listen(); err != nil {
-					server.Logger.Error("failed to start fiber app", zap.Error(err))
-				}
-			}()
-			return nil
-		},
-		OnStop: server.Shutdown,
+		s.Obs.Info("fiber server listening",
+			zap.String("address", address),
+			zap.String("endpoint", fmt.Sprintf("%s://%s", scheme, address)),
+			zap.String("network", listenConfig.ListenerNetwork),
+			zap.Bool("tls", data.TLS),
+			zap.Bool("prefork", data.Prefork),
+			zap.Int("pid", data.PID),
+			zap.Int("process_count", data.ProcessCount),
+			zap.Int("handler_count", data.HandlerCount),
+		)
+		return nil
 	})
+
+	s.App.Hooks().OnPostShutdown(func(err error) error {
+		if err != nil {
+			s.Obs.Error("fiber server stopped with error", zap.Error(err))
+		} else {
+			s.Obs.Info("fiber server stopped")
+		}
+		return nil
+	})
+
+	err = s.App.Listen(listenAddr, listenConfig)
+	if err != nil {
+		s.markStarted()
+	}
+	return err
+}
+
+func (s *FiberServer) Wait() <-chan struct{} {
+	return s.startedCh
+}
+
+func (s *FiberServer) markStarted() {
+	s.startedOnce.Do(func() {
+		close(s.startedCh)
+	})
+}
+
+func (s *FiberServer) Stop(ctx context.Context) error {
+	fmt.Println("stopping fiber server")
+	return s.App.ShutdownWithContext(ctx)
 }

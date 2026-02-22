@@ -1,7 +1,0 @@
-service:
-  name: demo-yaml
-  port: 8082
-
-db:
-  host: localhost
-  port: 5434

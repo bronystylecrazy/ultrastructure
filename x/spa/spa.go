@@ -1,20 +1,14 @@
 package spa
 
 import (
-	"embed"
 	"io/fs"
 	"path/filepath"
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
-
-const DefaultDistPath = "web/dist"
-
-type Option func(*options)
 
 type Middleware struct {
 	fs         fs.FS
@@ -23,60 +17,15 @@ type Middleware struct {
 	indexGzip  []byte
 }
 
-type options struct {
-	assets   *embed.FS
-	log      *zap.Logger
-	distPath string
-}
+func NewMiddleware(opts ...Option) (*Middleware, error) {
+	cfg := Options{distPath: DefaultDistPath}
 
-func Use(opts ...Option) di.Node {
-	return di.Options(
-		di.Provide(func(assets *embed.FS, log *zap.Logger) (*Middleware, error) {
-			base := []Option{WithAssets(assets), WithLogger(log)}
-			return NewMiddlewareWithOptions(append(base, opts...)...)
-		}, di.AutoGroupIgnoreType[web.Handler](web.HandlersGroupName), di.Params(di.Optional()), web.Priority(web.Latest)),
-		di.Invoke(func(router web.Router, spaMiddleware *Middleware) {
-			if spaMiddleware == nil {
-				return
-			}
-			spaMiddleware.Handle(router)
-		}, di.Params(di.Optional(), di.Optional())),
-	)
-}
-
-func WithAssets(assets *embed.FS) Option {
-	return func(o *options) {
-		o.assets = assets
-	}
-}
-
-func WithLogger(log *zap.Logger) Option {
-	return func(o *options) {
-		o.log = log
-	}
-}
-
-func WithDistPath(path string) Option {
-	return func(o *options) {
-		o.distPath = path
-	}
-}
-
-func NewMiddleware(assets *embed.FS, log *zap.Logger) (*Middleware, error) {
-	return NewMiddlewareWithOptions(WithAssets(assets), WithLogger(log))
-}
-
-func NewMiddlewareWithOptions(opts ...Option) (*Middleware, error) {
-	cfg := options{distPath: DefaultDistPath}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&cfg)
 		}
 	}
-	return newMiddlewareWithOptions(cfg)
-}
 
-func newMiddlewareWithOptions(cfg options) (*Middleware, error) {
 	if cfg.log == nil {
 		cfg.log = zap.NewNop()
 	}
@@ -97,6 +46,8 @@ func (s *Middleware) Handle(r web.Router) {
 		s.log.Debug("skip static middleware, assets(*embed.FS) is not provided/supplied")
 		return
 	}
+
+	s.log.Debug("static middleware enabled")
 
 	r.Use(func(c fiber.Ctx) error {
 		path := c.Path()

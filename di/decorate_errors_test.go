@@ -116,3 +116,42 @@ func TestDecorateRejectsUnsupportedResultTag(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestDecorateRejectsParamsCountMismatch(t *testing.T) {
+	err := startAppError(t,
+		Provide(newBasicThing),
+		Supply(&decoDep{val: "one"}, Name("one")),
+		Supply(&decoDep{val: "two"}, Name("two")),
+		Decorate(func(b *basicThing, one *decoDep, two *decoDep) *basicThing { return b }, Params(Name("one"))),
+	)
+	if err == nil {
+		t.Fatal("expected start to fail")
+	}
+	if !strings.Contains(err.Error(), "decorate_errors_test.go:") {
+		t.Fatalf("expected source location in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Params count must match decorate function parameter count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "di wiring:") {
+		t.Fatalf("expected wiring location marker, got: %v", err)
+	}
+}
+
+func TestDecorateRejectsVariadicParamsCountMismatch(t *testing.T) {
+	err := startAppError(t,
+		Provide(newBasicThing),
+		Supply(&decoDep{val: "one"}, Name("one")),
+		Supply(&decoDep{val: "two"}, Name("two")),
+		Decorate(func(b *basicThing, rest ...*decoDep) *basicThing { return b }, Params(Name("one"), Name("two"))),
+	)
+	if err == nil {
+		t.Fatal("expected start to fail")
+	}
+	if !strings.Contains(err.Error(), "decorate_errors_test.go:") {
+		t.Fatalf("expected source location in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "expected 1, got 2") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

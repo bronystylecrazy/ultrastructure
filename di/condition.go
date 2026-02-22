@@ -1,7 +1,6 @@
 package di
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -99,11 +98,7 @@ func evalWhen(fn any, resolver func(reflect.Type) (any, error)) (bool, error) {
 			paramType := fnType.In(i)
 			val, err := resolver(paramType)
 			if err != nil {
-				var notFound configTypeNotFoundError
-				if errors.As(err, &notFound) {
-					return false, fmt.Errorf(errWhenParamNotConfigType, paramType)
-				}
-				return false, err
+				return false, fmt.Errorf(errWhenCouldNotResolve, paramType)
 			}
 			if val == nil {
 				return false, fmt.Errorf(errWhenCouldNotResolve, paramType)

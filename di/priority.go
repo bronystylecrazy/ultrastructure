@@ -2,10 +2,10 @@ package di
 
 // PriorityLevel controls auto-group ordering for provided values.
 // Lower values are ordered earlier.
-type PriorityLevel int
+type PriorityLevel int64
 
 type priorityOrder struct {
-	Index int
+	Index int64
 }
 
 const (
@@ -18,11 +18,11 @@ const (
 
 // Priority overrides the auto-group order for a provided value.
 func Priority(value PriorityLevel) Option {
-	return Metadata(priorityOrder{Index: int(value)})
+	return Metadata(priorityOrder{Index: int64(value)})
 }
 
 // PriorityIndex returns the priority order index if present.
-func PriorityIndex(value any) (int, bool) {
+func PriorityIndex(value any) (int64, bool) {
 	raw, ok := ReflectMetadataAny(value)
 	if !ok {
 		return 0, false
@@ -32,7 +32,7 @@ func PriorityIndex(value any) (int, bool) {
 		return 0, false
 	}
 	found := false
-	priority := 0
+	priority := int64(0)
 	for _, item := range meta {
 		if ord, ok := item.(priorityOrder); ok {
 			priority = ord.Index
@@ -71,5 +71,5 @@ func Between(lower, upper PriorityLevel) PriorityLevel {
 	if lower > upper {
 		lower, upper = upper, lower
 	}
-	return PriorityLevel(int(lower) + (int(upper)-int(lower))/2)
+	return PriorityLevel(int64(lower) + (int64(upper)-int64(lower))/2)
 }

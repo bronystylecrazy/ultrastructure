@@ -1,6 +1,7 @@
 package apikey
 
 import (
+	"github.com/bronystylecrazy/ultrastructure/cfg"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/fx"
 )
@@ -8,8 +9,7 @@ import (
 func Module(opts ...di.Node) di.Node {
 	return di.Module(
 		"us/apikey",
-		di.Config[Config]("apikey"),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+		cfg.Config[Config]("apikey", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		di.Provide(NewKeyGenerator, di.AsSelf[Generator]()),
 		di.Provide(NewHasherFromConfig),
 		di.Provide(newService, di.AsSelf[Manager]()),

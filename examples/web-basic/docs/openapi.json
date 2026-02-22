@@ -1,0 +1,691 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Ultrastructure API",
+    "description": "Auto-generated API documentation for Ultrastructure API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "listRoot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/main.ExampleForm"
+              }
+            }
+          },
+          "description": "Request payload",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "Age": 42,
+                    "Avatar": {
+                      "Filename": "example string",
+                      "Header": {
+                        "key": [
+                          "example string"
+                        ]
+                      },
+                      "Size": 42
+                    },
+                    "Name": "example string"
+                  },
+                  "properties": {
+                    "Age": {
+                      "type": "integer"
+                    },
+                    "Avatar": {
+                      "format": "binary",
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "Name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "Name",
+                    "Age"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "GET /",
+        "tags": [
+          "main"
+        ]
+      }
+    },
+    "/api/v1/dm": {
+      "get": {
+        "operationId": "listDm",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "This is example command for c.SendString(\"Hello, World!\")"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List all dm",
+        "tags": [
+          "dm"
+        ]
+      }
+    },
+    "/api/v1/gm/{id}": {
+      "get": {
+        "operationId": "getGmById",
+        "parameters": [
+          {
+            "description": "The id identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          },
+          {
+            "description": "User's name",
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "User's age",
+            "in": "query",
+            "name": "age",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "User's haha",
+            "in": "query",
+            "name": "haha",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dm.Response"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get single gm",
+        "tags": [
+          "dm"
+        ]
+      }
+    },
+    "/api/v1/px/": {
+      "get": {
+        "operationId": "PeopleExperience_GetOne",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List all px",
+        "tags": [
+          "PeopleExperience"
+        ]
+      }
+    },
+    "/api/v1/px/health": {
+      "get": {
+        "operationId": "listPxHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "i_here_thundie": "example string"
+                  },
+                  "properties": {
+                    "i_here_thundie": {
+                      "description": "i'm here thundie",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "i_here_thundie"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "this is example for Hello World"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Response"
+                }
+              }
+            },
+            "description": "this is example for Sirawit"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List all health",
+        "tags": [
+          "PeopleExperience"
+        ]
+      }
+    },
+    "/api/v1/px/healthz": {
+      "get": {
+        "operationId": "listPxHealthz",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List all healthz",
+        "tags": [
+          "PeopleExperience"
+        ]
+      }
+    },
+    "/api/v1/px/users/{id_or_uuid}/pooler": {
+      "get": {
+        "operationId": "getPxUserPoolerByIdOrUuid",
+        "parameters": [
+          {
+            "description": "The id_or_uuid identifier",
+            "in": "path",
+            "name": "id_or_uuid",
+            "required": true,
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get single pooler",
+        "tags": [
+          "PeopleExperience"
+        ]
+      }
+    },
+    "/dm/{id}": {
+      "get": {
+        "operationId": "getDmById",
+        "parameters": [
+          {
+            "description": "The id identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "example": "123e4567-e89b-12d3-a456-426614174000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "example": {
+                        "id__id": "example string",
+                        "text__textss": "example string"
+                      },
+                      "properties": {
+                        "id__id": {
+                          "type": "string"
+                        },
+                        "text__textss": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id__id",
+                        "text__textss"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "example": {
+                        "id__id": "example string",
+                        "text__textss___eie": "example string"
+                      },
+                      "properties": {
+                        "id__id": {
+                          "type": "string"
+                        },
+                        "text__textss___eie": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id__id",
+                        "text__textss___eie"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "This is example command, ei ei, for example sdjfksdjf hahaha"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get single dm",
+        "tags": [
+          "dm"
+        ]
+      }
+    },
+    "/haha": {
+      "get": {
+        "operationId": "listHaha",
+        "parameters": [
+          {
+            "description": "User's name",
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "User's age",
+            "in": "query",
+            "name": "age",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "User's haha",
+            "in": "query",
+            "name": "haha",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "Age": 42,
+                    "Avatar": {
+                      "Filename": "example string",
+                      "Header": {
+                        "key": [
+                          "example string"
+                        ]
+                      },
+                      "Size": 42
+                    },
+                    "Name": "example string"
+                  },
+                  "properties": {
+                    "Age": {
+                      "type": "integer"
+                    },
+                    "Avatar": {
+                      "format": "binary",
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "Name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "Name",
+                    "Age"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Auto-detected"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/web.Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List all haha",
+        "tags": [
+          "main"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "PeopleExperience"
+    },
+    {
+      "name": "dm"
+    },
+    {
+      "name": "main"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "dm.Response": {
+        "example": {
+          "message__2": "example string"
+        },
+        "properties": {
+          "message__2": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message__2"
+        ],
+        "type": "object"
+      },
+      "main.ExampleForm": {
+        "example": {
+          "avatar": {
+            "Filename": "example string",
+            "Header": {
+              "key": [
+                "example string"
+              ]
+            },
+            "Size": 42
+          },
+          "name": "example string"
+        },
+        "properties": {
+          "avatar": {
+            "description": "User's avatar",
+            "format": "binary",
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "User's name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "web.Error": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "web.Response": {
+        "example": {
+          "data": null,
+          "meta": null
+        },
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

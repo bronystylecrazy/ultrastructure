@@ -5,12 +5,11 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/cmd"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/imgutil"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
@@ -111,14 +110,13 @@ func defaultNodes() []any {
 	return []any{
 		di.Diagnostics(),
 		otel.Module(),
-		lifecycle.Module(),
-		web.Module(),
+		lc.Module(),
+		web.Provide(),
 		token.Module(),
 		database.Module(),
 		realtime.Module(),
 		cmd.Module(),
 		s3.Module(),
-		rd.Module(),
 		imgutil.Module(),
 	}
 }

@@ -3,19 +3,28 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/spf13/cobra"
+	"go.uber.org/fx"
 )
 
 type Root struct {
 	*cobra.Command
+	shutdowner fx.Shutdowner
+	stopOnce   sync.Once
 }
 
-func New(cmd *cobra.Command) *Root {
+func New(shutdowner fx.Shutdowner, cmd *cobra.Command) *Root {
 	defaultCmd := &cobra.Command{
-		Use: meta.Name,
+		Use:           meta.Name,
+		SilenceErrors: true,
+		PostRunE: func(cmd *cobra.Command, args []string) error {
+			return shutdowner.Shutdown()
+		},
 	}
 
 	if cmd != nil {
@@ -23,12 +32,48 @@ func New(cmd *cobra.Command) *Root {
 	}
 
 	return &Root{
-		Command: defaultCmd,
+		Command:    defaultCmd,
+		shutdowner: shutdowner,
 	}
 }
 
 func (r *Root) Start(ctx context.Context) error {
-	return r.Execute()
+	go func() {
+		if len(os.Args) <= 1 {
+			if defaultUse, ok := r.defaultSubcommandUse(); ok {
+				r.SetArgs([]string{defaultUse})
+			}
+		}
+
+		err := r.Execute()
+		r.stopOnce.Do(func() {
+			if r.shutdowner == nil {
+				return
+			}
+			if err != nil {
+				_ = r.shutdowner.Shutdown(fx.ExitCode(1))
+			}
+		})
+	}()
+	return nil
+}
+
+func (r *Root) defaultSubcommandUse() (string, bool) {
+	if r == nil || r.Command == nil {
+		return "", false
+	}
+	defaultNameMu.RLock()
+	use := strings.TrimSpace(currentDefaultCmd)
+	defaultNameMu.RUnlock()
+	if use == "" {
+		use = defaultCommandName
+	}
+	for _, child := range r.Commands() {
+		if child.Name() == use {
+			return use, true
+		}
+	}
+	return "", false
 }
 
 func (r *Root) Register(commands ...Commander) error {

@@ -80,7 +80,13 @@ func (n provideNode) withAutoInjectFields(enabled bool) Node {
 	}
 	opts := append([]any{}, n.opts...)
 	opts = append(opts, autoInjectOption{})
-	return provideNode{constructor: n.constructor, opts: opts}
+	return provideNode{
+		constructor:       n.constructor,
+		opts:              opts,
+		sourceFile:        n.sourceFile,
+		sourceLine:        n.sourceLine,
+		paramTagsOverride: n.paramTagsOverride,
+	}
 }
 
 func (n supplyNode) withAutoInjectFields(enabled bool) Node {

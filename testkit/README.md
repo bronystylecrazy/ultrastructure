@@ -97,9 +97,9 @@ package testkit
 import (
 	"testing"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/x/redis"
 	ustk "github.com/bronystylecrazy/ultrastructure/testkit"
 	"go.uber.org/fx/fxtest"
 
@@ -124,7 +124,7 @@ func NewSuiteEnv(t *testing.T) *SuiteEnv {
 		nodes: []any{
 			app.Module(),
 			di.Replace(database.Config{
-				Dialect:    "postgres",
+				Driver:     "postgres",
 				Datasource: pg.URL(),
 			}),
 			di.Replace(rd.Config{

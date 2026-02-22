@@ -1,6 +1,7 @@
 package otel
 
 import (
+	"github.com/bronystylecrazy/ultrastructure/cfg"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"go.uber.org/fx"
 )
@@ -11,8 +12,7 @@ func Module() di.Node {
 		di.AutoGroup[Observable](ObservablesGroupName),
 
 		// config
-		di.Config[Config]("otel", di.ConfigWithViper(applyOTELenv)),
-		di.ConfigFile("config.toml", di.ConfigType("toml"), di.ConfigEnvOverride(), di.ConfigOptional()),
+		cfg.Config[Config]("otel", cfg.WithSourceFile("config.toml"), cfg.WithType("toml"), cfg.WithViper(applyOTELenv)),
 
 		// observables
 		di.Provide(NewLogger),

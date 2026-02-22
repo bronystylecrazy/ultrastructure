@@ -88,6 +88,12 @@ type RouteInfo struct {
 // InspectFiberRoutes extracts route information from a Fiber app
 func InspectFiberRoutes(app *fiber.App, logger *zap.Logger) []RouteInfo {
 	routes := []RouteInfo{}
+	if app == nil {
+		if logger != nil {
+			logger.Warn("auto-swagger: fiber app is nil; skipping route inspection")
+		}
+		return routes
+	}
 
 	// Get all registered routes from Fiber.
 	// Passing true filters out middleware routes registered via app.Use(...),

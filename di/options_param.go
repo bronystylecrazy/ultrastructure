@@ -2,19 +2,31 @@ package di
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
 type paramsOption struct {
-	items []any
-	err   error
+	items      []any
+	err        error
+	sourceFile string
+	sourceLine int
 }
 
 type skipParamOption struct{}
+type variadicParamOption struct {
+	items []any
+}
 
 func (p paramsOption) applyBind(cfg *bindConfig) {
 	if cfg.err != nil {
 		return
+	}
+	cfg.paramsSet = true
+	cfg.paramSlots += len(p.items)
+	if p.sourceFile != "" && p.sourceLine > 0 {
+		cfg.paramsSourceFile = p.sourceFile
+		cfg.paramsSourceLine = p.sourceLine
 	}
 	if p.err != nil {
 		cfg.err = p.err
@@ -35,6 +47,12 @@ func (p paramsOption) applyParam(cfg *paramConfig) {
 	if cfg.err != nil {
 		return
 	}
+	cfg.paramsSet = true
+	cfg.paramSlots += len(p.items)
+	if p.sourceFile != "" && p.sourceLine > 0 {
+		cfg.paramsSourceFile = p.sourceFile
+		cfg.paramsSourceLine = p.sourceLine
+	}
 	if p.err != nil {
 		cfg.err = p.err
 		return
@@ -52,12 +70,21 @@ func (p paramsOption) applyParam(cfg *paramConfig) {
 
 // Params scopes options to positional parameter tags only.
 func Params(items ...any) Option {
-	p := paramsOption{items: items}
+	file, line := paramsCallSite()
+	p := paramsOption{items: items, sourceFile: file, sourceLine: line}
 	if err := validateParamsItems(items); err != nil {
 		p.err = err
 		return p
 	}
 	return p
+}
+
+func paramsCallSite() (string, int) {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "", 0
+	}
+	return file, line
 }
 
 func collectParamTags(items []any) ([]string, error) {
@@ -118,9 +145,14 @@ func normalizeParamTag(tag string) string {
 }
 
 type paramConfig struct {
-	tags       []string
-	resultTags []string
-	err        error
+	tags             []string
+	resultTags       []string
+	paramSlots       int
+	variadicShorthand bool
+	paramsSet        bool
+	paramsSourceFile string
+	paramsSourceLine int
+	err              error
 }
 
 type invokeOptionFunc func(*paramConfig)
@@ -168,4 +200,58 @@ func (skipParamOption) applyParam(cfg *paramConfig) {
 // Skip reserves a positional parameter slot in Params without adding a tag.
 func Skip() Option {
 	return skipParamOption{}
+}
+
+func (v variadicParamOption) applyBind(cfg *bindConfig) {
+	if cfg.err != nil {
+		return
+	}
+	tags, err := collectParamTags(v.items)
+	if err != nil {
+		cfg.err = err
+		return
+	}
+	if len(tags) != 1 {
+		cfg.err = fmt.Errorf(errVariadicParamTagSingle, len(tags))
+		return
+	}
+	if cfg.paramsSet && !cfg.variadicShorthand && cfg.paramSlots > 0 {
+		cfg.err = fmt.Errorf(errVariadicWithParams)
+		return
+	}
+	cfg.paramsSet = true
+	cfg.variadicShorthand = true
+	cfg.paramTags = append(cfg.paramTags, tags[0])
+}
+func (v variadicParamOption) applyParam(cfg *paramConfig) {
+	if cfg.err != nil {
+		return
+	}
+	tags, err := collectParamTags(v.items)
+	if err != nil {
+		cfg.err = err
+		return
+	}
+	if len(tags) != 1 {
+		cfg.err = fmt.Errorf(errVariadicParamTagSingle, len(tags))
+		return
+	}
+	if cfg.paramsSet && !cfg.variadicShorthand && cfg.paramSlots > 0 {
+		cfg.err = fmt.Errorf(errVariadicWithParams)
+		return
+	}
+	cfg.paramsSet = true
+	cfg.variadicShorthand = true
+	cfg.tags = append(cfg.tags, tags[0])
+}
+
+// Variadic tags the last variadic parameter slot with a single tag.
+// Used directly, it is shorthand for padding preceding Params slots with empty tags.
+func Variadic(items ...any) Option {
+	return variadicParamOption{items: items}
+}
+
+// VariadicGroup tags the last variadic parameter slot as a group dependency.
+func VariadicGroup(name string) Option {
+	return Variadic(Group(name))
 }

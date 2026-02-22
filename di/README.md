@@ -264,9 +264,9 @@ func PrintConfigSummary(cfg Config) {
 // imports: log
 fx.New(
 	di.App(
-		di.Config[Config](
+		cfg.Config[Config](
 			"di/examples/config_toml/config.toml",
-			di.ConfigType("toml"),
+			cfg.WithType("toml"),
 		),
 		di.Invoke(PrintConfigSummary),
 	).Build(),
@@ -296,9 +296,9 @@ func LogConfigName(cfg Config, l *zap.Logger) {
 // imports: go.uber.org/zap
 fx.New(
 	di.App(
-		di.Config[Config](
+		cfg.Config[Config](
 			"di/examples/config_env/config.toml",
-			di.ConfigEnvOverride(),
+			cfg.WithEnvOverride(),
 		),
 		di.Invoke(LogConfigName),
 	).Build(),
@@ -326,8 +326,7 @@ func PrintWatchConfig(cfg AppConfig) {
 
 // imports: log
 err := di.App(
-	di.ConfigFile("di/examples/config_watch/config.toml", di.ConfigType("toml")),
-	di.Config[AppConfig]("app", di.ConfigWatch()),
+	cfg.Config[AppConfig]("app", cfg.WithSourceFile("di/examples/config_watch/config.toml"), cfg.WithType("toml"), cfg.WithWatch()),
 	di.Invoke(PrintWatchConfig),
 ).Run()
 ```
@@ -418,30 +417,32 @@ missing type: string (required by Invoke)
 * `Self()` / `AsSelf()` — export the concrete type alongside others.
 * `Private()` / `Public()` — hide or expose providers across modules.
 * `Params(items ...any)` — apply positional param tags.
+* `Variadic(items ...any)` — shorthand to tag only the last variadic param slot (without writing `Params(nil, ..., tag)`).
+* `VariadicGroup(name string)` — shorthand for `Variadic(Group(name))`.
 * `InTag(tag string)` — raw param tag.
 * `InGroup(name string)` — param group tag.
 * `Optional()` — mark a param optional.
 
-=== Config (Viper) ===
+=== Config (cfg package) ===
 
-* `Config[T](pathOrKey string, opts ...any)` — load config into a struct.
-* `ConfigFile(path string, opts ...any)` — register a config file source.
-* `ConfigBind[T](key string, opts ...any)` — bind a key into a struct.
-* `ConfigType(kind string)` — set file type (toml/json/yaml).
-* `ConfigName(name string)` — name a config source.
-* `ConfigPath(path string)` — add search paths.
-* `ConfigOptional()` — do not error on missing config.
-* `ConfigEnvPrefix(prefix string)` — environment prefix.
-* `ConfigEnvKeyReplacer(replacer *strings.Replacer)` — env key mapping.
-* `ConfigEnvOverride(prefix ...string)` — enable env overrides.
-* `ConfigAutomaticEnv()` — viper automatic env.
-* `ConfigNoEnv()` — disable env handling.
-* `ConfigDefault(key string, value any)` — set default.
-* `ConfigWithViper(fn func(*viper.Viper) error)` — customize viper instance.
-* `ConfigWatch(opts ...ConfigWatchOption)` — watch config changes.
-* `ConfigWatchDebounce(d time.Duration)` — debounce watch events.
-* `ConfigWatchKeys(keys ...string)` — watch specific keys.
-* `ConfigDisableWatch()` — disable watching for a scope.
+* `cfg.Config[T](pathOrKey string, opts ...any)` — load config into a struct.
+* `cfg.ConfigBind[T](key string, opts ...any)` — bind a key into a struct.
+* `cfg.WithSourceFile(path string)` — set explicit config file path.
+* `cfg.WithType(kind string)` — set file type (toml/json/yaml).
+* `cfg.WithName(name string)` — name a config source.
+* `cfg.WithPath(path string)` — add search paths.
+* `cfg.WithOptional()` — allow missing config file.
+* `cfg.WithEnvPrefix(prefix string)` — environment prefix.
+* `cfg.WithEnvKeyReplacer(replacer *strings.Replacer)` — env key mapping.
+* `cfg.WithEnvOverride(prefix ...string)` — enable env overrides.
+* `cfg.WithAutomaticEnv()` — viper automatic env.
+* `cfg.WithNoEnv()` — disable env handling.
+* `cfg.WithDefault(key string, value any)` — set default.
+* `cfg.WithViper(fn func(*viper.Viper) error)` — customize viper instance.
+* `cfg.WithWatch(opts ...watchOption)` — watch config changes.
+* `cfg.WithWatchDebounce(d time.Duration)` — debounce watch events.
+* `cfg.WithWatchKeys(keys ...string)` — watch specific keys.
+* `cfg.WithDisableWatch()` — disable watching.
 
 === Diagnostics ===
 

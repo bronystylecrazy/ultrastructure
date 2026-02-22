@@ -135,7 +135,7 @@ type startStopper interface {
 
 func RegisterBrokerLifecycle(lc fx.Lifecycle, broker usmqtt.Broker) {
 	if _, ok := broker.(*usmqtt.Server); ok {
-		// Embedded server already participates in lifecycle via lifecycle.Module auto-grouping.
+		// Embedded server already participates in lifecycle via lc.Module auto-grouping.
 		return
 	}
 

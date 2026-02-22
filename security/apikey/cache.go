@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
-	redis "github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -21,6 +19,8 @@ const (
 	defaultRedisKeyPrefix = "apikey:lookup:"
 	negativeMarker        = "__nil__"
 )
+
+var ErrCacheMiss = errors.New("apikey cache miss")
 
 type CachedLookupConfig struct {
 	L1TTL          time.Duration
@@ -59,9 +59,15 @@ type LookupInvalidator interface {
 	InvalidateKey(ctx context.Context, keyID string) error
 }
 
+type CacheStore interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+	Del(ctx context.Context, keys ...string) error
+}
+
 type CachedLookup struct {
 	base  KeyLookup
-	redis rd.RedisClient
+	redis CacheStore
 	cfg   CachedLookupConfig
 	now   func() time.Time
 
@@ -73,11 +79,11 @@ type CachedLookup struct {
 
 var _ LookupInvalidator = (*CachedLookup)(nil)
 
-func NewCachedLookup(base KeyLookup, redisClient rd.RedisClient, cfg CachedLookupConfig) *CachedLookup {
+func NewCachedLookup(base KeyLookup, cacheStore CacheStore, cfg CachedLookupConfig) *CachedLookup {
 	cfg = cfg.withDefaults()
 	return &CachedLookup{
 		base:  base,
-		redis: redisClient,
+		redis: cacheStore,
 		cfg:   cfg,
 		now:   time.Now,
 		l1:    make(map[string]cacheEntry, cfg.L1MaxEntries),
@@ -133,7 +139,7 @@ func (c *CachedLookup) InvalidateKey(ctx context.Context, keyID string) error {
 	if c.redis == nil {
 		return nil
 	}
-	if err := c.redis.Del(ctx, c.redisKey(keyID)).Err(); err != nil && !errors.Is(err, redis.Nil) {
+	if err := c.redis.Del(ctx, c.redisKey(keyID)); err != nil && !errors.Is(err, ErrCacheMiss) {
 		return err
 	}
 	return nil
@@ -174,9 +180,9 @@ func (c *CachedLookup) setL1(keyID string, key *StoredKey, ttl time.Duration) {
 }
 
 func (c *CachedLookup) getL2(ctx context.Context, keyID string) (*StoredKey, bool, error) {
-	raw, err := c.redis.Get(ctx, c.redisKey(keyID)).Result()
+	raw, err := c.redis.Get(ctx, c.redisKey(keyID))
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
+		if errors.Is(err, ErrCacheMiss) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -186,7 +192,7 @@ func (c *CachedLookup) getL2(ctx context.Context, keyID string) (*StoredKey, boo
 	}
 	var out StoredKey
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		_ = c.redis.Del(ctx, c.redisKey(keyID)).Err()
+		_ = c.redis.Del(ctx, c.redisKey(keyID))
 		return nil, false, nil
 	}
 	return &out, true, nil
@@ -203,7 +209,7 @@ func (c *CachedLookup) setL2(ctx context.Context, keyID string, key *StoredKey, 
 		}
 		payload = string(b)
 	}
-	return c.redis.Set(ctx, c.redisKey(keyID), payload, ttl).Err()
+	return c.redis.Set(ctx, c.redisKey(keyID), payload, ttl)
 }
 
 func (c *CachedLookup) ttlFor(key *StoredKey) time.Duration {

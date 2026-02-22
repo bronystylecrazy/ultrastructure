@@ -251,7 +251,13 @@ func (n provideNode) withAutoGroups(set autoGroupSet) Node {
 	if !changed {
 		return n
 	}
-	return provideNode{constructor: n.constructor, opts: opts}
+	return provideNode{
+		constructor:       n.constructor,
+		opts:              opts,
+		sourceFile:        n.sourceFile,
+		sourceLine:        n.sourceLine,
+		paramTagsOverride: n.paramTagsOverride,
+	}
 }
 
 func (n supplyNode) withAutoGroups(set autoGroupSet) Node {
@@ -260,22 +266,6 @@ func (n supplyNode) withAutoGroups(set autoGroupSet) Node {
 		return n
 	}
 	return supplyNode{value: n.value, opts: opts}
-}
-
-func (n configNode[T]) withAutoGroups(set autoGroupSet) Node {
-	opts, changed := addAutoGroupOptions(n.opts, set)
-	if !changed {
-		return n
-	}
-	return configNode[T]{pathOrKey: n.pathOrKey, opts: opts, scope: n.scope}
-}
-
-func (n configBindNode[T]) withAutoGroups(set autoGroupSet) Node {
-	opts, changed := addAutoGroupOptions(n.opts, set)
-	if !changed {
-		return n
-	}
-	return configBindNode[T]{key: n.key, opts: opts, scope: n.scope}
 }
 
 type errorOption struct {

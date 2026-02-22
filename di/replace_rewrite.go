@@ -29,6 +29,8 @@ func rewriteInvokeWithTags(node invokeNode, activeTags map[string]tagSet) (invok
 	return invokeNode{
 		function:          node.function,
 		opts:              node.opts,
+		sourceFile:        node.sourceFile,
+		sourceLine:        node.sourceLine,
 		paramTagsOverride: tags,
 	}, true, nil
 }

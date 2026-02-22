@@ -30,6 +30,11 @@ type bindConfig struct {
 	autoInjectFields       bool
 	ignoreAutoInjectFields bool
 	paramTags              []string
+	paramSlots             int
+	variadicShorthand      bool
+	paramsSet              bool
+	paramsSourceFile       string
+	paramsSourceLine       int
 	err                    error
 }
 

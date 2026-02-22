@@ -113,6 +113,14 @@ type diagSpan struct {
 	score int
 }
 
+type diagLabelKind int
+
+const (
+	diagLabelGeneric diagLabelKind = iota
+	diagLabelWiring
+	diagLabelSignature
+)
+
 var goFileLineRx = regexp.MustCompile(`([^\s:]+\.go):(\d+)`)
 var goFileLineColRx = regexp.MustCompile(`([^\s:]+\.go):(\d+):(\d+)`)
 
@@ -138,7 +146,7 @@ func formatDiagnostics(err error, simple bool) string {
 	header := lines[0]
 	var rest string
 	if len(lines) > 1 {
-		rest = strings.TrimSpace(strings.Join(lines[1:], "\n"))
+		rest = filterDiagnosticRest(lines[1:])
 	}
 
 	var b strings.Builder
@@ -149,6 +157,7 @@ func formatDiagnostics(err error, simple bool) string {
 	for idx, span := range spans {
 		loc := resolveLocation(span.loc)
 		label := strings.TrimSpace(span.label)
+		kind, section := classifyDiagLabel(label)
 		if label == "" && len(missingTypes) > 0 {
 			label = "missing type: " + missingTypes[0]
 		}
@@ -187,6 +196,11 @@ func formatDiagnostics(err error, simple bool) string {
 		b.WriteString(loc.file)
 		b.WriteString(":")
 		b.WriteString(lineNo)
+		if section != "" && !simple {
+			b.WriteString(" [")
+			b.WriteString(section)
+			b.WriteString("]")
+		}
 		b.WriteString("\n")
 		width := lineNumberWidth(block.lines)
 		var content []string
@@ -194,6 +208,9 @@ func formatDiagnostics(err error, simple bool) string {
 			num := strconv.Itoa(line.num)
 			content = append(content, fmt.Sprintf("%s%s │ %s", strings.Repeat(" ", width-len(num)), num, line.text))
 			if line.num == loc.line {
+				if kind != diagLabelGeneric {
+					label = ""
+				}
 				if len(caretLines) == 0 && label != "" {
 					caretLines = []string{"^ " + label}
 				} else if !simple && label != "here" {
@@ -227,9 +244,7 @@ func formatDiagnostics(err error, simple bool) string {
 	}
 
 	if rest != "" && !simple {
-		b.WriteString("note: ")
-		b.WriteString(rest)
-		b.WriteString("\n")
+		writeDiagnosticRest(&b, rest)
 	}
 
 	if !simple {
@@ -273,6 +288,7 @@ func parseLineSpans(line string) []diagSpan {
 		}
 		file = cleanFileToken(file)
 		label := strings.TrimSpace(strings.Replace(line, line[match[0]:match[1]], "", 1))
+		label = strings.TrimLeft(label, ": ")
 		label = strings.Trim(label, "()-")
 		spans = append(spans, diagSpan{
 			loc:   diagLocation{file: file, line: lineNo, col: col},
@@ -288,6 +304,54 @@ func cleanFileToken(file string) string {
 	file = strings.TrimLeft(file, "(")
 	file = strings.TrimRight(file, "):")
 	return file
+}
+
+func filterDiagnosticRest(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	var kept []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if goFileLineColRx.MatchString(trimmed) || goFileLineRx.MatchString(trimmed) {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+func writeDiagnosticRest(b *strings.Builder, rest string) {
+	lines := strings.Split(rest, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(trimmed), "hint:") {
+			b.WriteString(trimmed)
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString("note: ")
+		b.WriteString(trimmed)
+		b.WriteString("\n")
+	}
+}
+
+func classifyDiagLabel(label string) (diagLabelKind, string) {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	switch {
+	case strings.Contains(lower, "di wiring"):
+		return diagLabelWiring, "WIRING"
+	case strings.Contains(lower, "signature"):
+		return diagLabelSignature, "SIGNATURE"
+	default:
+		return diagLabelGeneric, ""
+	}
 }
 
 func scoreLine(line string, label string) int {

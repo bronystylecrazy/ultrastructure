@@ -16,9 +16,7 @@ func (a *appNode) Plan() (string, error) {
 	nextID := 0
 	nextScopeID := 1
 	// Build a resolved node list similar to Build(), but only for planning.
-	resolver := buildConfigResolver(a.nodes)
-	nodes := attachConfigResolvers(a.nodes, resolver)
-	nodes = applyAutoGroups(nodes, nil)
+	nodes := applyAutoGroups(a.nodes, nil)
 	nodes, err := applyReplacements(nodes, nil, &nextID, &nextScopeID, []int{0}, nil)
 	if err != nil {
 		return "", err

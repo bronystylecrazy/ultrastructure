@@ -11,7 +11,23 @@ func IgnoreAutoGroupHandlers() di.Option {
 func Init() di.Node {
 	return di.Options(
 		di.AutoGroup[Handler](HandlersGroupName),
-		di.Invoke(SetupHandlers),
-		di.Invoke(RegisterFiberApp),
+		di.Invoke(SetupHandlers, Priority(Earlier)),
+		di.Invoke(func(s Server) error {
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- s.Listen()
+			}()
+
+			select {
+			case <-s.Wait():
+				return nil
+			case err := <-errCh:
+				return err
+			}
+		}),
 	)
+}
+
+func UseServeCommand() di.Node {
+	return di.Provide(NewServeCommand)
 }

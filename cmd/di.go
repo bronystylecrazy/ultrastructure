@@ -14,7 +14,6 @@ func UseServiceCommands() di.Node {
 func UseBasicCommands() di.Node {
 	return di.Options(
 		di.Provide(NewHealthcheckCommand),
-		di.Provide(NewHelpCommand),
 		di.Provide(NewVersionCommand),
 	)
 }

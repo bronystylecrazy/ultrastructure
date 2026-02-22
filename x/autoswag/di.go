@@ -12,13 +12,14 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
-	"gopkg.in/yaml.v3"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 // Middleware provides runtime OpenAPI spec generation.
 type Middleware struct {
 	config              web.Config
+	app                 *fiber.App
 	path                string
 	emitFiles           []string
 	versionedDocs       []VersionedDocsOption
@@ -38,6 +39,9 @@ type Middleware struct {
 	license             *OpenAPILicense
 	spec                *OpenAPISpec
 	versionedSpecs      []mountedSpec
+	customizers         []Customizer
+	preCustomizers      []PreRun
+	postCustomizers     []PostRun
 	logger              *zap.Logger
 }
 
@@ -52,16 +56,30 @@ func Use(opts ...Option) di.Node {
 		di.AutoGroup[PreRun](PreCustomizersGroupName),
 		di.AutoGroup[PostRun](PostCustomizersGroupName),
 		di.Provide(NewSwaggerModelRegistry),
-		di.Provide(func(config web.Config, logger *zap.Logger, registries *web.RegistryContainer, modelRegistry *SwaggerModelRegistry) (*Middleware, error) {
+		di.Provide(func(
+			config web.Config,
+			logger *zap.Logger,
+			server *web.FiberServer,
+			registries *web.RegistryContainer,
+			modelRegistry *SwaggerModelRegistry,
+			customizers []Customizer,
+			preCustomizers []PreRun,
+			postCustomizers []PostRun,
+		) (*Middleware, error) {
 			cfg := ResolveOptions("/docs", opts...)
 
 			var metadataRegistry *web.MetadataRegistry
 			if registries != nil {
 				metadataRegistry = registries.Metadata
 			}
+			var app *fiber.App
+			if server != nil {
+				app = server.App
+			}
 
 			return &Middleware{
 				config:              config,
+				app:                 app,
 				path:                cfg.Path,
 				emitFiles:           append([]string(nil), cfg.EmitFiles...),
 				versionedDocs:       append([]VersionedDocsOption(nil), cfg.VersionedDocs...),
@@ -79,82 +97,17 @@ func Use(opts ...Option) di.Node {
 				termsOfService:      cfg.TermsOfService,
 				contact:             cfg.Contact,
 				license:             cfg.License,
+				customizers:         append([]Customizer(nil), customizers...),
+				preCustomizers:      append([]PreRun(nil), preCustomizers...),
+				postCustomizers:     append([]PostRun(nil), postCustomizers...),
 				logger:              logger,
 			}, nil
-		}, di.AutoGroupIgnoreType[web.Handler](web.HandlersGroupName)),
-		di.Invoke(func(
-			app *fiber.App,
-			middleware *Middleware,
-			logger *zap.Logger,
-			customizers []Customizer,
-			preCustomizers []PreRun,
-			postCustomizers []PostRun,
-		) {
-			routes := InspectFiberRoutes(app, logger)
-			extraModels := combineExtraModelTypes(
-				middleware.modelRegistry,
-				middleware.extraModels,
-			)
-			hooks := composeSwaggerCustomizeHooks(middleware.hook, customizers, preCustomizers, postCustomizers)
-			buildOpts := OpenAPIBuildOptions{
-				SecuritySchemes:     middleware.securitySchemes,
-				DefaultSecurity:     middleware.defaultSecurity,
-				TagDescriptions:     middleware.tagDescriptions,
-				PackageTagTransform: middleware.packageTagTransform,
-				IncludeDiagnostics:  middleware.includeDiagnostics,
-				DiagnosticsSeverity: middleware.diagnosticsSeverity,
-				FailOnDiagnostics:   middleware.failOnDiagnostics,
-				TermsOfService:      middleware.termsOfService,
-				Contact:             middleware.contact,
-				License:             middleware.license,
-				PreHook:             hooks.pre,
-				Hook:                hooks.run,
-				PostHook:            hooks.post,
-				ExtraModels:         extraModels,
-			}
-			middleware.spec = BuildOpenAPISpecWithRegistryAndOptions(routes, middleware.config, middleware.registry, buildOpts)
-			middleware.versionedSpecs = middleware.versionedSpecs[:0]
-			for _, doc := range middleware.versionedDocs {
-				filtered := filterRoutesByPrefix(routes, doc.Prefix)
-				cfg := middleware.config
-				if strings.TrimSpace(doc.Name) != "" {
-					cfg.Name = doc.Name
-				}
-				spec := BuildOpenAPISpecWithRegistryAndOptions(filtered, cfg, middleware.registry, buildOpts)
-				middleware.versionedSpecs = append(middleware.versionedSpecs, mountedSpec{
-					path: doc.Path,
-					spec: spec,
-				})
-				logger.Info("auto-swagger: generated versioned OpenAPI spec",
-					zap.Int("routes", len(filtered)),
-					zap.String("prefix", doc.Prefix),
-					zap.String("ui_path", doc.Path),
-					zap.String("spec_path", doc.Path+"/swagger.json"),
-				)
-			}
-
-			activeRegistry := middleware.registry
-			if activeRegistry != nil {
-				for key, meta := range activeRegistry.AllRoutes() {
-					logger.Debug("registered metadata",
-						zap.String("key", key),
-						zap.String("operationId", meta.OperationID),
-						zap.Strings("tags", meta.Tags),
-					)
-				}
-			}
-
-			logger.Info("auto-swagger: generated OpenAPI spec",
-				zap.Int("routes", len(routes)),
-				zap.String("ui_path", middleware.path),
-				zap.String("spec_path", middleware.path+"/swagger.json"),
-			)
-			middleware.emitSpecFiles()
-			middleware.Handle(web.NewRouterWithRegistry(app, middleware.registry))
 		}, web.Priority(web.Latest), di.Params(
-			``,
-			``,
-			``,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
 			di.Group(CustomizersGroupName),
 			di.Group(PreCustomizersGroupName),
 			di.Group(PostCustomizersGroupName),
@@ -334,6 +287,63 @@ func emitOpenAPIVersion(spec *OpenAPISpec) string {
 
 // Handle registers the auto-swagger routes.
 func (m *Middleware) Handle(r web.Router) {
+	routes := InspectFiberRoutes(m.app, m.logger)
+	extraModels := combineExtraModelTypes(m.modelRegistry, m.extraModels)
+	hooks := composeSwaggerCustomizeHooks(m.hook, m.customizers, m.preCustomizers, m.postCustomizers)
+	buildOpts := OpenAPIBuildOptions{
+		SecuritySchemes:     m.securitySchemes,
+		DefaultSecurity:     m.defaultSecurity,
+		TagDescriptions:     m.tagDescriptions,
+		PackageTagTransform: m.packageTagTransform,
+		IncludeDiagnostics:  m.includeDiagnostics,
+		DiagnosticsSeverity: m.diagnosticsSeverity,
+		FailOnDiagnostics:   m.failOnDiagnostics,
+		TermsOfService:      m.termsOfService,
+		Contact:             m.contact,
+		License:             m.license,
+		PreHook:             hooks.pre,
+		Hook:                hooks.run,
+		PostHook:            hooks.post,
+		ExtraModels:         extraModels,
+	}
+	m.spec = BuildOpenAPISpecWithRegistryAndOptions(routes, m.config, m.registry, buildOpts)
+	m.versionedSpecs = m.versionedSpecs[:0]
+	for _, doc := range m.versionedDocs {
+		filtered := filterRoutesByPrefix(routes, doc.Prefix)
+		cfg := m.config
+		if strings.TrimSpace(doc.Name) != "" {
+			cfg.Name = doc.Name
+		}
+		spec := BuildOpenAPISpecWithRegistryAndOptions(filtered, cfg, m.registry, buildOpts)
+		m.versionedSpecs = append(m.versionedSpecs, mountedSpec{
+			path: doc.Path,
+			spec: spec,
+		})
+		m.logger.Info("auto-swagger: generated versioned OpenAPI spec",
+			zap.Int("routes", len(filtered)),
+			zap.String("prefix", doc.Prefix),
+			zap.String("ui_path", doc.Path),
+			zap.String("spec_path", doc.Path+"/swagger.json"),
+		)
+	}
+
+	if m.registry != nil {
+		for key, meta := range m.registry.AllRoutes() {
+			m.logger.Debug("registered metadata",
+				zap.String("key", key),
+				zap.String("operationId", meta.OperationID),
+				zap.Strings("tags", meta.Tags),
+			)
+		}
+	}
+
+	m.logger.Info("auto-swagger: generated OpenAPI spec",
+		zap.Int("routes", len(routes)),
+		zap.String("ui_path", m.path),
+		zap.String("spec_path", m.path+"/swagger.json"),
+	)
+	m.emitSpecFiles()
+
 	m.registerSpecEndpoints(r, m.path, m.spec)
 	for _, mounted := range m.versionedSpecs {
 		m.registerSpecEndpoints(r, mounted.path, mounted.spec)

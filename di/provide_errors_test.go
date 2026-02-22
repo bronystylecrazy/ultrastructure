@@ -118,3 +118,37 @@ func TestProvideRejectsEmptyGroup(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestProvideRejectsParamsCountMismatch(t *testing.T) {
+	err := startProvideAppError(t,
+		Provide(func(a *basicThing, b *basicThing) *basicThing {
+			return a
+		}, Params(Name("one"))),
+	)
+	if err == nil {
+		t.Fatal("expected start to fail")
+	}
+	if !strings.Contains(err.Error(), "provide_errors_test.go:") {
+		t.Fatalf("expected source location in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Params count must match constructor parameter count") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProvideRejectsVariadicParamsCountMismatch(t *testing.T) {
+	err := startProvideAppError(t,
+		Provide(func(a *basicThing, rest ...*basicThing) *basicThing {
+			return a
+		}, Params(Name("one"))),
+	)
+	if err == nil {
+		t.Fatal("expected start to fail")
+	}
+	if !strings.Contains(err.Error(), "provide_errors_test.go:") {
+		t.Fatalf("expected source location in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "expected 2, got 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

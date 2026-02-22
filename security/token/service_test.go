@@ -10,10 +10,51 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/caching/rd"
+	"github.com/alicebob/miniredis/v2"
 	usweb "github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
+	redis "github.com/redis/go-redis/v9"
 )
+
+type testRevocationCache struct {
+	client *redis.Client
+}
+
+func newTestRevocationCache(client *redis.Client) RevocationCache {
+	return testRevocationCache{client: client}
+}
+
+func (c testRevocationCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return c.client.Set(ctx, key, value, ttl).Err()
+}
+
+func (c testRevocationCache) Get(ctx context.Context, key string) (string, error) {
+	val, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", ErrRevocationCacheMiss
+		}
+		return "", err
+	}
+	return val, nil
+}
+
+func newInMemoryRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run: %v", err)
+	}
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+
+	t.Cleanup(func() {
+		_ = client.Close()
+		server.Close()
+	})
+
+	return client
+}
 
 func TestGenerateTokenPairAndRefresh(t *testing.T) {
 	svc, err := NewService(Config{
@@ -474,11 +515,8 @@ func TestRevokedTokenIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
-	redisClient, err := rd.NewClient(rd.Config{InMemory: true})
-	if err != nil {
-		t.Fatalf("rd.NewClient: %v", err)
-	}
-	svc.SetRevocationStore(NewRedisRevocationStore(redisClient, "test:revoked:"))
+	redisClient := newInMemoryRedisClient(t)
+	svc.SetRevocationStore(NewRedisRevocationStore(newTestRevocationCache(redisClient), "test:revoked:"))
 
 	pair, err := svc.GenerateTokenPair("user-1", nil)
 	if err != nil {
@@ -524,13 +562,10 @@ func TestRevokeTokenWithoutStore(t *testing.T) {
 }
 
 func TestRedisRevocationNamespaceIsolation(t *testing.T) {
-	redisClient, err := rd.NewClient(rd.Config{InMemory: true})
-	if err != nil {
-		t.Fatalf("rd.NewClient: %v", err)
-	}
+	redisClient := newInMemoryRedisClient(t)
 
-	storeA := NewRedisRevocationStoreWithNamespace(redisClient, "test:revoked:", "app-a")
-	storeB := NewRedisRevocationStoreWithNamespace(redisClient, "test:revoked:", "app-b")
+	storeA := NewRedisRevocationStoreWithNamespace(newTestRevocationCache(redisClient), "test:revoked:", "app-a")
+	storeB := NewRedisRevocationStoreWithNamespace(newTestRevocationCache(redisClient), "test:revoked:", "app-b")
 
 	expiresAt := time.Now().Add(10 * time.Minute)
 	if err := storeA.Revoke(context.Background(), "same-jti", expiresAt); err != nil {
@@ -555,13 +590,10 @@ func TestRedisRevocationNamespaceIsolation(t *testing.T) {
 }
 
 func TestRedisRevocationDefaultNamespace(t *testing.T) {
-	redisClient, err := rd.NewClient(rd.Config{InMemory: true})
-	if err != nil {
-		t.Fatalf("rd.NewClient: %v", err)
-	}
+	redisClient := newInMemoryRedisClient(t)
 
-	storeDefault := NewRedisRevocationStore(redisClient, "test:revoked:")
-	storeCustom := NewRedisRevocationStoreWithNamespace(redisClient, "test:revoked:", "app-x")
+	storeDefault := NewRedisRevocationStore(newTestRevocationCache(redisClient), "test:revoked:")
+	storeCustom := NewRedisRevocationStoreWithNamespace(newTestRevocationCache(redisClient), "test:revoked:", "app-x")
 
 	expiresAt := time.Now().Add(10 * time.Minute)
 	if err := storeDefault.Revoke(context.Background(), "same-jti", expiresAt); err != nil {

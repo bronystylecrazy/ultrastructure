@@ -3,13 +3,15 @@ package di
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 
 	"go.uber.org/fx"
 )
 
 // Decorate declares a decorate node.
 func Decorate(function any, opts ...Option) Node {
-	return decorateNode{function: function, opts: opts}
+	file, line := decorateCallSite()
+	return decorateNode{function: function, opts: opts, sourceFile: file, sourceLine: line}
 }
 
 type decorateSpec struct {
@@ -34,6 +36,23 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 		if fnType == nil || fnType.Kind() != reflect.Func {
 			return nil, fmt.Errorf(errDecorateFunctionRequired)
 		}
+		var cfg paramConfig
+		if err := applyParamOptions(entry.dec.opts, &cfg); err != nil {
+			return nil, err
+		}
+		if !hasFxInParam(fnType) {
+			expectedParams := fnType.NumIn()
+			if expectedParams > 0 {
+				// Decorate Params(...) applies only to extra dependencies; the first arg is the decorated value.
+				expectedParams--
+			}
+			if err := resolveVariadicParamTags(entry.dec.function, &cfg, expectedParams); err != nil {
+				return nil, err
+			}
+			if err := validateParamCountForFunctionExpected(entry.dec.function, cfg, entry.dec.sourceFile, entry.dec.sourceLine, errDecorateParamsCountMismatch, "decorate signature", expectedParams); err != nil {
+				return nil, err
+			}
+		}
 		if fnType.NumIn() < 1 {
 			return nil, fmt.Errorf(errDecorateTooFewArgs)
 		}
@@ -41,10 +60,6 @@ func buildDecorators(entries []decorateEntry) ([]fx.Option, error) {
 			return nil, fmt.Errorf(errDecorateSignatureMismatch)
 		}
 		if hasFxInParam(fnType) {
-			var cfg paramConfig
-			if err := applyParamOptions(entry.dec.opts, &cfg); err != nil {
-				return nil, err
-			}
 			if len(cfg.tags) > 0 && !tagsEqual(cfg.tags, cfg.resultTags) {
 				return nil, fmt.Errorf(errDecorateSignatureMismatch)
 			}
@@ -182,6 +197,16 @@ func explicitTagSets(dec decorateNode, fnType reflect.Type) ([]tagSet, bool, err
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
 		return nil, false, err
 	}
+	expectedParams := 0
+	if fnType != nil {
+		expectedParams = fnType.NumIn()
+		if expectedParams > 0 {
+			expectedParams--
+		}
+	}
+	if err := resolveVariadicParamTags(dec.function, &cfg, expectedParams); err != nil {
+		return nil, false, err
+	}
 	if len(cfg.tags) > 0 && fnType != nil && fnType.NumIn() == 1 {
 		if len(cfg.tags) > 1 {
 			return nil, false, fmt.Errorf(errDecorateNameGroupSingle)
@@ -213,6 +238,16 @@ func explicitTagSets(dec decorateNode, fnType reflect.Type) ([]tagSet, bool, err
 func buildDecorateExtraTags(dec decorateNode, fnType reflect.Type) ([]string, error) {
 	var cfg paramConfig
 	if err := applyParamOptions(dec.opts, &cfg); err != nil {
+		return nil, err
+	}
+	expectedParams := 0
+	if fnType != nil {
+		expectedParams = fnType.NumIn()
+		if expectedParams > 0 {
+			expectedParams--
+		}
+	}
+	if err := resolveVariadicParamTags(dec.function, &cfg, expectedParams); err != nil {
 		return nil, err
 	}
 	extraTags := cfg.tags
@@ -579,14 +614,28 @@ func validateDecoratorSignature(base reflect.Type, fn reflect.Type) error {
 }
 
 type decorateNode struct {
-	function any
-	opts     []Option
+	function   any
+	opts       []Option
+	sourceFile string
+	sourceLine int
 }
 
 func (n decorateNode) Build() (fx.Option, error) {
 	var cfg paramConfig
 	if err := applyParamOptions(n.opts, &cfg); err != nil {
 		return nil, err
+	}
+	fnType := reflect.TypeOf(n.function)
+	if fnType != nil && fnType.Kind() == reflect.Func {
+		if !hasFxInParam(fnType) {
+			expectedParams := fnType.NumIn()
+			if expectedParams > 0 {
+				expectedParams--
+			}
+			if err := validateParamCountForFunctionExpected(n.function, cfg, n.sourceFile, n.sourceLine, errDecorateParamsCountMismatch, "decorate signature", expectedParams); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if len(cfg.tags) == 0 && len(cfg.resultTags) == 0 {
 		return fx.Decorate(n.function), nil
@@ -599,4 +648,12 @@ func (n decorateNode) Build() (fx.Option, error) {
 		anns = append(anns, fx.ResultTags(cfg.resultTags...))
 	}
 	return fx.Decorate(fx.Annotate(n.function, anns...)), nil
+}
+
+func decorateCallSite() (string, int) {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "", 0
+	}
+	return file, line
 }

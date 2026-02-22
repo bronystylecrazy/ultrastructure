@@ -1,10 +1,14 @@
 package di
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type provideIface interface {
@@ -211,4 +215,63 @@ func hasTagSetType(tagSets []tagSet, typ reflect.Type) bool {
 		}
 	}
 	return false
+}
+
+type provideWarnPublic interface {
+	Public() string
+}
+
+type provideWarnAuto interface {
+	Auto() string
+}
+
+type provideWarnImpl struct{}
+
+func (p *provideWarnImpl) Public() string { return "ok" }
+func (p *provideWarnImpl) Auto() string   { return "ok" }
+
+func newProvideWarnInterface() provideWarnPublic { return &provideWarnImpl{} }
+
+func TestProvideWarnsWhenAutoGroupWithInterfaceReturn(t *testing.T) {
+	t.Setenv("US_DI_WARN_INTERNAL", "1")
+	core, observed := observer.New(zap.WarnLevel)
+	logger := zap.New(core)
+	app := fxtest.New(t,
+		App(
+			AutoGroup[provideWarnAuto]("warn.auto"),
+			Supply(logger),
+			Provide(newProvideWarnInterface),
+		).Build(),
+	)
+	defer app.RequireStart().RequireStop()
+
+	entries := observed.FilterMessageSnippet("returns interface").All()
+	if len(entries) == 0 {
+		t.Fatalf("expected auto-group interface warning log")
+	}
+}
+
+func TestShouldWarnInterfaceAutoGroup(t *testing.T) {
+	t.Setenv("US_DI_WARN_INTERNAL", "")
+	root := ultrastructureModuleRoot()
+	if root == "" {
+		t.Fatal("expected module root")
+	}
+	internal := filepath.Join(root, "web", "module.go")
+	if shouldWarnInterfaceAutoGroup(internal) {
+		t.Fatalf("expected internal source to be suppressed: %s", internal)
+	}
+
+	external := filepath.Join(t.TempDir(), "main.go")
+	if err := os.WriteFile(external, []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if !shouldWarnInterfaceAutoGroup(external) {
+		t.Fatalf("expected external source to warn: %s", external)
+	}
+
+	t.Setenv("US_DI_WARN_INTERNAL", "1")
+	if !shouldWarnInterfaceAutoGroup(internal) {
+		t.Fatalf("expected override to enable internal warnings")
+	}
 }

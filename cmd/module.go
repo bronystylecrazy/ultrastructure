@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -28,7 +28,7 @@ func Module(extends ...di.Node) di.Node {
 		di.AutoGroup[PreRunner](PreRunnersGroupName),
 		di.AutoGroup[PostRunner](PostRunnersGroupName),
 		di.Module("us.cmd",
-			di.Provide(New, di.Params(di.Optional()), lifecycle.StartPriority(lifecycle.Latest)),
+			di.Provide(New, di.Params(di.Optional(), di.Optional()), lc.StartPriority(lc.Latest)),
 			di.Options(di.ConvertAnys(extends)...),
 		),
 	)
