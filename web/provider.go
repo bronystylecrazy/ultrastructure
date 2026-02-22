@@ -12,7 +12,7 @@ var HandlersGroupName = "us.handlers"
 
 var OtelScope = "web.http"
 
-func Provide(extends ...di.Node) di.Node {
+func Providers(extends ...di.Node) di.Node {
 
 	nodes := []di.Node{
 		di.AutoGroup[FiberConfigurer](FiberConfigurersGroupName),

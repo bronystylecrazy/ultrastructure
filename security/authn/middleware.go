@@ -5,7 +5,7 @@ import (
 
 	apikey "github.com/bronystylecrazy/ultrastructure/security/apikey"
 	httpx "github.com/bronystylecrazy/ultrastructure/security/internal/httpx"
-	token "github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -64,7 +64,7 @@ func AnyWithMode(mode ErrorMode, authenticators ...Authenticator) fiber.Handler 
 	}
 }
 
-func UserTokenAuthenticator(user token.Manager) Authenticator {
+func UserTokenAuthenticator(user session.Validator) Authenticator {
 	return AuthenticatorFunc(func(c fiber.Ctx) (*Principal, bool, error) {
 		if user == nil {
 			return nil, false, nil
@@ -74,7 +74,7 @@ func UserTokenAuthenticator(user token.Manager) Authenticator {
 			return nil, false, nil
 		}
 		raw := strings.TrimSpace(auth[len("Bearer "):])
-		claims, err := user.ValidateToken(raw, token.TokenTypeAccess)
+		claims, err := user.Validate(raw, session.TokenTypeAccess)
 		if err != nil {
 			return nil, true, err
 		}

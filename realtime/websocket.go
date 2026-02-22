@@ -18,11 +18,6 @@ import (
 
 const TypeWS = "ws"
 
-var (
-	// ErrInvalidMessage indicates that a message payload was not valid.
-	ErrInvalidMessage = errors.New("message type not binary")
-)
-
 // Websocket is a listener for establishing websocket connections.
 type Websocket struct { // [MQTT-4.2.0-1]
 	sync.RWMutex

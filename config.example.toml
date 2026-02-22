@@ -63,7 +63,12 @@ without_metrics = false
 include_dry_run_spans = false
 
 [token]
+algorithm = "HS256" # "HS256" | "EdDSA"
 secret = "change-me"
+private_key = "" # required for EdDSA (PEM or base64 ed25519 private key)
+public_key = ""  # required for EdDSA (PEM, cert PEM, or base64 ed25519 public key)
+private_key_file = "" # optional, overrides private_key when set
+public_key_file = ""  # optional, overrides public_key when set
 issuer = "ultrastructure"
 access_token_ttl = "15m"
 refresh_token_ttl = "720h"

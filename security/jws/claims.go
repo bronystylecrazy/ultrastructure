@@ -1,4 +1,4 @@
-package token
+package jws
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ func claimsFromJWT(in jwtgo.MapClaims) Claims {
 	}
 	return Claims{
 		Subject:   claimString(values, "sub"),
-		TokenType: claimString(values, "token_type"),
+		TokenType: claimString(values, "typ"),
 		JTI:       claimString(values, "jti"),
 		ExpiresAt: claimUnixTime(values["exp"]),
 		Values:    values,

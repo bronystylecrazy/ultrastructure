@@ -3,6 +3,7 @@ package web
 import (
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -437,12 +438,35 @@ func (b *RouteBuilder) Scopes(scheme string, scopes ...string) *RouteBuilder {
 	}
 
 	copiedScopes := append([]string(nil), scopes...)
+	key := securityRequirementKey(SecurityRequirement{
+		Scheme: scheme,
+		Scopes: copiedScopes,
+	})
+	for _, existing := range b.metadata.Security {
+		if securityRequirementKey(existing) == key {
+			return b
+		}
+	}
 	b.metadata.Security = append(b.metadata.Security, SecurityRequirement{
 		Scheme: scheme,
 		Scopes: copiedScopes,
 	})
 	b.finalize()
 	return b
+}
+
+func securityRequirementKey(req SecurityRequirement) string {
+	scheme := strings.TrimSpace(req.Scheme)
+	scopes := make([]string, 0, len(req.Scopes))
+	for _, scope := range req.Scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		scopes = append(scopes, scope)
+	}
+	sort.Strings(scopes)
+	return scheme + "|" + strings.Join(scopes, ",")
 }
 
 // Policies adds policy names used by authz policy governance.

@@ -1,22 +1,26 @@
-package token
+package session
 
 import (
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 )
 
+type SubjectResolver func(c fiber.Ctx) (string, error)
+
 type RefreshHandler struct {
-	service   Manager
-	path      string
-	deliverer PairDeliverer
-	resolver  PairDelivererResolver
+	service         Manager
+	subjectResolver SubjectResolver
+	path            string
+	deliverer       PairDeliverer
+	resolver        PairDelivererResolver
 }
 
-func NewRefreshHandler(service Manager) *RefreshHandler {
+func NewRefreshHandler(service Manager, subjectResolver SubjectResolver) *RefreshHandler {
 	return &RefreshHandler{
-		service:   service,
-		path:      "/api/v1/auth/refresh",
-		deliverer: JSONPairDeliverer(),
+		service:         service,
+		subjectResolver: subjectResolver,
+		path:            "/api/v1/auth/refresh",
+		deliverer:       JSONPairDeliverer(),
 	}
 }
 
@@ -46,13 +50,24 @@ func (h *RefreshHandler) WithDelivererResolver(resolver PairDelivererResolver) *
 	return h
 }
 
+func (h *RefreshHandler) WithSubjectResolver(subjectResolver SubjectResolver) *RefreshHandler {
+	if subjectResolver != nil {
+		h.subjectResolver = subjectResolver
+	}
+	return h
+}
+
 func (h *RefreshHandler) Refresh(c fiber.Ctx) error {
-	sub, err := SubjectFromContext(c)
-	if err != nil {
-		return unauthorized(c, err)
+	if h.subjectResolver == nil {
+		return writeUnauthorized(c, ErrMissingRefreshSubjectResolver)
 	}
 
-	pair, err := h.service.GenerateTokenPair(sub, nil)
+	sub, err := h.subjectResolver(c)
+	if err != nil {
+		return writeUnauthorized(c, err)
+	}
+
+	pair, err := h.service.Generate(sub)
 	if err != nil {
 		return err
 	}

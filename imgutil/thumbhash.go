@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -16,14 +15,6 @@ import (
 	"unsafe"
 
 	"github.com/bronystylecrazy/ultrastructure/imgutil/internal/thumbhash"
-)
-
-var (
-	ErrInvalidInput = errors.New("imgutil: invalid input")
-	ErrOpenFile     = errors.New("imgutil: open file")
-	ErrDecodeImage  = errors.New("imgutil: decode image")
-	ErrDecodeHash   = errors.New("imgutil: decode hash")
-	ErrInvalidHash  = thumbhash.ErrInvalidHash
 )
 
 var decodeReaderPool = sync.Pool{

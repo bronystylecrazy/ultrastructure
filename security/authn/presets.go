@@ -2,11 +2,11 @@ package authn
 
 import (
 	apikey "github.com/bronystylecrazy/ultrastructure/security/apikey"
-	token "github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/gofiber/fiber/v3"
 )
 
-func UserOnly(user token.Manager, modes ...ErrorMode) fiber.Handler {
+func UserOnly(user session.Validator, modes ...ErrorMode) fiber.Handler {
 	return AnyWithMode(resolveErrorMode(modes...), UserTokenAuthenticator(user))
 }
 
@@ -14,7 +14,7 @@ func APIKeyOnly(app apikey.Manager, modes ...ErrorMode) fiber.Handler {
 	return AnyWithMode(resolveErrorMode(modes...), APIKeyAuthenticator(app))
 }
 
-func UserAndAPIKey(user token.Manager, app apikey.Manager, modes ...ErrorMode) fiber.Handler {
+func UserAndAPIKey(user session.Validator, app apikey.Manager, modes ...ErrorMode) fiber.Handler {
 	return AnyWithMode(
 		resolveErrorMode(modes...),
 		UserTokenAuthenticator(user),

@@ -14,7 +14,7 @@ func TestModuleProvidesServiceAndInterface(t *testing.T) {
 
 	defer ditest.New(
 		t,
-		imgutil.Module(),
+		imgutil.Providers(),
 		di.Populate(&svc),
 		di.Populate(&hasher),
 	).RequireStart().RequireStop()

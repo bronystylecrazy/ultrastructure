@@ -130,3 +130,29 @@ func TestRequireRouteScopes_ForbiddenOnSchemeMismatch(t *testing.T) {
 		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusForbidden)
 	}
 }
+
+func TestRequireRouteScopes_SuperAdminBypass(t *testing.T) {
+	registry := web.NewRegistryContainer().Metadata
+	app := fiber.New()
+	r := web.NewRouterWithRegistry(app, registry)
+
+	r.Get("/orders", func(c fiber.Ctx) error {
+		c.SetContext(authn.WithPrincipal(c.Context(), &authn.Principal{
+			Type:   authn.PrincipalUser,
+			Roles:  []string{authz.SuperAdminRole},
+			Scopes: nil,
+		}))
+		return c.Next()
+	}, authz.RequireRouteScopes(authz.WithScopeRegistry(registry)), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}).Scopes("BearerAuth", "orders:read")
+
+	req := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}

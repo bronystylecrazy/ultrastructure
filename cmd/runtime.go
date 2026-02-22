@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	xservice "github.com/bronystylecrazy/ultrastructure/service"
 	"github.com/spf13/cobra"
@@ -49,8 +48,4 @@ func (h *serviceRuntimeHook) PreRun(cmd *cobra.Command, args []string) (bool, er
 		return true, fmt.Errorf("shutdown after service runtime: %w", err)
 	}
 	return true, nil
-}
-
-func UseServiceRuntime() di.Node {
-	return di.Provide(NewServiceRuntimeHook, di.As[PreRunner]())
 }

@@ -55,8 +55,10 @@ func NewService(p NewServiceParams) *Service {
 	}
 }
 
-func (s *Service) IssueKey(appID string, prefix string, scopes []string, metadata map[string]string, expiresAt *time.Time) (*IssuedKey, error) {
-	raw, keyID, secret, err := s.generator.GenerateRawKey(prefix)
+func (s *Service) IssueKey(appID string, opts ...IssueOption) (*IssuedKey, error) {
+	issue := resolveIssueConfig(opts...)
+
+	raw, keyID, secret, err := s.generator.GenerateRawKey(issue.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +70,11 @@ func (s *Service) IssueKey(appID string, prefix string, scopes []string, metadat
 		KeyID:      keyID,
 		AppID:      appID,
 		RawKey:     raw,
-		Prefix:     s.resolvePrefix(prefix),
+		Prefix:     s.resolvePrefix(issue.Prefix),
 		SecretHash: hash,
-		Scopes:     append([]string(nil), scopes...),
-		Metadata:   cloneMap(metadata),
-		ExpiresAt:  expiresAt,
+		Scopes:     append([]string(nil), issue.Scopes...),
+		Metadata:   cloneMap(issue.Metadata),
+		ExpiresAt:  issue.ExpiresAt,
 	}, nil
 }
 

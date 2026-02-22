@@ -19,7 +19,7 @@ func newModuleProbeObservable() *moduleProbeObservable {
 func TestModuleAutoGroupsObservableAndAppliesLayer(t *testing.T) {
 	var layer string
 	app := ditest.New(t,
-		Module(),
+		Providers(),
 		di.Supply(context.Background(), di.As[context.Context]()),
 		di.Provide(newModuleProbeObservable, Layer("otel.module.test")),
 		di.Invoke(func(_ Attached, probe *moduleProbeObservable) {

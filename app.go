@@ -13,7 +13,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
-	"github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	kservice "github.com/kardianos/service"
@@ -109,15 +109,15 @@ func sanitizeServiceName(name string) string {
 func defaultNodes() []any {
 	return []any{
 		di.Diagnostics(),
-		otel.Module(),
-		lc.Module(),
-		web.Provide(),
-		token.Module(),
-		database.Module(),
-		realtime.Module(),
-		cmd.Module(),
-		s3.Module(),
-		imgutil.Module(),
+		otel.Providers(),
+		lc.Providers(),
+		web.Providers(),
+		session.Providers(),
+		database.Providers(),
+		realtime.Providers(),
+		cmd.Providers(),
+		s3.Providers(),
+		imgutil.Providers(),
 	}
 }
 

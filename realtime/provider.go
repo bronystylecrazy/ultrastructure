@@ -12,7 +12,7 @@ import (
 var HooksGroupName = "mqtt_hooks"
 var ListenersGroupName = "mqtt_listeners"
 
-func Module(opts ...di.Node) di.Node {
+func Providers(opts ...di.Node) di.Node {
 	return di.Options(
 		di.AutoGroup[mqtt.Hook](HooksGroupName),
 		di.AutoGroup[listeners.Listener](ListenersGroupName),

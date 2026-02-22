@@ -43,7 +43,12 @@ func TestIssueKeyAndParse(t *testing.T) {
 		Hasher:    hasher,
 	})
 
-	issued, err := svc.IssueKey("app-1", "intg", []string{"read:orders"}, map[string]string{"env": "test"}, nil)
+	issued, err := svc.IssueKey(
+		"app-1",
+		WithPrefix("intg"),
+		WithScopes("read:orders"),
+		WithMetadata(map[string]string{"env": "test"}),
+	)
 	if err != nil {
 		t.Fatalf("IssueKey: %v", err)
 	}

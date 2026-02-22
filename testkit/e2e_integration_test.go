@@ -173,11 +173,11 @@ func startE2EApp(t *testing.T, pgURL string, redisCtr *RedisContainer, minio *Mi
 
 	app := ditest.New(t,
 		di.Diagnostics(),
-		lc.Module(),
-		otel.Module(),
+		lc.Providers(),
+		otel.Providers(),
 		xgorm.Module(),
-		rd.Module(rd.UseInterfaces()),
-		uss3.Module(uss3.UseInterfaces()),
+		rd.Providers(),
+		uss3.Providers(uss3.UseInterfaces()),
 
 		di.Replace(database.Config{
 			Driver:     "postgres",

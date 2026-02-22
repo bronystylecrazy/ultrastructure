@@ -79,12 +79,6 @@ type topicCtx struct {
 	ctx        context.Context
 }
 
-var ErrTopicCtxNoClient = errors.New("realtime: topic context has no client")
-var ErrTopicCtxNoPublisher = errors.New("realtime: topic context has no publisher")
-var ErrTopicCtxSessionControlUnsupported = errors.New("realtime: session control is unsupported")
-var ErrTopicClientDisconnectedByHandler = errors.New("realtime: client disconnected by topic handler")
-var ErrTopicClientRejectedByHandler = errors.New("realtime: client rejected by topic handler")
-
 func (c *topicCtx) Client() *mqtt.Client {
 	return c.client
 }

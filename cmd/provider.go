@@ -21,17 +21,16 @@ type registerParams struct {
 	PostRunners []PostRunner `group:"us/cmd/post_runners"`
 }
 
-// Module wires root command creation and auto-registration for all Commander implementations.
-func Module(extends ...di.Node) di.Node {
-	return di.Options(
+// Providers wires root command creation and auto-registration for all Commander implementations.
+func Providers(extends ...di.Node) di.Node {
+	nodes := []any{
 		di.AutoGroup[Commander](CommandersGroupName),
 		di.AutoGroup[PreRunner](PreRunnersGroupName),
 		di.AutoGroup[PostRunner](PostRunnersGroupName),
-		di.Module("us.cmd",
-			di.Provide(New, di.Params(di.Optional(), di.Optional()), lc.StartPriority(lc.Latest)),
-			di.Options(di.ConvertAnys(extends)...),
-		),
-	)
+		di.Provide(New, di.Params(di.Optional(), di.Optional()), lc.StartPriority(lc.Latest)),
+	}
+	nodes = append(nodes, di.ConvertAnys(extends)...)
+	return di.Options(nodes...)
 }
 
 func RegisterCommands(params registerParams) error {

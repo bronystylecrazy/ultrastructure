@@ -4,7 +4,8 @@ import (
 	"context"
 
 	apikey "github.com/bronystylecrazy/ultrastructure/security/apikey"
-	token "github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/jws"
+	session "github.com/bronystylecrazy/ultrastructure/security/session"
 )
 
 type TB interface {
@@ -54,19 +55,23 @@ func NewAPIKeyManager(tb TB) (apikey.Manager, string) {
 	return m, raw
 }
 
-func NewUserManager(tb TB) (token.Manager, string) {
+func NewUserManager(tb TB) (session.Validator, string) {
 	tb.Helper()
 
-	m, err := token.NewService(token.Config{Secret: "test-secret"})
+	signer, err := jws.NewSigner(jws.Config{Secret: "test-secret"})
+	if err != nil {
+		tb.Fatalf("NewSigner: %v", err)
+	}
+	m, err := session.NewJWTManager(jws.Config{Secret: "test-secret"}, signer)
 	if err != nil {
 		tb.Fatalf("NewService: %v", err)
 	}
-	pair, err := m.GenerateTokenPair("user-1", map[string]any{
+	pair, err := m.Generate("user-1", session.WithAccessClaims(map[string]any{
 		"role":  "admin",
 		"scope": "read:orders write:orders",
-	})
+	}))
 	if err != nil {
-		tb.Fatalf("GenerateTokenPair: %v", err)
+		tb.Fatalf("Generate: %v", err)
 	}
 	return m, pair.AccessToken
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -13,7 +13,7 @@ type tokenRevocationCacheAdapter struct {
 	client *redis.Client
 }
 
-func NewTokenRevocationCache(client *redis.Client) token.RevocationCache {
+func NewTokenRevocationCache(client *redis.Client) session.RevocationCache {
 	if client == nil {
 		return nil
 	}
@@ -28,7 +28,7 @@ func (a tokenRevocationCacheAdapter) Get(ctx context.Context, key string) (strin
 	val, err := a.client.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return "", token.ErrRevocationCacheMiss
+			return "", session.ErrRevocationCacheMiss
 		}
 		return "", err
 	}

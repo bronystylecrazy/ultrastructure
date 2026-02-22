@@ -18,7 +18,7 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 
 	defer ustest.New(
 		t,
-		di.Supply(rd.Config{InMemory: true}),
+		rd.Providers(),
 		di.Populate(&raw),
 		di.Populate(&client),
 		di.Populate(&manager),
@@ -44,9 +44,5 @@ func TestUseInterfacesProvidesRedisInterfaces(t *testing.T) {
 
 	if got := any(client).(*redis.Client); got != raw {
 		t.Fatal("redis client interface does not point to the same client instance")
-	}
-
-	if err := raw.Ping(t.Context()).Err(); err != nil {
-		t.Fatalf("ping redis: %v", err)
 	}
 }

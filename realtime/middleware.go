@@ -1,14 +1,11 @@
 package realtime
 
 import (
-	"errors"
 	"fmt"
 	"runtime/debug"
 
 	"go.uber.org/zap"
 )
-
-var ErrTopicHandlerPanic = errors.New("realtime: panic in topic handler")
 
 func RecoverTopicMiddleware(log *zap.Logger) TopicMiddleware {
 	if log == nil {

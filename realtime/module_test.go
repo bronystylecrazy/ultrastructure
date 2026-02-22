@@ -19,7 +19,7 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	var subscriber usmqtt.Subscriber
 
 	app := ditest.New(t,
-		Module(),
+		Providers(),
 		di.Populate(&broker),
 		di.Populate(&publisher),
 		di.Populate(&subscriber),

@@ -64,6 +64,22 @@ func UsePolicyGovernance(defs ...PolicyDefinition) di.Node {
 	)
 }
 
+func UseSuperAdminRoles(roles ...string) di.Node {
+	return di.Invoke(func(lc fx.Lifecycle) {
+		previous := SuperAdminRoles()
+		lc.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				SetSuperAdminRoles(roles...)
+				return nil
+			},
+			OnStop: func(context.Context) error {
+				SetSuperAdminRoles(previous...)
+				return nil
+			},
+		})
+	}, di.Params(``))
+}
+
 func registerScopeEnum(defs ...ScopeDefinition) {
 	if len(defs) == 0 {
 		return
@@ -85,7 +101,7 @@ func registerScopeEnum(defs ...ScopeDefinition) {
 		return
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	autoswag.RegisterEnum[ScopeName](out...)
+	autoswag.RegisterEnum(out...)
 }
 
 func registerPolicyEnum(defs ...PolicyDefinition) {
@@ -109,5 +125,5 @@ func registerPolicyEnum(defs ...PolicyDefinition) {
 		return
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	autoswag.RegisterEnum[PolicyName](out...)
+	autoswag.RegisterEnum(out...)
 }

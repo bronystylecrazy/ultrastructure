@@ -12,21 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	xservice "github.com/bronystylecrazy/ultrastructure/service"
 	"github.com/kardianos/service"
 )
-
-func UseServiceController() di.Node {
-	return di.Provide(
-		NewServiceController,
-		di.As[ServiceController](),
-		di.AutoGroupIgnoreType[lc.Starter](),
-		di.AutoGroupIgnoreType[lc.Stopper](),
-	)
-}
 
 type serviceProgram struct{}
 

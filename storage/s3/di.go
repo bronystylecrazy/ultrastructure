@@ -10,30 +10,28 @@ import (
 
 var AppendersGroupName = "us.s3.middlewares.appenders"
 
-func Module(extends ...di.Node) di.Node {
-	return di.Options(
+func Providers(extends ...di.Node) di.Node {
+	nodes := []any{
 		di.AutoGroup[Appender](AppendersGroupName),
-		di.Module(
-			"us/storage/s3",
-			cfg.Config[Config]("storage.s3", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
-			di.Provide(otelaws.NewMiddlewares, otel.Layer(otelaws.ScopeName)),
-			di.Provide(NewAWSConfig),
-			di.Provide(NewS3Client, di.Params(``, ``, di.Group(AppendersGroupName))),
-			di.Provide(
-				func(c *Client) *s3.Client {
-					return c.S3
-				},
-				interfaces()...,
-			),
-			di.Provide(
-				func(c *Client) *s3.PresignClient {
-					return c.Presign
-				},
-				di.AsSelf[Presigner](),
-			),
-			di.Options(di.ConvertAnys(extends)...),
+		cfg.Config[Config]("storage.s3", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
+		di.Provide(otelaws.NewMiddlewares, otel.Layer(otelaws.ScopeName)),
+		di.Provide(NewAWSConfig),
+		di.Provide(NewS3Client, di.Params(``, ``, di.Group(AppendersGroupName))),
+		di.Provide(
+			func(c *Client) *s3.Client {
+				return c.S3
+			},
+			interfaces()...,
 		),
-	)
+		di.Provide(
+			func(c *Client) *s3.PresignClient {
+				return c.Presign
+			},
+			di.AsSelf[Presigner](),
+		),
+	}
+	nodes = append(nodes, di.ConvertAnys(extends)...)
+	return di.Options(nodes...)
 }
 
 func interfaces() []any {

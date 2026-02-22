@@ -23,8 +23,19 @@ func BuildFiberListenConfig(config Config) (fiber.ListenConfig, error) {
 		EnablePrefork:         config.Listen.EnablePrefork,
 		EnablePrintRoutes:     config.Listen.EnablePrintRoutes,
 	}
-	if config.TLS.CertFile == "" && config.TLS.CertKeyFile == "" && config.TLS.CertClientFile == "" {
+
+	certFile := strings.TrimSpace(config.TLS.CertFile)
+	certKeyFile := strings.TrimSpace(config.TLS.CertKeyFile)
+	certClientFile := strings.TrimSpace(config.TLS.CertClientFile)
+
+	if certFile == "" && certKeyFile == "" && certClientFile == "" {
 		return out, nil
+	}
+	if certFile == "" && certKeyFile == "" && certClientFile != "" {
+		return fiber.ListenConfig{}, fmt.Errorf("tls client CA requires server cert_file and cert_key_file")
+	}
+	if certFile == "" || certKeyFile == "" {
+		return fiber.ListenConfig{}, fmt.Errorf("both cert_file and cert_key_file are required for TLS")
 	}
 
 	tlsVersion, err := ParseTLSMinVersion(config.TLS.TLSMinVersion)
@@ -32,9 +43,9 @@ func BuildFiberListenConfig(config Config) (fiber.ListenConfig, error) {
 		return fiber.ListenConfig{}, err
 	}
 
-	out.CertFile = config.TLS.CertFile
-	out.CertKeyFile = config.TLS.CertKeyFile
-	out.CertClientFile = config.TLS.CertClientFile
+	out.CertFile = certFile
+	out.CertKeyFile = certKeyFile
+	out.CertClientFile = certClientFile
 	out.TLSMinVersion = tlsVersion
 	return out, nil
 }

@@ -2,16 +2,12 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
-
-var ErrServiceControllerNotConfigured = errors.New("service controller is not configured")
-var ErrServiceStatusNotSupported = errors.New("service status is not supported by controller")
 
 type ServiceController interface {
 	Install(ctx context.Context) error

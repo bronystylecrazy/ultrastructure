@@ -2,7 +2,6 @@ package realtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,10 +17,6 @@ import (
 
 var SubscribersGroupName = "mqtt_subscribers"
 var TopicMiddlewaresGroupName = "mqtt_topic_middlewares"
-
-var ErrTopicRegistrarStopped = errors.New("realtime: topic registrar is stopped")
-var ErrTopicNotAllowed = errors.New("realtime: topic is not allowed by acl")
-var ErrInvalidTopicRegistrationArgs = errors.New("realtime: invalid topic registration args")
 
 type subscriptionEntry struct {
 	filter string

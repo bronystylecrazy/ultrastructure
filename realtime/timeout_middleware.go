@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-var ErrTopicHandlerTimeout = errors.New("realtime: topic handler timed out")
-
 type TimeoutTopicMiddlewareOption func(*timeoutTopicMiddlewareConfig)
 
 type timeoutTopicMiddlewareConfig struct {

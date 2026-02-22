@@ -166,3 +166,99 @@ func TestResolvePolicyAutoEnforcesRouteScopes(t *testing.T) {
 		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusForbidden)
 	}
 }
+
+func TestRequireAnyScope_SuperAdminBypass(t *testing.T) {
+	app := fiber.New()
+	app.Get("/p", func(c fiber.Ctx) error {
+		c.SetContext(authn.WithPrincipal(c.Context(), &authn.Principal{
+			Type:  authn.PrincipalUser,
+			Roles: []string{authz.SuperAdminRole},
+		}))
+		return c.Next()
+	}, authz.RequireAnyScope("missing:scope"), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}
+
+func TestRequireAllScopes_SuperAdminBypass(t *testing.T) {
+	app := fiber.New()
+	app.Get("/p", func(c fiber.Ctx) error {
+		c.SetContext(authn.WithPrincipal(c.Context(), &authn.Principal{
+			Type:  authn.PrincipalUser,
+			Roles: []string{authz.SuperAdminRole},
+		}))
+		return c.Next()
+	}, authz.RequireAllScopes("missing:read", "missing:write"), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}
+
+func TestRequireAnyScope_CustomSuperAdminRoleBypass(t *testing.T) {
+	previous := authz.SuperAdminRoles()
+	authz.SetSuperAdminRoles("owner")
+	t.Cleanup(func() { authz.SetSuperAdminRoles(previous...) })
+
+	app := fiber.New()
+	app.Get("/p", func(c fiber.Ctx) error {
+		c.SetContext(authn.WithPrincipal(c.Context(), &authn.Principal{
+			Type:  authn.PrincipalUser,
+			Roles: []string{"owner"},
+		}))
+		return c.Next()
+	}, authz.RequireAnyScope("missing:scope"), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}
+
+func TestRequireAnyScope_SuperAdminRoleOverrideDisablesDefault(t *testing.T) {
+	previous := authz.SuperAdminRoles()
+	authz.SetSuperAdminRoles("owner")
+	t.Cleanup(func() { authz.SetSuperAdminRoles(previous...) })
+
+	app := fiber.New()
+	app.Get("/p", func(c fiber.Ctx) error {
+		c.SetContext(authn.WithPrincipal(c.Context(), &authn.Principal{
+			Type:  authn.PrincipalUser,
+			Roles: []string{authz.SuperAdminRole},
+		}))
+		return c.Next()
+	}, authz.RequireAnyScope("missing:scope"), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusForbidden {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusForbidden)
+	}
+}

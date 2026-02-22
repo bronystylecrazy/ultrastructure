@@ -21,7 +21,7 @@ func NewBackgroundContext(lc fx.Lifecycle) context.Context {
 	return ctx
 }
 
-func Module() di.Node {
+func Providers() di.Node {
 	return di.Options(
 		di.AutoGroup[Starter](StartersGroupName),
 		di.AutoGroup[Stopper](StoppersGroupName),

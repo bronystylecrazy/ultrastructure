@@ -4,20 +4,18 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/cfg"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/security/apikey"
-	"github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 )
 
-func Module(extends ...di.Node) di.Node {
-	return di.Options(
-		di.Module(
-			"us/caching/redis",
-			cfg.Config[Config]("caching.redis", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
-			di.Provide(NewClient, interfaces()...),
-			di.Provide(NewAPIKeyCacheStore, di.As[apikey.CacheStore]()),
-			di.Provide(NewTokenRevocationCache, di.As[token.RevocationCache]()),
-			di.Options(di.ConvertAnys(extends)...),
-		),
-	)
+func Providers(extends ...di.Node) di.Node {
+	nodes := []any{
+		cfg.Config[Config]("caching.redis", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
+		di.Provide(NewClient, interfaces()...),
+		di.Provide(NewAPIKeyCacheStore, di.As[apikey.CacheStore]()),
+		di.Provide(NewTokenRevocationCache, di.As[session.RevocationCache]()),
+	}
+	nodes = append(nodes, di.ConvertAnys(extends)...)
+	return di.Options(nodes...)
 }
 
 func interfaces() []any {

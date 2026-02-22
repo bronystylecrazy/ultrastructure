@@ -70,6 +70,9 @@ func RequireRouteScopes(opts ...RouteScopeOption) fiber.Handler {
 		if !ok || p == nil {
 			return denyUnauthorized(c)
 		}
+		if isSuperAdmin(p) {
+			return c.Next()
+		}
 		if !enforceRouteScopes(c, p, cfg) {
 			return nil
 		}

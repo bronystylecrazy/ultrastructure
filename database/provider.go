@@ -5,10 +5,10 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/di"
 )
 
-func Module(opts ...di.Node) di.Node {
-	return di.Module(
-		"us/database",
+func Providers(opts ...di.Node) di.Node {
+	nodes := []any{
 		cfg.Config[Config]("db", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
-		di.Options(di.ConvertAnys(opts)...),
-	)
+	}
+	nodes = append(nodes, di.ConvertAnys(opts)...)
+	return di.Options(nodes...)
 }

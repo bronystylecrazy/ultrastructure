@@ -6,7 +6,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func Module() di.Node {
+func Providers() di.Node {
 	return di.Options(
 		// auto group for otel.Telemetry
 		di.AutoGroup[Observable](ObservablesGroupName),

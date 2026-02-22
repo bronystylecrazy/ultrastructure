@@ -55,7 +55,7 @@ type Rotator interface {
 }
 
 type Manager interface {
-	IssueKey(appID string, prefix string, scopes []string, metadata map[string]string, expiresAt *time.Time) (*IssuedKey, error)
+	IssueKey(appID string, opts ...IssueOption) (*IssuedKey, error)
 	ValidateRawKey(ctx context.Context, rawKey string) (*Principal, error)
 	Middleware() fiber.Handler
 	RevokeKey(ctx context.Context, keyID string, reason string) error

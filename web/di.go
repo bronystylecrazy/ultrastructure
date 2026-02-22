@@ -31,3 +31,11 @@ func Init() di.Node {
 func UseServeCommand() di.Node {
 	return di.Provide(NewServeCommand)
 }
+
+func UseBuildInfo(opts ...BuildInfoOption) di.Node {
+	return di.Options(
+		di.Provide(func() *BuildInfoHandler {
+			return NewBuildInfoHandler(opts...)
+		}),
+	)
+}

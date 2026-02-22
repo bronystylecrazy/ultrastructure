@@ -54,7 +54,7 @@ func (s *stopperLater) Stop(context.Context) error {
 func TestModuleStartPriorityOrdersStartersOnStart(t *testing.T) {
 	rec := &lifecycleOrderRecorder{}
 	app := ditest.New(t,
-		Module(),
+		Providers(),
 		di.Supply(rec),
 		di.Provide(func(r *lifecycleOrderRecorder) *starterNormal { return &starterNormal{rec: r} }),
 		di.Provide(func(r *lifecycleOrderRecorder) *starterLater { return &starterLater{rec: r} }, StartPriority(Later)),
@@ -77,7 +77,7 @@ func TestModuleStartPriorityOrdersStartersOnStart(t *testing.T) {
 func TestModuleStopPriorityAffectsStopExecutionOrder(t *testing.T) {
 	rec := &lifecycleOrderRecorder{}
 	app := ditest.New(t,
-		Module(),
+		Providers(),
 		di.Supply(rec),
 		di.Provide(func(r *lifecycleOrderRecorder) *stopperNormal { return &stopperNormal{rec: r} }),
 		di.Provide(func(r *lifecycleOrderRecorder) *stopperLater { return &stopperLater{rec: r} }, StopPriority(Later)),

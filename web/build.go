@@ -1,7 +1,6 @@
 package web
 
 import (
-	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/gofiber/fiber/v3"
 )
@@ -20,14 +19,6 @@ type BuildInfoResponse struct {
 	Version     string `json:"version"`
 	Commit      string `json:"commit"`
 	BuildDate   string `json:"buildDate"`
-}
-
-func UseBuildInfo(opts ...BuildInfoOption) di.Node {
-	return di.Options(
-		di.Provide(func() *BuildInfoHandler {
-			return NewBuildInfoHandler(opts...)
-		}),
-	)
 }
 
 func WithDefaultPath(path ...string) BuildInfoOption {
