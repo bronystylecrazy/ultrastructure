@@ -5,26 +5,20 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"runtime"
 	"strings"
 )
 
 var (
-	ErrDeviceBindingUnavailable = errors.New("device binding unavailable")
+	ErrHardwareBindingUnavailable = errors.New("hardware binding unavailable")
 )
 
-// ExpectedDeviceBinding returns the current machine binding in the same shape
-// as the license payload so callers can compare signed and runtime values.
-func ExpectedDeviceBinding(ctx context.Context) (*DeviceBinding, error) {
-	binding, err := expectedDeviceBinding(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if binding == nil {
-		return nil, fmt.Errorf("%w: empty binding", ErrDeviceBindingUnavailable)
-	}
-	return binding, nil
+type HardwareDetector interface {
+	Detect(ctx context.Context) (*HardwareBinding, error)
+}
+
+func NewHardwareDetector() HardwareDetector {
+	return platformHardwareDetector{}
 }
 
 func normalizedPlatform() string {
@@ -44,4 +38,12 @@ func hashToPubHash(value string) string {
 func hashBytesToPubHash(value []byte) string {
 	sum := sha256.Sum256(value)
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func newOSKeystoreBinding(rawID string) *HardwareBinding {
+	return &HardwareBinding{
+		Platform: normalizedPlatform(),
+		Method:   "os-keystore",
+		PubHash:  hashToPubHash(strings.ToLower(strings.TrimSpace(rawID))),
+	}
 }

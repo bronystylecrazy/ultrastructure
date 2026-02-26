@@ -25,36 +25,35 @@ type SecureEnclaveSigner interface {
 	SignDigest(ctx context.Context, digest []byte) ([]byte, error)
 }
 
-// ExpectedDeviceBindingFromSecureEnclave derives the runtime device binding
+// ExpectedHardwareBindingFromSecureEnclave derives the runtime hardware binding
 // from a secure-key public key so licenses can bind to that key material.
-func ExpectedDeviceBindingFromSecureEnclave(ctx context.Context, signer SecureEnclaveSigner) (*DeviceBinding, error) {
+func ExpectedHardwareBindingFromSecureEnclave(ctx context.Context, signer SecureEnclaveSigner) (*HardwareBinding, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if signer == nil {
-		return nil, fmt.Errorf("%w: nil signer", ErrDeviceBindingUnavailable)
+		return nil, fmt.Errorf("%w: nil signer", ErrHardwareBindingUnavailable)
 	}
 
 	pubDER, err := signer.PublicKeyDER(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%w: read public key: %v", ErrDeviceBindingUnavailable, err)
+		return nil, fmt.Errorf("%w: read public key: %v", ErrHardwareBindingUnavailable, err)
 	}
 	if len(pubDER) == 0 {
-		return nil, fmt.Errorf("%w: empty public key", ErrDeviceBindingUnavailable)
+		return nil, fmt.Errorf("%w: empty public key", ErrHardwareBindingUnavailable)
 	}
 
-	return &DeviceBinding{
+	return &HardwareBinding{
 		Platform: "macos",
 		Method:   "secure-enclave-key",
 		PubHash:  hashBytesToPubHash(pubDER),
 	}, nil
 }
 
-// VerifyLicenseWithSecureEnclaveChallenge verifies license payload integrity
-// and then proves the process can sign a fresh challenge with the same secure key.
-func VerifyLicenseWithSecureEnclaveChallenge(
+// VerifyWithSecureEnclaveChallenge verifies license payload integrity and then
+// proves the process can sign a fresh challenge with the same secure key.
+func (v *Verifier) VerifyWithSecureEnclaveChallenge(
 	ctx context.Context,
-	verifier *LicenseVerifier,
 	signer SecureEnclaveSigner,
 	token string,
 	now time.Time,
@@ -62,19 +61,16 @@ func VerifyLicenseWithSecureEnclaveChallenge(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if verifier == nil {
-		return nil, fmt.Errorf("%w: nil verifier", ErrInvalidLicense)
-	}
 	if signer == nil {
 		return nil, fmt.Errorf("%w: nil signer", ErrChallengeFailed)
 	}
 
-	expected, err := ExpectedDeviceBindingFromSecureEnclave(ctx, signer)
+	expected, err := ExpectedHardwareBindingFromSecureEnclave(ctx, signer)
 	if err != nil {
 		return nil, err
 	}
 
-	payload, err := verifier.VerifyLicense(ctx, token, expected, now)
+	payload, err := v.Verify(ctx, token, expected, now)
 	if err != nil {
 		return nil, err
 	}

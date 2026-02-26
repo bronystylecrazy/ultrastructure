@@ -309,12 +309,12 @@ func (s *MacOSKeychainSecureEnclaveSigner) PublicKeyDER(ctx context.Context) ([]
 
 	raw := copyCFDataBytes(outData)
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("%w: empty secure enclave public key", ErrDeviceBindingUnavailable)
+		return nil, fmt.Errorf("%w: empty secure enclave public key", ErrHardwareBindingUnavailable)
 	}
 
 	pubDER, err := x963ToPKIX(raw)
 	if err != nil {
-		return nil, fmt.Errorf("%w: convert public key: %v", ErrDeviceBindingUnavailable, err)
+		return nil, fmt.Errorf("%w: convert public key: %v", ErrHardwareBindingUnavailable, err)
 	}
 	return pubDER, nil
 }
@@ -370,15 +370,15 @@ func seErrorf(action string, status C.OSStatus, cfErr C.CFErrorRef) error {
 		msg := cStringAndFree(C.us_cferror_copy_cstr(cfErr))
 		C.us_release_cf(C.CFTypeRef(cfErr))
 		if msg != "" {
-			return fmt.Errorf("%w: %s: %s", ErrDeviceBindingUnavailable, action, msg)
+			return fmt.Errorf("%w: %s: %s", ErrHardwareBindingUnavailable, action, msg)
 		}
 	}
 
 	statusMsg := cStringAndFree(C.us_osstatus_copy_cstr(status))
 	if statusMsg != "" {
-		return fmt.Errorf("%w: %s: osstatus=%d (%s)", ErrDeviceBindingUnavailable, action, int(status), statusMsg)
+		return fmt.Errorf("%w: %s: osstatus=%d (%s)", ErrHardwareBindingUnavailable, action, int(status), statusMsg)
 	}
-	return fmt.Errorf("%w: %s: osstatus=%d", ErrDeviceBindingUnavailable, action, int(status))
+	return fmt.Errorf("%w: %s: osstatus=%d", ErrHardwareBindingUnavailable, action, int(status))
 }
 
 func copyCFDataBytes(data C.CFDataRef) []byte {

@@ -56,10 +56,9 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_OK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate license key: %v", err)
 	}
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(licensePub),
 	})
-	defer restore()
 
 	signer := newSoftwareSecureSigner(t)
 	pubDER, err := signer.PublicKeyDER(context.Background())
@@ -77,7 +76,7 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_OK(t *testing.T) {
 		IssuedAt:   now.Add(-time.Minute).Unix(),
 		Expiry:     &expiry,
 		KID:        "kid-1",
-		DeviceBind: DeviceBinding{
+		HardwareBind: HardwareBinding{
 			Platform: "macos",
 			Method:   "secure-enclave-key",
 			PubHash:  hashBytesToPubHash(pubDER),
@@ -86,8 +85,7 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_OK(t *testing.T) {
 	}
 	token := mustSignToken(t, payload, licensePriv)
 
-	verifier := NewLicenseVerifier()
-	got, err := VerifyLicenseWithSecureEnclaveChallenge(context.Background(), verifier, signer, token, now)
+	got, err := verifier.VerifyWithSecureEnclaveChallenge(context.Background(), signer, token, now)
 	if err != nil {
 		t.Fatalf("VerifyLicenseWithSecureEnclaveChallenge: %v", err)
 	}
@@ -101,10 +99,9 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_BadChallengeSig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate license key: %v", err)
 	}
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(licensePub),
 	})
-	defer restore()
 
 	signer := newSoftwareSecureSigner(t)
 	pubDER, err := signer.PublicKeyDER(context.Background())
@@ -122,7 +119,7 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_BadChallengeSig(t *testing.T) {
 		IssuedAt:   now.Add(-time.Minute).Unix(),
 		Expiry:     &expiry,
 		KID:        "kid-1",
-		DeviceBind: DeviceBinding{
+		HardwareBind: HardwareBinding{
 			Platform: "macos",
 			Method:   "secure-enclave-key",
 			PubHash:  hashBytesToPubHash(pubDER),
@@ -132,22 +129,20 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_BadChallengeSig(t *testing.T) {
 	token := mustSignToken(t, payload, licensePriv)
 
 	signer.bad = true
-	verifier := NewLicenseVerifier()
-	_, err = VerifyLicenseWithSecureEnclaveChallenge(context.Background(), verifier, signer, token, now)
+	_, err = verifier.VerifyWithSecureEnclaveChallenge(context.Background(), signer, token, now)
 	if !errors.Is(err, ErrInvalidChallengeSig) {
 		t.Fatalf("expected ErrInvalidChallengeSig, got: %v", err)
 	}
 }
 
-func TestVerifyLicenseWithSecureEnclaveChallenge_DeviceBindingMismatch(t *testing.T) {
+func TestVerifyLicenseWithSecureEnclaveChallenge_HardwareBindingMismatch(t *testing.T) {
 	licensePub, licensePriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate license key: %v", err)
 	}
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(licensePub),
 	})
-	defer restore()
 
 	signer := newSoftwareSecureSigner(t)
 
@@ -161,7 +156,7 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_DeviceBindingMismatch(t *testin
 		IssuedAt:   now.Add(-time.Minute).Unix(),
 		Expiry:     &expiry,
 		KID:        "kid-1",
-		DeviceBind: DeviceBinding{
+		HardwareBind: HardwareBinding{
 			Platform: "macos",
 			Method:   "secure-enclave-key",
 			PubHash:  "mismatch",
@@ -170,19 +165,18 @@ func TestVerifyLicenseWithSecureEnclaveChallenge_DeviceBindingMismatch(t *testin
 	}
 	token := mustSignToken(t, payload, licensePriv)
 
-	verifier := NewLicenseVerifier()
-	_, err = VerifyLicenseWithSecureEnclaveChallenge(context.Background(), verifier, signer, token, now)
+	_, err = verifier.VerifyWithSecureEnclaveChallenge(context.Background(), signer, token, now)
 	if !errors.Is(err, ErrInvalidLicense) {
 		t.Fatalf("expected ErrInvalidLicense, got: %v", err)
 	}
 }
 
-func TestExpectedDeviceBindingFromSecureEnclave_ContextCanceled(t *testing.T) {
+func TestExpectedHardwareBindingFromSecureEnclave_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	signer := newSoftwareSecureSigner(t)
-	_, err := ExpectedDeviceBindingFromSecureEnclave(ctx, signer)
+	_, err := ExpectedHardwareBindingFromSecureEnclave(ctx, signer)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got: %v", err)
 	}

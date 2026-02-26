@@ -17,14 +17,13 @@ func TestVerifyLicense_OK(t *testing.T) {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(pub),
 	})
-	defer restore()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	expiry := now.Add(30 * time.Minute).Unix()
-	device := DeviceBinding{
+	device := HardwareBinding{
 		Platform: "linux",
 		Method:   "tpm-ek-hash",
 		PubHash:  "hash",
@@ -39,14 +38,13 @@ func TestVerifyLicense_OK(t *testing.T) {
 		Expiry:       &expiry,
 		NeverExpires: false,
 		KID:          "kid-1",
-		DeviceBind:   device,
+		HardwareBind: device,
 		X:            map[string]any{"max_cameras": float64(2)},
 		Nonce:        "nonce-1",
 	}
 	token := mustSignToken(t, payload, priv)
 
-	v := NewLicenseVerifier()
-	got, err := v.VerifyLicense(context.Background(), token, &device, now)
+	got, err := verifier.Verify(context.Background(), token, &device, now)
 	if err != nil {
 		t.Fatalf("VerifyLicense: %v", err)
 	}
@@ -64,26 +62,24 @@ func TestVerifyLicense_UnknownKID(t *testing.T) {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	restore := swapPublicKeysForTest(map[string]string{})
-	defer restore()
+	verifier := mustNewTestVerifier(t, map[string]string{})
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	expiry := now.Add(30 * time.Minute).Unix()
 	payload := LicensePayload{
-		V:          1,
-		LicenseID:  "lic-1",
-		ProjectID:  "proj-1",
-		CustomerID: "cust-1",
-		IssuedAt:   now.Add(-time.Minute).Unix(),
-		Expiry:     &expiry,
-		KID:        "kid-missing",
-		DeviceBind: DeviceBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
-		Nonce:      "nonce-1",
+		V:            1,
+		LicenseID:    "lic-1",
+		ProjectID:    "proj-1",
+		CustomerID:   "cust-1",
+		IssuedAt:     now.Add(-time.Minute).Unix(),
+		Expiry:       &expiry,
+		KID:          "kid-missing",
+		HardwareBind: HardwareBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
+		Nonce:        "nonce-1",
 	}
 	token := mustSignToken(t, payload, priv)
 
-	v := NewLicenseVerifier()
-	_, err = v.VerifyLicense(context.Background(), token, nil, now)
+	_, err = verifier.Verify(context.Background(), token, nil, now)
 	if !errors.Is(err, ErrInvalidLicense) {
 		t.Fatalf("expected ErrInvalidLicense, got: %v", err)
 	}
@@ -95,23 +91,22 @@ func TestVerifyLicense_InvalidSignature(t *testing.T) {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(pub),
 	})
-	defer restore()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	expiry := now.Add(30 * time.Minute).Unix()
 	payload := LicensePayload{
-		V:          1,
-		LicenseID:  "lic-1",
-		ProjectID:  "proj-1",
-		CustomerID: "cust-1",
-		IssuedAt:   now.Add(-time.Minute).Unix(),
-		Expiry:     &expiry,
-		KID:        "kid-1",
-		DeviceBind: DeviceBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
-		Nonce:      "nonce-1",
+		V:            1,
+		LicenseID:    "lic-1",
+		ProjectID:    "proj-1",
+		CustomerID:   "cust-1",
+		IssuedAt:     now.Add(-time.Minute).Unix(),
+		Expiry:       &expiry,
+		KID:          "kid-1",
+		HardwareBind: HardwareBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
+		Nonce:        "nonce-1",
 	}
 	token := mustSignToken(t, payload, priv)
 
@@ -125,8 +120,7 @@ func TestVerifyLicense_InvalidSignature(t *testing.T) {
 		t.Fatalf("marshal token: %v", err)
 	}
 
-	v := NewLicenseVerifier()
-	_, err = v.VerifyLicense(context.Background(), string(tampered), nil, now)
+	_, err = verifier.Verify(context.Background(), string(tampered), nil, now)
 	if !errors.Is(err, ErrInvalidLicense) {
 		t.Fatalf("expected ErrInvalidLicense, got: %v", err)
 	}
@@ -138,28 +132,26 @@ func TestVerifyLicense_Expired(t *testing.T) {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(pub),
 	})
-	defer restore()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	expiry := now.Add(-time.Minute).Unix()
 	payload := LicensePayload{
-		V:          1,
-		LicenseID:  "lic-1",
-		ProjectID:  "proj-1",
-		CustomerID: "cust-1",
-		IssuedAt:   now.Add(-2 * time.Minute).Unix(),
-		Expiry:     &expiry,
-		KID:        "kid-1",
-		DeviceBind: DeviceBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
-		Nonce:      "nonce-1",
+		V:            1,
+		LicenseID:    "lic-1",
+		ProjectID:    "proj-1",
+		CustomerID:   "cust-1",
+		IssuedAt:     now.Add(-2 * time.Minute).Unix(),
+		Expiry:       &expiry,
+		KID:          "kid-1",
+		HardwareBind: HardwareBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash"},
+		Nonce:        "nonce-1",
 	}
 	token := mustSignToken(t, payload, priv)
 
-	v := NewLicenseVerifier()
-	_, err = v.VerifyLicense(context.Background(), token, nil, now)
+	_, err = verifier.Verify(context.Background(), token, nil, now)
 	if !errors.Is(err, ErrInvalidLicense) {
 		t.Fatalf("expected ErrInvalidLicense, got: %v", err)
 	}
@@ -171,29 +163,27 @@ func TestVerifyLicense_DeviceMismatch(t *testing.T) {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	restore := swapPublicKeysForTest(map[string]string{
+	verifier := mustNewTestVerifier(t, map[string]string{
 		"kid-1": base64.RawURLEncoding.EncodeToString(pub),
 	})
-	defer restore()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	expiry := now.Add(30 * time.Minute).Unix()
 	payload := LicensePayload{
-		V:          1,
-		LicenseID:  "lic-1",
-		ProjectID:  "proj-1",
-		CustomerID: "cust-1",
-		IssuedAt:   now.Add(-2 * time.Minute).Unix(),
-		Expiry:     &expiry,
-		KID:        "kid-1",
-		DeviceBind: DeviceBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash-a"},
-		Nonce:      "nonce-1",
+		V:            1,
+		LicenseID:    "lic-1",
+		ProjectID:    "proj-1",
+		CustomerID:   "cust-1",
+		IssuedAt:     now.Add(-2 * time.Minute).Unix(),
+		Expiry:       &expiry,
+		KID:          "kid-1",
+		HardwareBind: HardwareBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash-a"},
+		Nonce:        "nonce-1",
 	}
 	token := mustSignToken(t, payload, priv)
 
-	expected := DeviceBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash-b"}
-	v := NewLicenseVerifier()
-	_, err = v.VerifyLicense(context.Background(), token, &expected, now)
+	expected := HardwareBinding{Platform: "linux", Method: "tpm-ek-hash", PubHash: "hash-b"}
+	_, err = verifier.Verify(context.Background(), token, &expected, now)
 	if !errors.Is(err, ErrInvalidLicense) {
 		t.Fatalf("expected ErrInvalidLicense, got: %v", err)
 	}
@@ -203,8 +193,10 @@ func TestVerifyLicense_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	v := NewLicenseVerifier()
-	_, err := v.VerifyLicense(ctx, "{}", nil, time.Time{})
+	verifier := mustNewTestVerifier(t, map[string]string{
+		"kid-1": base64.RawURLEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)),
+	})
+	_, err := verifier.Verify(ctx, "{}", nil, time.Time{})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got: %v", err)
 	}
@@ -230,10 +222,51 @@ func mustSignToken(t *testing.T, payload LicensePayload, priv ed25519.PrivateKey
 	return string(rawSigned)
 }
 
-func swapPublicKeysForTest(next map[string]string) func() {
-	prev := PublicKeys
-	PublicKeys = next
-	return func() {
-		PublicKeys = prev
+func mustNewTestVerifier(t *testing.T, keys map[string]string) *Verifier {
+	t.Helper()
+	v, err := NewVerifier(
+		WithPublicKeyProvider(StaticPublicKeyProvider(keys)),
+		WithHardwareDetector(NewHardwareDetector()),
+	)
+	if err != nil {
+		t.Fatalf("new verifier: %v", err)
+	}
+	return v
+}
+
+func TestNewVerifier_NilOption(t *testing.T) {
+	_, err := NewVerifier(nil)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestNewVerifier_NilPublicKeyProviderOption(t *testing.T) {
+	_, err := NewVerifier(WithPublicKeyProvider(nil))
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestNewVerifier_NilPolicyValidatorOption(t *testing.T) {
+	_, err := NewVerifier(WithPolicyValidators(TimeWindowValidator{}, nil))
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestNewVerifier_ConflictingSignatureAndProvider(t *testing.T) {
+	signature, err := NewEd25519SignatureVerifier(StaticPublicKeyProvider(map[string]string{
+		"kid-a": "pub-a",
+	}))
+	if err != nil {
+		t.Fatalf("new signature verifier: %v", err)
+	}
+	_, err = NewVerifier(
+		WithPublicKeyProvider(StaticPublicKeyProvider(map[string]string{"kid-b": "pub-b"})),
+		WithSignatureVerifier(signature),
+	)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 }

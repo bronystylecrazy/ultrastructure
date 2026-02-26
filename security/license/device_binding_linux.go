@@ -9,37 +9,36 @@ import (
 	"strings"
 )
 
-func expectedDeviceBinding(ctx context.Context) (*DeviceBinding, error) {
+type platformHardwareDetector struct{}
+
+func (platformHardwareDetector) Detect(ctx context.Context) (*HardwareBinding, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	id, err := linuxMachineID()
+	id, err := readLinuxHardwareID()
 	if err != nil {
 		return nil, err
 	}
 
-	return &DeviceBinding{
-		Platform: normalizedPlatform(),
-		Method:   "os-keystore",
-		PubHash:  hashToPubHash(strings.ToLower(id)),
-	}, nil
+	return newOSKeystoreBinding(id), nil
 }
 
-func linuxMachineID() (string, error) {
-	paths := []string{
+func readLinuxHardwareID() (string, error) {
+	for _, p := range []string{
 		"/etc/machine-id",
 		"/var/lib/dbus/machine-id",
-	}
-	for _, p := range paths {
+		"/sys/class/dmi/id/product_uuid",
+		"/sys/devices/virtual/dmi/id/product_uuid",
+	} {
 		raw, err := os.ReadFile(p)
 		if err != nil {
 			continue
 		}
-		id := strings.TrimSpace(string(raw))
-		if id != "" {
-			return id, nil
+		v := strings.TrimSpace(string(raw))
+		if v != "" {
+			return v, nil
 		}
 	}
-	return "", fmt.Errorf("%w: unable to read linux machine-id", ErrDeviceBindingUnavailable)
+	return "", fmt.Errorf("%w: unable to read linux hardware id", ErrHardwareBindingUnavailable)
 }

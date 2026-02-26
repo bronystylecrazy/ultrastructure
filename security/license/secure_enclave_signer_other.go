@@ -24,12 +24,12 @@ func (s *MacOSKeychainSecureEnclaveSigner) PublicKeyDER(ctx context.Context) ([]
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("%w: secure enclave signer unsupported on %s", ErrDeviceBindingUnavailable, runtime.GOOS)
+	return nil, fmt.Errorf("%w: secure enclave signer unsupported on %s", ErrHardwareBindingUnavailable, runtime.GOOS)
 }
 
 func (s *MacOSKeychainSecureEnclaveSigner) SignDigest(ctx context.Context, digest []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("%w: secure enclave signer unsupported on %s", ErrDeviceBindingUnavailable, runtime.GOOS)
+	return nil, fmt.Errorf("%w: secure enclave signer unsupported on %s", ErrHardwareBindingUnavailable, runtime.GOOS)
 }

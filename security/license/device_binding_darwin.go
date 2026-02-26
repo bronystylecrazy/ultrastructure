@@ -12,17 +12,15 @@ import (
 
 var ioRegPlatformUUIDRe = regexp.MustCompile(`"IOPlatformUUID"\s*=\s*"([^"]+)"`)
 
-func expectedDeviceBinding(ctx context.Context) (*DeviceBinding, error) {
+type platformHardwareDetector struct{}
+
+func (platformHardwareDetector) Detect(ctx context.Context) (*HardwareBinding, error) {
 	uuid, err := macOSPlatformUUID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DeviceBinding{
-		Platform: normalizedPlatform(),
-		Method:   "os-keystore",
-		PubHash:  hashToPubHash(strings.ToLower(uuid)),
-	}, nil
+	return newOSKeystoreBinding(uuid), nil
 }
 
 func macOSPlatformUUID(ctx context.Context) (string, error) {
@@ -45,7 +43,7 @@ func macOSPlatformUUID(ctx context.Context) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%w: unable to read macOS platform UUID", ErrDeviceBindingUnavailable)
+	return "", fmt.Errorf("%w: unable to read macOS platform UUID", ErrHardwareBindingUnavailable)
 }
 
 func parseIORegPlatformUUID(raw string) (string, bool) {
