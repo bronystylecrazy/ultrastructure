@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-func NewGormDB(dialecter gorm.Dialector) (*gorm.DB, error) {
+func NewDB(dialecter gorm.Dialector) (*gorm.DB, error) {
 	return gorm.Open(dialecter, &gorm.Config{
 		DisableAutomaticPing: true,
 		NamingStrategy: schema.NamingStrategy{

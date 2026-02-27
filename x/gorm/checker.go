@@ -11,15 +11,15 @@ import (
 	"gorm.io/gorm"
 )
 
-type GormChecker struct {
+type Checker struct {
 	otel.Telemetry
 
 	cfg database.Config
 	db  *gorm.DB
 }
 
-func NewGormChecker(cfg database.Config, db *gorm.DB) *GormChecker {
-	return &GormChecker{
+func NewChecker(cfg database.Config, db *gorm.DB) *Checker {
+	return &Checker{
 		Telemetry: otel.Nop(),
 
 		cfg: cfg,
@@ -27,7 +27,7 @@ func NewGormChecker(cfg database.Config, db *gorm.DB) *GormChecker {
 	}
 }
 
-func (g *GormChecker) Check() error {
+func (g *Checker) Check() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

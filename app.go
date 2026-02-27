@@ -16,6 +16,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/x/sqlc"
 	kservice "github.com/kardianos/service"
 	"go.uber.org/fx"
 )
@@ -118,6 +119,7 @@ func defaultNodes() []any {
 		cmd.Providers(),
 		s3.Providers(),
 		imgutil.Providers(),
+		sqlc.Providers(),
 	}
 }
 

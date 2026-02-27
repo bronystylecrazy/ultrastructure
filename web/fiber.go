@@ -238,6 +238,5 @@ func (s *FiberServer) markStarted() {
 }
 
 func (s *FiberServer) Stop(ctx context.Context) error {
-	fmt.Println("stopping fiber server")
 	return s.App.ShutdownWithContext(ctx)
 }

@@ -52,9 +52,9 @@ func Use(opts ...Option) di.Node {
 		cfg.Config[LogConfig]("db.log", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		cfg.Config[TraceConfig]("db.trace", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		di.Provide(NewDialector),
-		di.Provide(NewGormDB),
+		di.Provide(NewDB),
 		di.Provide(NewSQLDB),
-		di.Provide(NewGormChecker),
+		di.Provide(NewChecker),
 		di.Provide(gormOtel, di.Params(``, ``, ``, ``, ``, di.Optional(), ``)),
 	)
 }
