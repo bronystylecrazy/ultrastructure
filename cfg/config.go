@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/fsnotify/fsnotify"
@@ -397,6 +398,22 @@ func decode(v *viper.Viper, key string, out any) error {
 		}
 		return v.UnmarshalKey(key, out)
 	}
+	data := collectStructData(v, key, elem)
+	if len(data) > 0 {
+		decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+			Result: out,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+			),
+			TagName:          "mapstructure",
+			WeaklyTypedInput: true,
+		})
+		if err != nil {
+			return err
+		}
+		return decoder.Decode(data)
+	}
 	if key == "" {
 		return v.Unmarshal(out, viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
@@ -411,6 +428,83 @@ func decode(v *viper.Viper, key string, out any) error {
 			mapstructure.StringToSliceHookFunc(","),
 		),
 	))
+}
+
+func collectStructData(v *viper.Viper, key string, typ reflect.Type) map[string]any {
+	out := map[string]any{}
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.PkgPath != "" {
+			continue
+		}
+		name, ok := mapstructureFieldName(f)
+		if !ok {
+			continue
+		}
+		childKey := joinKeys(key, name)
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if isDecodableStruct(ft) {
+			nested := collectStructData(v, childKey, ft)
+			if len(nested) > 0 {
+				out[name] = nested
+				continue
+			}
+		}
+		if val := v.Get(childKey); val != nil {
+			out[name] = val
+		}
+	}
+	return out
+}
+
+func isDecodableStruct(typ reflect.Type) bool {
+	return typ.Kind() == reflect.Struct && typ.PkgPath() != "time"
+}
+
+func mapstructureFieldName(f reflect.StructField) (string, bool) {
+	tag := f.Tag.Get("mapstructure")
+	if tag != "" {
+		name := strings.Split(tag, ",")[0]
+		if name == "-" {
+			return "", false
+		}
+		if name != "" {
+			return name, true
+		}
+	}
+	return toSnakeCase(f.Name), true
+}
+
+func toSnakeCase(s string) string {
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	runes := []rune(s)
+	for i, r := range runes {
+		if unicode.IsUpper(r) {
+			if i > 0 && (unicode.IsLower(runes[i-1]) || (i+1 < len(runes) && unicode.IsLower(runes[i+1]))) {
+				b.WriteByte('_')
+			}
+			b.WriteRune(unicode.ToLower(r))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func joinKeys(base string, part string) string {
+	if base == "" {
+		return part
+	}
+	if part == "" {
+		return base
+	}
+	return base + "." + part
 }
 
 func buildWatchOption(cfg configState, watch watchState, path string, key string) fx.Option {
