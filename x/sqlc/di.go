@@ -1,15 +1,26 @@
 package sqlc
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 )
 
 func Providers() di.Node {
 	return di.Options(
 		di.Provide(NewPool),
+		di.Provide(func(pool *pgxpool.Pool, db *sql.DB, logger *zap.Logger) *sql.DB {
+			if db != nil {
+				logger.Named("sqlc").Debug("using provided database connection")
+				return db
+			}
+			logger.Named("sqlc").Debug("creating database connection from pool")
+			return sql.OpenDB(stdlib.GetPoolConnector(pool))
+		}, di.Params(nil, di.Optional(), nil)),
 	)
 }
 
