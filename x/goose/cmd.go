@@ -12,19 +12,22 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/database"
 	pgoose "github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
+	"go.uber.org/fx"
 )
 
 var ErrNoDB = errors.New("goose: no database provided")
 
 type MigrateCommand struct {
-	db    *sql.DB
-	goose *Goose
+	db         *sql.DB
+	goose      *Goose
+	shutdowner fx.Shutdowner
 }
 
-func NewMigrateCommand(db *sql.DB, goose *Goose) *MigrateCommand {
+func NewMigrateCommand(shutdowner fx.Shutdowner, db *sql.DB, goose *Goose) *MigrateCommand {
 	return &MigrateCommand{
-		db:    db,
-		goose: goose,
+		db:         db,
+		goose:      goose,
+		shutdowner: shutdowner,
 	}
 }
 
@@ -49,7 +52,7 @@ func (m *MigrateCommand) statusCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show migration status",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
 				return err
@@ -59,7 +62,7 @@ func (m *MigrateCommand) statusCommand() *cobra.Command {
 			defer cancel()
 
 			return pgoose.StatusContext(ctx, m.db, path)
-		},
+		}),
 	}
 }
 
@@ -67,7 +70,7 @@ func (m *MigrateCommand) upCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "up",
 		Short: "Apply all pending migrations",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
 				return err
@@ -77,7 +80,7 @@ func (m *MigrateCommand) upCommand() *cobra.Command {
 			defer cancel()
 
 			return pgoose.UpContext(ctx, m.db, path)
-		},
+		}),
 	}
 }
 
@@ -85,7 +88,7 @@ func (m *MigrateCommand) downCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
 		Short: "Roll back the most recent migration",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
 				return err
@@ -95,7 +98,7 @@ func (m *MigrateCommand) downCommand() *cobra.Command {
 			defer cancel()
 
 			return pgoose.DownContext(ctx, m.db, path)
-		},
+		}),
 	}
 }
 
@@ -104,7 +107,7 @@ func (m *MigrateCommand) downToCommand() *cobra.Command {
 		Use:   "down-to [version]",
 		Short: "Roll back migrations down to the specified version",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			version, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid version %q: %w", args[0], err)
@@ -119,7 +122,21 @@ func (m *MigrateCommand) downToCommand() *cobra.Command {
 			defer cancel()
 
 			return pgoose.DownToContext(ctx, m.db, path, version)
-		},
+		}),
+	}
+}
+
+func (m *MigrateCommand) runWithShutdown(run func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		runErr := run(cmd, args)
+		if m.shutdowner == nil {
+			return runErr
+		}
+		shutdownErr := m.shutdowner.Shutdown()
+		if runErr != nil {
+			return runErr
+		}
+		return shutdownErr
 	}
 }
 
