@@ -36,6 +36,12 @@ func (m *MigrateCommand) Command() *cobra.Command {
 		Use:           "goose migrate",
 		Short:         "Run migration commands",
 		SilenceErrors: true,
+		PostRunE: func(cmd *cobra.Command, args []string) error {
+			if m.shutdowner != nil {
+				return m.shutdowner.Shutdown()
+			}
+			return nil
+		},
 	}
 
 	cmd.AddCommand(
