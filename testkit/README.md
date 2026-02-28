@@ -18,6 +18,16 @@
   - starts Redis and returns host/port via `rd.Addr()`.
 - `StartMinIO(opts)`:
   - starts MinIO and returns API/console endpoints.
+- `NewBackendSuite(t, opts)`:
+  - starts Postgres/Redis/MinIO once per parent test,
+  - provisions isolated resources per case with `suite.NewCase(...)`:
+    - Postgres: unique database + migration run,
+    - Redis: unique key namespace prefix,
+    - MinIO: unique bucket.
+- `NewBackend(t, migrationFS, migrationDir...)`:
+  - minimal constructor for backend integration suites.
+- `tc.Seeder(t)`:
+  - apply inline SQL seed and clean it with `defer seed.Reset()`.
 
 ## Usage
 
@@ -27,29 +37,140 @@
 //go:build integration
 
 import (
+	"embed"
 	"testing"
 
 	"github.com/bronystylecrazy/ultrastructure/testkit"
 	"github.com/stretchr/testify/require"
 )
 
+//go:embed testdata/migrations/*.sql
+var migrations embed.FS
+
 func TestMyIntegration(t *testing.T) {
 	require := require.New(t)
 
 	testkit.RequireIntegration(t)
 
-	suite := testkit.NewSuite(t)
-	pg := suite.StartPostgres(testkit.PostgresOptions{})
-	rd := suite.StartRedis(testkit.RedisOptions{})
-	s3 := suite.StartMinIO(testkit.MinIOOptions{})
+	suite := testkit.NewBackend(t, migrations, "testdata/migrations")
 
-	require.NotEmpty(pg.URL())
-	require.NotEmpty(rd.Addr())
-	require.NotEmpty(s3.Endpoint)
+	t.Run("case_a", func(t *testing.T) {
+		t.Parallel()
+		tc := suite.Case(t)
+
+		require.NotEmpty(tc.PostgresURL)
+		require.NotEmpty(tc.RedisPrefix)
+		require.NotEmpty(tc.MinIOBucket)
+	})
 }
 ```
 
-### 2) Consumer repo pattern (`di.App` + `Populate`)
+Minimal DI wiring:
+
+```go
+tc := suite.Case(t)
+nodes := append(tc.Replaces(),
+	di.Populate(&svcA),
+	di.Populate(&svcB),
+)
+app := ustest.New(t, nodes...).RequireStart()
+t.Cleanup(app.RequireStop)
+```
+
+Inline seed with reset:
+
+```go
+tc := suite.Case(t)
+seeder := tc.Seeder(t)
+
+seed := seeder.Seed(`
+	INSERT INTO customers (id, name) VALUES
+		('cust-1', 'Alice'),
+		('cust-2', 'Bob')
+	ON CONFLICT (id) DO NOTHING;
+`)
+defer seed.Reset()
+```
+
+Custom reset SQL:
+
+```go
+seed := seeder.Seed(upSQL, `
+	DELETE FROM products WHERE id IN ('prod-1');
+	DELETE FROM customers WHERE id IN ('cust-1', 'cust-2');
+`)
+defer seed.Reset()
+```
+
+### 2) API-level integration test (recommended for backend domains)
+
+```go
+//go:build integration
+
+import (
+	"bytes"
+	"embed"
+	"net/http/httptest"
+	"testing"
+
+	redis "github.com/redis/go-redis/v9"
+
+	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/bronystylecrazy/ultrastructure/testkit"
+	"github.com/bronystylecrazy/ultrastructure/ustest"
+	"github.com/gofiber/fiber/v3"
+
+	"yourrepo/app"
+)
+
+//go:embed testdata/migrations/*.sql
+var migrations embed.FS
+
+func TestOrderAPI(t *testing.T) {
+	testkit.RequireIntegration(t)
+	suite := testkit.NewBackend(t, migrations, "testdata/migrations") // containers once
+
+	t.Run("create_order", func(t *testing.T) {
+		t.Parallel()
+		tc := suite.Case(t) // isolated postgres db + redis namespace + minio bucket
+
+		seed := tc.Seeder(t).Seed(`
+			INSERT INTO customers (id, name) VALUES ('cust-1', 'Alice')
+			ON CONFLICT (id) DO NOTHING;
+		`)
+		defer seed.Reset()
+
+		rdb := redis.NewClient(&redis.Options{
+			Addr:     tc.Redis.Addr(),
+			Password: tc.Redis.Password,
+			Protocol: 3,
+		})
+		t.Cleanup(func() { _ = rdb.Close() })
+		_ = rdb.Set(t.Context(), tc.RedisKey("feature:checkout"), "on", 0).Err()
+
+		var api *fiber.App
+		nodes := append(tc.Replaces(),
+			app.Module(),
+			di.Populate(&api),
+		)
+		testApp := ustest.New(t, nodes...).RequireStart()
+		t.Cleanup(testApp.RequireStop)
+
+		req := httptest.NewRequest("POST", "/api/v1/orders", bytes.NewBufferString(`{"customer_id":"cust-1","amount":1000}`))
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := api.Test(req)
+		if err != nil {
+			t.Fatalf("api test request: %v", err)
+		}
+		if res.StatusCode != 201 {
+			t.Fatalf("status code mismatch: got=%d want=%d", res.StatusCode, 201)
+		}
+	})
+}
+```
+
+### 3) Consumer repo pattern (`di.App` + `Populate`)
 
 ```go
 //go:build integration
@@ -153,12 +274,15 @@ func (e *SuiteEnv) Start() *SuiteEnv {
 }
 ```
 
-### 3) Scenario/case style (parallel-safe)
+### 4) Scenario/case style (parallel-safe)
 
 - Use `t.Run("scenario: ...")` for business flows.
 - Use table-driven cases inside each scenario.
-- In each case: `tc := tc`, `t.Parallel()`, unique `caseID`.
-- Isolate with transaction rollback + unique Redis/S3 prefixes.
+- In each case: `tc := tc`, `t.Parallel()`, then `env := suite.Case(t)`.
+- Isolate with:
+  - Postgres: unique DB + migrations,
+  - Redis: `env.RedisKey("...")`,
+  - MinIO: case bucket via `env.MinIOBucket`.
 
 `testify` pattern recommendation:
 - use `require.*` for setup and critical preconditions.

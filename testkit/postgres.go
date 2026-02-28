@@ -66,13 +66,18 @@ func (s *Suite) StartPostgres(opts PostgresOptions) *PostgresContainer {
 
 // URL returns a postgres:// URL with sslmode disabled, suitable for local integration tests.
 func (c *PostgresContainer) URL() string {
+	return c.URLForDatabase(c.Database)
+}
+
+// URLForDatabase returns a postgres:// URL with sslmode disabled for a specific database.
+func (c *PostgresContainer) URLForDatabase(database string) string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		url.QueryEscape(c.Username),
 		url.QueryEscape(c.Password),
 		c.Host,
 		c.Port,
-		url.PathEscape(c.Database),
+		url.PathEscape(database),
 	)
 }
 

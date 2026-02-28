@@ -23,3 +23,15 @@ func TestRequiredStopAlias(t *testing.T) {
 	app := New(t)
 	defer app.RequireStart().RequireStop()
 }
+
+func TestStartBuildsAndStartsUSApp(t *testing.T) {
+	var got string
+	_ = Start(t,
+		di.Supply("ok"),
+		di.Populate(&got),
+	)
+
+	if got != "ok" {
+		t.Fatalf("unexpected value: %q", got)
+	}
+}

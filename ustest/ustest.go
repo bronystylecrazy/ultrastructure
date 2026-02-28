@@ -18,6 +18,16 @@ func New(t testing.TB, nodes ...any) *App {
 	return &App{app: fxtest.New(t, us.New(nodes...).Build())}
 }
 
+// Start builds, starts, and auto-stops the app on test cleanup.
+func Start(t testing.TB, nodes ...any) *App {
+	t.Helper()
+
+	app := New(t, nodes...)
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+	return app
+}
+
 // RequireStart starts the app and fails the test on error.
 func (a *App) RequireStart() *App {
 	a.app.RequireStart()
