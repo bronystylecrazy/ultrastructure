@@ -21,5 +21,5 @@ func TestNewBuildsUSApp(t *testing.T) {
 
 func TestRequiredStopAlias(t *testing.T) {
 	app := New(t)
-	defer app.RequireStart().RequiredStop()
+	defer app.RequireStart().RequireStop()
 }

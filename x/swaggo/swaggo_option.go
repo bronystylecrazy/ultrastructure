@@ -66,7 +66,7 @@ func WithCustomize(hook HookFunc) Option {
 }
 
 func WitHook(hook ...HookFunc) Option {
-	return autoswag.WitHook(hook...)
+	return autoswag.WithHook(hook...)
 }
 
 func WithExtraModels(models ...any) Option {

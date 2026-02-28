@@ -25,14 +25,8 @@ func (a *App) RequireStart() *App {
 }
 
 // RequireStop stops the app and fails the test on error.
-func (a *App) RequireStop() *App {
+func (a *App) RequireStop() {
 	a.app.RequireStop()
-	return a
-}
-
-// RequiredStop is an alias of RequireStop for convenience.
-func (a *App) RequiredStop() *App {
-	return a.RequireStop()
 }
 
 // Fx exposes the underlying fxtest.App.

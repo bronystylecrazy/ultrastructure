@@ -33,6 +33,10 @@ func Run() di.Node {
 	}, di.Params(di.Optional()))
 }
 
+func UseMigrationCommands() di.Node {
+	return di.Provide(NewMigrateCommand)
+}
+
 func parseOptions(opts ...Option) option {
 	cfg := option{}
 	for _, opt := range opts {

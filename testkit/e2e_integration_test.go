@@ -13,12 +13,9 @@ import (
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/ditest"
-	"github.com/bronystylecrazy/ultrastructure/lc"
-	"github.com/bronystylecrazy/ultrastructure/otel"
 	uss3 "github.com/bronystylecrazy/ultrastructure/storage/s3"
-	"github.com/bronystylecrazy/ultrastructure/x/gorm"
-	"github.com/bronystylecrazy/ultrastructure/x/redis"
+	"github.com/bronystylecrazy/ultrastructure/ustest"
+	rd "github.com/bronystylecrazy/ultrastructure/x/redis"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -171,13 +168,7 @@ func startE2EApp(t *testing.T, pgURL string, redisCtr *RedisContainer, minio *Mi
 
 	var deps e2eDeps
 
-	app := ditest.New(t,
-		di.Diagnostics(),
-		lc.Providers(),
-		otel.Providers(),
-		xgorm.Module(),
-		rd.Providers(),
-		uss3.Providers(uss3.UseInterfaces()),
+	app := ustest.New(t,
 
 		di.Replace(database.Config{
 			Driver:     "postgres",
