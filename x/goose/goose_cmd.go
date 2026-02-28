@@ -9,7 +9,7 @@ type GooseCommand struct {
 	shutdowner fx.Shutdowner
 }
 
-func NewGooseCommand(shutdowner fx.Shutdowner) *GooseCommand {
+func NewCommand(shutdowner fx.Shutdowner) *GooseCommand {
 	return &GooseCommand{shutdowner: shutdowner}
 }
 
@@ -23,10 +23,7 @@ func (g *GooseCommand) Command() *cobra.Command {
 			return cmd.Help()
 		},
 		PostRunE: func(cmd *cobra.Command, args []string) error {
-			if g.shutdowner != nil {
-				return g.shutdowner.Shutdown()
-			}
-			return nil
+			return g.shutdowner.Shutdown()
 		},
 	}
 }

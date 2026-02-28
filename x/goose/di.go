@@ -35,7 +35,12 @@ func Run() di.Node {
 
 func UseMigrationCommands() di.Node {
 	return di.Options(
-		di.Provide(NewGooseCommand),
+		di.Provide(NewCommand),
+		di.Provide(NewMigrateRuntime),
+		di.Provide(NewMigrateStatusCommand),
+		di.Provide(NewMigrateUpCommand),
+		di.Provide(NewMigrateDownCommand),
+		di.Provide(NewMigrateDownToCommand),
 		di.Provide(NewMigrateCommand),
 	)
 }
