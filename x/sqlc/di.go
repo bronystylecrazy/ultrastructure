@@ -13,7 +13,7 @@ import (
 func Providers() di.Node {
 	return di.Options(
 		di.Provide(NewPool),
-		di.Default(func(pool *pgxpool.Pool, logger *zap.Logger) *sql.DB {
+		di.Provide(func(pool *pgxpool.Pool, logger *zap.Logger) *sql.DB {
 			logger.Named("sqlc").Debug("creating database connection from pool")
 			return sql.OpenDB(stdlib.GetPoolConnector(pool))
 		}),
