@@ -34,7 +34,10 @@ func Run() di.Node {
 }
 
 func UseMigrationCommands() di.Node {
-	return di.Provide(NewMigrateCommand)
+	return di.Options(
+		di.Provide(NewGooseCommand),
+		di.Provide(NewMigrateCommand),
+	)
 }
 
 func parseOptions(opts ...Option) option {

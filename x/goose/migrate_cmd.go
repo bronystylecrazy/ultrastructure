@@ -13,6 +13,7 @@ import (
 	pgoose "github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 var ErrNoDB = errors.New("goose: no database provided")
@@ -21,13 +22,15 @@ type MigrateCommand struct {
 	db         *sql.DB
 	goose      *Goose
 	shutdowner fx.Shutdowner
+	logger     *zap.Logger
 }
 
-func NewMigrateCommand(shutdowner fx.Shutdowner, db *sql.DB, goose *Goose) *MigrateCommand {
+func NewMigrateCommand(shutdowner fx.Shutdowner, db *sql.DB, goose *Goose, logger *zap.Logger) *MigrateCommand {
 	return &MigrateCommand{
 		db:         db,
 		goose:      goose,
 		shutdowner: shutdowner,
+		logger:     logger,
 	}
 }
 
@@ -36,11 +39,12 @@ func (m *MigrateCommand) Command() *cobra.Command {
 		Use:           "goose migrate",
 		Short:         "Run migration commands",
 		SilenceErrors: true,
+		SilenceUsage:  true,
 		PostRunE: func(cmd *cobra.Command, args []string) error {
-			if m.shutdowner != nil {
-				return m.shutdowner.Shutdown()
-			}
-			return nil
+			return m.shutdowner.Shutdown()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
 		},
 	}
 
@@ -56,8 +60,10 @@ func (m *MigrateCommand) Command() *cobra.Command {
 
 func (m *MigrateCommand) statusCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Show migration status",
+		Use:           "status",
+		Short:         "Show migration status",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
@@ -74,8 +80,10 @@ func (m *MigrateCommand) statusCommand() *cobra.Command {
 
 func (m *MigrateCommand) upCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "up",
-		Short: "Apply all pending migrations",
+		Use:           "up",
+		Short:         "Apply all pending migrations",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
@@ -92,8 +100,10 @@ func (m *MigrateCommand) upCommand() *cobra.Command {
 
 func (m *MigrateCommand) downCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "down",
-		Short: "Roll back the most recent migration",
+		Use:           "down",
+		Short:         "Roll back the most recent migration",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			path, err := m.prepare()
 			if err != nil {
@@ -110,9 +120,11 @@ func (m *MigrateCommand) downCommand() *cobra.Command {
 
 func (m *MigrateCommand) downToCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "down-to [version]",
-		Short: "Roll back migrations down to the specified version",
-		Args:  cobra.ExactArgs(1),
+		Use:           "down-to [version]",
+		Short:         "Roll back migrations down to the specified version",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		RunE: m.runWithShutdown(func(cmd *cobra.Command, args []string) error {
 			version, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
@@ -135,15 +147,28 @@ func (m *MigrateCommand) downToCommand() *cobra.Command {
 func (m *MigrateCommand) runWithShutdown(run func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		runErr := run(cmd, args)
+		if runErr != nil {
+			m.log().Error("goose migrate command failed", zap.String("command", cmd.CommandPath()), zap.Error(runErr))
+		}
 		if m.shutdowner == nil {
 			return runErr
 		}
 		shutdownErr := m.shutdowner.Shutdown()
+		if shutdownErr != nil {
+			m.log().Error("failed to shutdown after goose migrate command", zap.String("command", cmd.CommandPath()), zap.Error(shutdownErr))
+		}
 		if runErr != nil {
 			return runErr
 		}
 		return shutdownErr
 	}
+}
+
+func (m *MigrateCommand) log() *zap.Logger {
+	if m.logger != nil {
+		return m.logger.Named("goose")
+	}
+	return zap.L().Named("goose")
 }
 
 func (m *MigrateCommand) prepare() (string, error) {
