@@ -9,6 +9,10 @@ import (
 )
 
 func NewPool(lc fx.Lifecycle, config database.Config) (*pgxpool.Pool, error) {
+	if database.ParseDialect(config.Driver) != "postgres" {
+		return nil, nil
+	}
+
 	pool, err := pgxpool.New(context.Background(), config.Datasource)
 
 	if err != nil {
