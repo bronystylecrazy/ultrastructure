@@ -138,23 +138,14 @@ func (m *MigrateRuntime) configureGoose() error {
 }
 
 func (m *MigrateRuntime) migrationPath() string {
-	if m.goose.FS == nil {
-		return migrationRootPath(m.goose.Paths)
-	}
-	return "."
+	return migrationRootPath(m.goose.Paths)
 }
 
 func (m *MigrateRuntime) migrationFS() (fs.FS, error) {
 	if m.goose.FS == nil {
 		return nil, nil
 	}
-
-	path := migrationRootPath(m.goose.Paths)
-	sub, err := fs.Sub(m.goose.FS, path)
-	if err != nil {
-		return nil, err
-	}
-	return sub, nil
+	return m.goose.FS, nil
 }
 
 func migrationRootPath(paths []string) string {

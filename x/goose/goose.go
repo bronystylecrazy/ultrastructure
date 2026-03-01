@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"io/fs"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/database"
@@ -54,20 +53,12 @@ func (m *Goose) Run() error {
 		return nil
 	}
 
-	base := fs.FS(m.FS)
 	path := defaultPath
 	if len(m.Paths) > 0 && m.Paths[0] != "" {
 		path = m.Paths[0]
 	}
 
-	sub, err := fs.Sub(m.FS, path)
-	if err != nil {
-		return err
-	}
-
-	base = sub
-	path = "."
-	goose.SetBaseFS(base)
+	goose.SetBaseFS(m.FS)
 
 	if err := goose.SetDialect(database.ParseDialect(m.config.Driver)); err != nil {
 		logger.Error("Failed to set dialect", zap.Error(err))
@@ -79,8 +70,7 @@ func (m *Goose) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err = goose.UpContext(ctx, m.db, path)
-	if err != nil {
+	if err := goose.UpContext(ctx, m.db, path); err != nil {
 		logger.Error("Failed to run migrations", zap.Error(err))
 		return err
 	}
