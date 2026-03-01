@@ -305,6 +305,66 @@ func TestPasetoManager(t *testing.T) {
 		assert.Equal(t, fiber.StatusUnauthorized, refreshResp.StatusCode)
 	})
 
+	t.Run("revoke access and refresh explicitly from context", func(t *testing.T) {
+		cfg := paseto.Config{
+			Secret:  "test-secret-key-that-is-long-enough-for-security",
+			Version: "v2",
+		}
+
+		pv, err := paseto.New(cfg)
+		require.NoError(t, err)
+
+		manager, err := session.NewPasetoManager(cfg, pv)
+		require.NoError(t, err)
+
+		pair, err := manager.Generate("user-123")
+		require.NoError(t, err)
+
+		app := fiber.New()
+		app.Post("/revoke-access", func(c fiber.Ctx) error {
+			if err := manager.RevokeAccessFromContext(c); err != nil {
+				return err
+			}
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Post("/revoke-refresh", func(c fiber.Ctx) error {
+			if err := manager.RevokeRefreshFromContext(c); err != nil {
+				return err
+			}
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/access-protected", manager.AccessMiddleware(), func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+		app.Get("/refresh-protected", manager.RefreshMiddleware(), func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		revokeAccessReq := httptest.NewRequest("POST", "/revoke-access", nil)
+		revokeAccessReq.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		revokeAccessResp, err := app.Test(revokeAccessReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusNoContent, revokeAccessResp.StatusCode)
+
+		revokeRefreshReq := httptest.NewRequest("POST", "/revoke-refresh", nil)
+		revokeRefreshReq.AddCookie(&http.Cookie{Name: "refresh_token", Value: pair.RefreshToken})
+		revokeRefreshResp, err := app.Test(revokeRefreshReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusNoContent, revokeRefreshResp.StatusCode)
+
+		accessReq := httptest.NewRequest("GET", "/access-protected", nil)
+		accessReq.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		accessResp, err := app.Test(accessReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusUnauthorized, accessResp.StatusCode)
+
+		refreshReq := httptest.NewRequest("GET", "/refresh-protected", nil)
+		refreshReq.AddCookie(&http.Cookie{Name: "refresh_token", Value: pair.RefreshToken})
+		refreshResp, err := app.Test(refreshReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusUnauthorized, refreshResp.StatusCode)
+	})
+
 	t.Run("custom claims", func(t *testing.T) {
 		cfg := paseto.Config{
 			Secret:  "test-secret-key-that-is-long-enough-for-security",

@@ -168,6 +168,38 @@ func (s *JWTManager) RevokeFromContext(c fiber.Ctx) error {
 	return s.RevokeClaims(c.Context(), refreshClaims)
 }
 
+// RevokeAccessFromContext extracts and revokes an access token from request context.
+func (s *JWTManager) RevokeAccessFromContext(c fiber.Ctx) error {
+	tokenValue, err := extractAccessTokenForRevoke(c)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(tokenValue) == "" {
+		return ErrTokenMissingInContext
+	}
+	claims, err := s.Validate(tokenValue, TokenTypeAccess)
+	if err != nil {
+		return err
+	}
+	return s.RevokeClaims(c.Context(), claims)
+}
+
+// RevokeRefreshFromContext extracts and revokes a refresh token from request context.
+func (s *JWTManager) RevokeRefreshFromContext(c fiber.Ctx) error {
+	tokenValue, err := extractRefreshTokenForRevoke(c)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(tokenValue) == "" {
+		return ErrTokenMissingInContext
+	}
+	claims, err := s.Validate(tokenValue, TokenTypeRefresh)
+	if err != nil {
+		return err
+	}
+	return s.RevokeClaims(c.Context(), claims)
+}
+
 func (s *JWTManager) ensureNotRevoked(ctx context.Context, claims Claims) error {
 	store := s.revocation()
 	if store == nil {

@@ -25,6 +25,12 @@ type Revoker interface {
 	RevokeFromContext(c fiber.Ctx) error
 }
 
+// ContextTokenRevoker supports explicit token-type revocation from request context.
+type ContextTokenRevoker interface {
+	RevokeAccessFromContext(c fiber.Ctx) error
+	RevokeRefreshFromContext(c fiber.Ctx) error
+}
+
 type MiddlewareFactory interface {
 	AccessMiddleware(extractors ...Extractor) fiber.Handler
 	RefreshMiddleware(extractors ...Extractor) fiber.Handler

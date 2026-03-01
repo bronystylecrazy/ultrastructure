@@ -238,6 +238,38 @@ func (m *PasetoManager) RevokeFromContext(c fiber.Ctx) error {
 	return m.RevokeClaims(c.Context(), refreshClaims)
 }
 
+// RevokeAccessFromContext extracts and revokes an access token from request context.
+func (m *PasetoManager) RevokeAccessFromContext(c fiber.Ctx) error {
+	tokenValue, err := extractAccessTokenForRevoke(c)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(tokenValue) == "" {
+		return ErrTokenMissingInContext
+	}
+	claims, err := m.Validate(tokenValue, TokenTypeAccess)
+	if err != nil {
+		return err
+	}
+	return m.RevokeClaims(c.Context(), claims)
+}
+
+// RevokeRefreshFromContext extracts and revokes a refresh token from request context.
+func (m *PasetoManager) RevokeRefreshFromContext(c fiber.Ctx) error {
+	tokenValue, err := extractRefreshTokenForRevoke(c)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(tokenValue) == "" {
+		return ErrTokenMissingInContext
+	}
+	claims, err := m.Validate(tokenValue, TokenTypeRefresh)
+	if err != nil {
+		return err
+	}
+	return m.RevokeClaims(c.Context(), claims)
+}
+
 // RevokeClaims revokes token claims.
 func (m *PasetoManager) RevokeClaims(ctx context.Context, claims Claims) error {
 	if m.revocationStore == nil {
