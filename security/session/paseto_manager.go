@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -217,7 +218,24 @@ func (m *PasetoManager) RevokeFromContext(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return m.RevokeClaims(c.Context(), claims)
+	if err := m.RevokeClaims(c.Context(), claims); err != nil {
+		return err
+	}
+
+	// Best-effort: also revoke refresh token if present on the same request.
+	refreshToken, err := extractRefreshTokenForRevoke(c)
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		return nil
+	}
+
+	refreshClaims, err := m.Validate(refreshToken, TokenTypeRefresh)
+	if err != nil {
+		return err
+	}
+	if refreshClaims.JTI == claims.JTI {
+		return nil
+	}
+	return m.RevokeClaims(c.Context(), refreshClaims)
 }
 
 // RevokeClaims revokes token claims.

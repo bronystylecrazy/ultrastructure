@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -254,6 +255,56 @@ func TestPasetoManager(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("revoke from context also revokes refresh token when present", func(t *testing.T) {
+		cfg := paseto.Config{
+			Secret:  "test-secret-key-that-is-long-enough-for-security",
+			Version: "v2",
+		}
+
+		pv, err := paseto.New(cfg)
+		require.NoError(t, err)
+
+		manager, err := session.NewPasetoManager(cfg, pv)
+		require.NoError(t, err)
+
+		pair, err := manager.Generate("user-123")
+		require.NoError(t, err)
+
+		app := fiber.New()
+		app.Post("/logout", manager.AccessMiddleware(), func(c fiber.Ctx) error {
+			if err := manager.RevokeFromContext(c); err != nil {
+				return err
+			}
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/access-protected", manager.AccessMiddleware(), func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+		app.Get("/refresh-protected", manager.RefreshMiddleware(), func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		req := httptest.NewRequest("POST", "/logout", nil)
+		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		req.AddCookie(&http.Cookie{Name: "refresh_token", Value: pair.RefreshToken})
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+
+		accessReq := httptest.NewRequest("GET", "/access-protected", nil)
+		accessReq.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		accessResp, err := app.Test(accessReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusUnauthorized, accessResp.StatusCode)
+
+		refreshReq := httptest.NewRequest("GET", "/refresh-protected", nil)
+		refreshReq.AddCookie(&http.Cookie{Name: "refresh_token", Value: pair.RefreshToken})
+		refreshResp, err := app.Test(refreshReq)
+		require.NoError(t, err)
+		assert.Equal(t, fiber.StatusUnauthorized, refreshResp.StatusCode)
+	})
+
 	t.Run("custom claims", func(t *testing.T) {
 		cfg := paseto.Config{
 			Secret:  "test-secret-key-that-is-long-enough-for-security",
@@ -268,8 +319,8 @@ func TestPasetoManager(t *testing.T) {
 
 		// Generate with custom claims
 		pair, err := manager.Generate("user-123", session.WithAccessClaims(map[string]any{
-			"role":     "admin",
-			"tenant":   "acme",
+			"role":        "admin",
+			"tenant":      "acme",
 			"permissions": []string{"read", "write"},
 		}))
 		require.NoError(t, err)

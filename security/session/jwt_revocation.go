@@ -148,7 +148,24 @@ func (s *JWTManager) RevokeFromContext(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return s.RevokeClaims(c.Context(), claims)
+	if err := s.RevokeClaims(c.Context(), claims); err != nil {
+		return err
+	}
+
+	// Best-effort: also revoke refresh token if present on the same request.
+	refreshToken, err := extractRefreshTokenForRevoke(c)
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		return nil
+	}
+
+	refreshClaims, err := s.Validate(refreshToken, TokenTypeRefresh)
+	if err != nil {
+		return err
+	}
+	if refreshClaims.JTI == claims.JTI {
+		return nil
+	}
+	return s.RevokeClaims(c.Context(), refreshClaims)
 }
 
 func (s *JWTManager) ensureNotRevoked(ctx context.Context, claims Claims) error {
