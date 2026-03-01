@@ -65,15 +65,24 @@ func AnyWithMode(mode ErrorMode, authenticators ...Authenticator) fiber.Handler 
 }
 
 func UserTokenAuthenticator(user session.Validator) Authenticator {
+	return UserTokenAuthenticatorWithExtractors(user)
+}
+
+func UserTokenAuthenticatorWithExtractors(user session.Validator, extractors ...session.Extractor) Authenticator {
 	return AuthenticatorFunc(func(c fiber.Ctx) (*Principal, bool, error) {
 		if user == nil {
 			return nil, false, nil
 		}
-		auth := strings.TrimSpace(c.Get("Authorization"))
-		if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+
+		extractor := defaultUserTokenExtractor()
+		if len(extractors) > 0 {
+			extractor = session.Chain(extractors...)
+		}
+
+		raw, err := extractor.Extract(c)
+		if err != nil || raw == "" {
 			return nil, false, nil
 		}
-		raw := strings.TrimSpace(auth[len("Bearer "):])
 		claims, err := user.Validate(raw, session.TokenTypeAccess)
 		if err != nil {
 			return nil, true, err
@@ -85,6 +94,21 @@ func UserTokenAuthenticator(user session.Validator) Authenticator {
 			Scopes:  claimScopes(claims.Values),
 		}, true, nil
 	})
+}
+
+func defaultUserTokenExtractor() session.Extractor {
+	return session.Chain(
+		session.FromAuthHeader("Bearer"),
+		session.FromHeader("X-Access-Token"),
+		session.FromCookie("access_token"),
+		session.FromCookie("token"),
+		session.FromQuery("access_token"),
+		session.FromQuery("token"),
+		session.FromForm("access_token"),
+		session.FromForm("token"),
+		session.FromParam("access_token"),
+		session.FromParam("token"),
+	)
 }
 
 func APIKeyAuthenticator(app apikey.Manager) Authenticator {

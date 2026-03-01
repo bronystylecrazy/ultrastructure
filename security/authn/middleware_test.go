@@ -81,6 +81,46 @@ func TestEitherUnauthorized(t *testing.T) {
 	}
 }
 
+func TestEitherUserJWTCookieAuthorized(t *testing.T) {
+	userM, access := testutil.NewUserManager(t)
+	appM, _ := testutil.NewAPIKeyManager(t)
+
+	app := fiber.New()
+	app.Get("/p", authn.Any(authn.UserTokenAuthenticator(userM), authn.APIKeyAuthenticator(appM)), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: access})
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}
+
+func TestEitherUserJWTHeaderAuthorized(t *testing.T) {
+	userM, access := testutil.NewUserManager(t)
+	appM, _ := testutil.NewAPIKeyManager(t)
+
+	app := fiber.New()
+	app.Get("/p", authn.Any(authn.UserTokenAuthenticator(userM), authn.APIKeyAuthenticator(appM)), func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("X-Access-Token", access)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if res.StatusCode != fiber.StatusOK {
+		t.Fatalf("status: got=%d want=%d", res.StatusCode, fiber.StatusOK)
+	}
+}
+
 func TestEitherPrefersBearerWhenBothPresent(t *testing.T) {
 	userM, access := testutil.NewUserManager(t)
 	appM, raw := testutil.NewAPIKeyManager(t)
