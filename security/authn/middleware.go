@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"context"
 	"strings"
 
 	apikey "github.com/bronystylecrazy/ultrastructure/security/apikey"
@@ -83,7 +84,8 @@ func UserTokenAuthenticatorWithExtractors(user session.Validator, extractors ...
 		if err != nil || raw == "" {
 			return nil, false, nil
 		}
-		claims, err := user.Validate(raw, session.TokenTypeAccess)
+
+		claims, err := validateUserAccessToken(c.Context(), user, raw)
 		if err != nil {
 			return nil, true, err
 		}
@@ -94,6 +96,13 @@ func UserTokenAuthenticatorWithExtractors(user session.Validator, extractors ...
 			Scopes:  claimScopes(claims.Values),
 		}, true, nil
 	})
+}
+
+func validateUserAccessToken(ctx context.Context, user session.Validator, raw string) (session.Claims, error) {
+	if active, ok := user.(session.ActiveValidator); ok {
+		return active.ValidateActive(ctx, raw, session.TokenTypeAccess)
+	}
+	return user.Validate(raw, session.TokenTypeAccess)
 }
 
 func defaultUserTokenExtractor() session.Extractor {
@@ -112,12 +121,25 @@ func defaultUserTokenExtractor() session.Extractor {
 }
 
 func APIKeyAuthenticator(app apikey.Manager) Authenticator {
+	return APIKeyAuthenticatorWithExtractors(app)
+}
+
+func APIKeyAuthenticatorWithExtractors(app apikey.Manager, extractors ...session.Extractor) Authenticator {
 	return AuthenticatorFunc(func(c fiber.Ctx) (*Principal, bool, error) {
 		if app == nil {
 			return nil, false, nil
 		}
-		auth := strings.TrimSpace(c.Get("Authorization"))
-		rawKey := extractAPIKey(auth, c.Get("X-API-Key"))
+
+		extractor := defaultAPIKeyExtractor()
+		if len(extractors) > 0 {
+			extractor = session.Chain(extractors...)
+		}
+
+		rawKey, err := extractor.Extract(c)
+		if err != nil {
+			return nil, false, nil
+		}
+		rawKey = strings.TrimSpace(rawKey)
 		if rawKey == "" {
 			return nil, false, nil
 		}
@@ -132,4 +154,18 @@ func APIKeyAuthenticator(app apikey.Manager) Authenticator {
 			Scopes: append([]string(nil), ap.Scopes...),
 		}, true, nil
 	})
+}
+
+func defaultAPIKeyExtractor() session.Extractor {
+	return session.Chain(
+		session.FromCustom("authorization_apikey_or_x_api_key", func(c fiber.Ctx) (string, error) {
+			auth := strings.TrimSpace(c.Get("Authorization"))
+			return extractAPIKey(auth, c.Get("X-API-Key")), nil
+		}),
+		session.FromHeader("X-API-Key"),
+		session.FromCookie("api_key"),
+		session.FromQuery("api_key"),
+		session.FromForm("api_key"),
+		session.FromParam("api_key"),
+	)
 }

@@ -164,6 +164,18 @@ func (m *PasetoManager) Validate(tokenValue string, expectedType string) (Claims
 	return claims, nil
 }
 
+// ValidateActive validates token and checks revocation state.
+func (m *PasetoManager) ValidateActive(ctx context.Context, tokenValue string, expectedType string) (Claims, error) {
+	claims, err := m.Validate(tokenValue, expectedType)
+	if err != nil {
+		return Claims{}, err
+	}
+	if err := m.ensureNotRevoked(ctx, claims); err != nil {
+		return Claims{}, err
+	}
+	return claims, nil
+}
+
 // AccessMiddleware creates middleware for access token authentication.
 func (m *PasetoManager) AccessMiddleware(exs ...Extractor) fiber.Handler {
 	if len(exs) == 0 {

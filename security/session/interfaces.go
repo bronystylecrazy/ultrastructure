@@ -20,6 +20,11 @@ type Validator interface {
 	Validate(tokenValue string, expectedType string) (Claims, error)
 }
 
+// ActiveValidator validates token signature/claims and ensures token is not revoked.
+type ActiveValidator interface {
+	ValidateActive(ctx context.Context, tokenValue string, expectedType string) (Claims, error)
+}
+
 type Revoker interface {
 	Revoke(ctx context.Context, tokenValue string) error
 	RevokeFromContext(c fiber.Ctx) error

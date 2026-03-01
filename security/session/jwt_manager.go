@@ -162,6 +162,18 @@ func (s *JWTManager) Validate(tokenValue string, expectedType string) (Claims, e
 	return claims, nil
 }
 
+// ValidateActive validates token and checks revocation state.
+func (s *JWTManager) ValidateActive(ctx context.Context, tokenValue string, expectedType string) (Claims, error) {
+	claims, err := s.Validate(tokenValue, expectedType)
+	if err != nil {
+		return Claims{}, err
+	}
+	if err := s.ensureNotRevoked(ctx, claims); err != nil {
+		return Claims{}, err
+	}
+	return claims, nil
+}
+
 func (s *JWTManager) AccessMiddleware(exs ...Extractor) fiber.Handler {
 	if len(exs) == 0 {
 		return s.tokenMiddleware(TokenTypeAccess, s.defaultAccess())
