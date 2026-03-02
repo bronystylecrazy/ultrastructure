@@ -3,12 +3,13 @@ package us_test
 import "testing"
 
 import us "github.com/bronystylecrazy/ultrastructure"
+import "github.com/bronystylecrazy/ultrastructure/meta"
 
 func TestBuildModeHelpers(t *testing.T) {
-	originalVersion := us.Version
-	defer func() { us.Version = originalVersion }()
+	originalVersion := meta.Version
+	defer func() { meta.Version = originalVersion }()
 
-	us.Version = us.NilVersion
+	meta.Version = us.NilVersion
 	if !us.IsDevelopment() {
 		t.Fatal("expected development mode when version is nil")
 	}
@@ -16,7 +17,7 @@ func TestBuildModeHelpers(t *testing.T) {
 		t.Fatal("did not expect production mode when version is nil")
 	}
 
-	us.Version = "1.2.3"
+	meta.Version = "1.2.3"
 	if us.IsDevelopment() {
 		t.Fatal("did not expect development mode when version is set")
 	}

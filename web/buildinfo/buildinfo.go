@@ -19,7 +19,7 @@ type BuildInfoResponse struct {
 	Description string `json:"description"`
 	Version     string `json:"version"`
 	Commit      string `json:"commit"`
-	BuildDate   string `json:"buildDate"`
+	BuildDate   string `json:"build_date"`
 }
 
 func New(opts ...Option) *Handler {

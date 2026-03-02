@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -19,8 +20,13 @@ type Root struct {
 }
 
 func New(shutdowner fx.Shutdowner, cmd *cobra.Command) *Root {
+	use := filepath.Base(os.Args[0])
+	if strings.TrimSpace(use) == "" {
+		use = meta.Name
+	}
+
 	defaultCmd := &cobra.Command{
-		Use:           meta.Name,
+		Use:           use,
 		SilenceErrors: true,
 		PostRunE: func(cmd *cobra.Command, args []string) error {
 			return shutdowner.Shutdown()

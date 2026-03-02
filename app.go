@@ -49,12 +49,10 @@ func New(nodes ...any) *App {
 }
 
 func (a *App) Build() fx.Option {
-	syncMeta()
 	return di.App(a.nodes...).Build()
 }
 
 func (a *App) Run() error {
-	syncMeta()
 	if a.enableServiceHost && shouldRunServiceHost(os.Args[1:], a.serviceCommandToken) {
 		return a.runWithServiceHost()
 	}
