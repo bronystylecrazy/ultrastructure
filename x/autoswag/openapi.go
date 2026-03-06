@@ -15,6 +15,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
 
@@ -1105,19 +1106,14 @@ func normalizeOperationStrings(in []string) []string {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
-	for _, v := range in {
+	out := lo.FilterMap(in, func(v string, _ int) (string, bool) {
 		v = strings.TrimSpace(v)
 		if v == "" {
-			continue
+			return "", false
 		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
+		return v, true
+	})
+	out = lo.Uniq(out)
 	if len(out) == 0 {
 		return nil
 	}
@@ -1156,10 +1152,7 @@ func buildSpecTags(paths map[string]map[string]interface{}, tagDescriptions map[
 		return nil
 	}
 
-	names := make([]string, 0, len(tagSet))
-	for tag := range tagSet {
-		names = append(names, tag)
-	}
+	names := lo.Keys(tagSet)
 	sort.Strings(names)
 
 	tags := make([]OpenAPITag, 0, len(names))
@@ -1416,28 +1409,25 @@ func applyPaginationResponse(operation map[string]interface{}, pagination *Pagin
 }
 
 func hasErrorDiagnostics(in []Diagnostic) bool {
-	for _, d := range in {
-		if normalizeDiagnosticSeverity(d.Severity) == "error" {
-			return true
-		}
-	}
-	return false
+	_, ok := lo.Find(in, func(d Diagnostic) bool {
+		return normalizeDiagnosticSeverity(d.Severity) == "error"
+	})
+	return ok
 }
 
 func diagnosticsToOpenAPI(in []Diagnostic) []map[string]interface{} {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]map[string]interface{}, 0, len(in))
-	for _, d := range in {
+	out := lo.FilterMap(in, func(d Diagnostic, _ int) (map[string]interface{}, bool) {
 		if strings.TrimSpace(d.Message) == "" {
-			continue
+			return nil, false
 		}
-		out = append(out, map[string]interface{}{
+		return map[string]interface{}{
 			"severity": normalizeDiagnosticSeverity(d.Severity),
 			"message":  d.Message,
-		})
-	}
+		}, true
+	})
 	return out
 }
 

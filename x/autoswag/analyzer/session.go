@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -883,10 +884,7 @@ func normalizeFileList(files []string) []string {
 }
 
 func keysOfSet(m map[string]struct{}) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
+	out := lo.Keys(m)
 	sort.Strings(out)
 	return out
 }
@@ -895,19 +893,14 @@ func dedupeStrings(in []string) []string {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(in))
-	for _, v := range in {
+	out := lo.FilterMap(in, func(v string, _ int) (string, bool) {
 		v = strings.TrimSpace(v)
 		if v == "" {
-			continue
+			return "", false
 		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
+		return v, true
+	})
+	out = lo.Uniq(out)
 	sort.Strings(out)
 	return out
 }

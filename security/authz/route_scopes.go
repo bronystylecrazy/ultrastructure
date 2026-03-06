@@ -6,6 +6,7 @@ import (
 	authn "github.com/bronystylecrazy/ultrastructure/security/authn"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
+	"github.com/samber/lo"
 )
 
 type RouteScopeOption func(*routeScopeConfig)
@@ -119,16 +120,13 @@ func lookupRouteMetadata(registry *web.MetadataRegistry, c fiber.Ctx) *web.Route
 		candidates = append(candidates, cp)
 	}
 
-	seen := map[string]struct{}{}
+	paths := make([]string, 0, len(candidates)*2)
 	for _, raw := range candidates {
-		for _, p := range normalizeLookupPaths(raw) {
-			if _, ok := seen[p]; ok {
-				continue
-			}
-			seen[p] = struct{}{}
-			if meta := registry.GetRoute(method, p); meta != nil {
-				return meta
-			}
+		paths = append(paths, normalizeLookupPaths(raw)...)
+	}
+	for _, p := range lo.Uniq(paths) {
+		if meta := registry.GetRoute(method, p); meta != nil {
+			return meta
 		}
 	}
 	return nil
@@ -157,33 +155,30 @@ func relevantSecurityRequirements(in []web.SecurityRequirement, principalType au
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]web.SecurityRequirement, 0, len(in))
-	for _, req := range in {
+	return lo.Filter(in, func(req web.SecurityRequirement, _ int) bool {
 		scheme := strings.TrimSpace(req.Scheme)
 		if scheme == "" {
-			continue
+			return false
 		}
 		switch principalType {
 		case authn.PrincipalUser:
-			if _, ok := cfg.userSchemes[scheme]; ok {
-				out = append(out, req)
-			}
+			_, ok := cfg.userSchemes[scheme]
+			return ok
 		case authn.PrincipalApp:
-			if _, ok := cfg.appSchemes[scheme]; ok {
-				out = append(out, req)
-			}
+			_, ok := cfg.appSchemes[scheme]
+			return ok
 		}
-	}
-	return out
+		return false
+	})
 }
 
 func toSet(values ...string) map[string]struct{} {
-	out := make(map[string]struct{}, len(values))
-	for _, v := range values {
+	items := lo.FilterMap(values, func(v string, _ int) (string, bool) {
 		v = strings.TrimSpace(v)
-		if v != "" {
-			out[v] = struct{}{}
-		}
+		return v, v != ""
+	})
+	if len(items) == 0 {
+		return map[string]struct{}{}
 	}
-	return out
+	return lo.SliceToMap(items, func(v string) (string, struct{}) { return v, struct{}{} })
 }

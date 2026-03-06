@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -13,7 +14,7 @@ func NewSimpleHandler() *SimpleHandler {
 	return &SimpleHandler{}
 }
 
-func (h *SimpleHandler) Handle(router fiber.Router) {
+func (h *SimpleHandler) Handle(router web.Router) {
 	router.Get("/hello", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})

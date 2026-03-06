@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/samber/lo"
 )
 
 // generateSummaryFromMetadata generates a summary using metadata or falls back to auto-generation
@@ -164,10 +165,8 @@ func buildResponseSchemaForModels(contentType string, modelTypes []reflect.Type,
 }
 
 func appendUniqueModelType(existing []reflect.Type, t reflect.Type) []reflect.Type {
-	for _, item := range existing {
-		if item == t {
-			return existing
-		}
+	if lo.Contains(existing, t) {
+		return existing
 	}
 	return append(existing, t)
 }
@@ -176,10 +175,7 @@ func dedupeAndSortModelTypes(in []reflect.Type) []reflect.Type {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]reflect.Type, 0, len(in))
-	for _, t := range in {
-		out = appendUniqueModelType(out, t)
-	}
+	out := lo.UniqBy(in, func(t reflect.Type) string { return modelTypeSortKey(t) })
 	sort.Slice(out, func(i, j int) bool {
 		return modelTypeSortKey(out[i]) < modelTypeSortKey(out[j])
 	})

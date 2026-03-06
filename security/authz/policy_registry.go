@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	authn "github.com/bronystylecrazy/ultrastructure/security/authn"
+	"github.com/samber/lo"
 )
 
 type PolicyDefinition struct {
@@ -89,19 +90,14 @@ func normalizeStringList(in []string) []string {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
-	for _, v := range in {
+	out := lo.FilterMap(in, func(v string, _ int) (string, bool) {
 		v = strings.TrimSpace(v)
 		if v == "" {
-			continue
+			return "", false
 		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
+		return v, true
+	})
+	out = lo.Uniq(out)
 	sort.Strings(out)
 	if len(out) == 0 {
 		return nil

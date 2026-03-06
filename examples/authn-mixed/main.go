@@ -13,8 +13,9 @@ import (
 	apikey "github.com/bronystylecrazy/ultrastructure/security/apikey"
 	authn "github.com/bronystylecrazy/ultrastructure/security/authn"
 	authz "github.com/bronystylecrazy/ultrastructure/security/authz"
-	token "github.com/bronystylecrazy/ultrastructure/security/token"
+	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/x/autoswag"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -69,16 +70,18 @@ func (s *memoryKeyStore) SaveIssued(issued *apikey.IssuedKey) {
 }
 
 type handler struct {
-	userToken token.Manager
-	appKey    apikey.Manager
-	store     *memoryKeyStore
+	userIssuer session.Issuer
+	userAuth   session.Validator
+	appKey     apikey.Manager
+	store      *memoryKeyStore
 }
 
-func NewHandler(userToken token.Manager, appKey apikey.Manager, store *memoryKeyStore) *handler {
+func NewHandler(userIssuer session.Issuer, userAuth session.Validator, appKey apikey.Manager, store *memoryKeyStore) *handler {
 	return &handler{
-		userToken: userToken,
-		appKey:    appKey,
-		store:     store,
+		userIssuer: userIssuer,
+		userAuth:   userAuth,
+		appKey:     appKey,
+		store:      store,
 	}
 }
 
@@ -87,25 +90,28 @@ func (h *handler) Handle(r web.Router) {
 	r.Post("/api/v1/apikeys", h.issueAPIKey)
 	r.Delete("/api/v1/apikeys/:key_id", h.revokeAPIKey)
 
-	protected := r.Group(
+	p := r.Group(
 		"/api/v1/integration",
 		authn.Any(
-			authn.UserTokenAuthenticator(h.userToken),
+			authn.UserTokenAuthenticator(h.userAuth),
 			authn.APIKeyAuthenticator(h.appKey),
 		),
 		authz.ResolvePolicy(authz.PolicyPreferUser),
 	)
-	protected.Get("/resource", h.readResource).
-		Apply(authz.Policy("resource.read"))
-	protected.Post("/resource", h.writeResource).
-		Apply(authz.Policy("resource.write"))
+	p.Get("/resource", h.readResource).
+		With(
+			authz.Policy("resource.read"),
+			authz.Scope("resource:read"),
+		)
+	p.Post("/resource", h.writeResource).
+		With(authz.Policy("resource.write"))
 }
 
 func (h *handler) login(c fiber.Ctx) error {
 	// Demo-only: issue token for a fixed user.
-	pair, err := h.userToken.GenerateTokenPair("user-1", map[string]any{
+	pair, err := h.userIssuer.Generate("user-1", session.WithAccessClaims(map[string]any{
 		"role": "admin",
-	})
+	}))
 	if err != nil {
 		return err
 	}
@@ -117,10 +123,10 @@ func (h *handler) issueAPIKey(c fiber.Ctx) error {
 	expiresAt := time.Now().UTC().Add(90 * 24 * time.Hour)
 	issued, err := h.appKey.IssueKey(
 		"partner-app-1",
-		"intg",
-		[]string{"read:resource"},
-		map[string]string{"env": "dev"},
-		&expiresAt,
+		apikey.WithPrefix("intg"),
+		apikey.WithScopes("read:resource"),
+		apikey.WithMetadata(map[string]string{"env": "dev"}),
+		apikey.WithExpiresAt(&expiresAt),
 	)
 	if err != nil {
 		return err
@@ -255,7 +261,7 @@ func main() {
 	store := NewMemoryKeyStore()
 
 	if err := us.New(
-		apikey.Module(
+		apikey.Providers(
 			apikey.UseLookup(store),
 			apikey.UseUsageRecorder(store),
 			apikey.UseRevoker(store),
@@ -263,9 +269,9 @@ func main() {
 		cmd.UseBasicCommands(),
 		cmd.Run(
 			web.Init(),
-			web.UseAutoSwagger(
-				web.WithBearerSecurityScheme("BearerAuth"),
-				web.WithAPIKeySecurityScheme("ApiKeyAuth", "X-API-Key", "header"),
+			autoswag.Use(
+				autoswag.WithBearerSecurityScheme("BearerAuth"),
+				autoswag.WithAPIKeySecurityScheme("ApiKeyAuth", "X-API-Key", "header"),
 			),
 			authz.UseScopeGovernance(
 				authz.ScopeDefinition{Name: "read:resource", Description: "Read integration resources"},
@@ -283,7 +289,10 @@ func main() {
 					AllScopes:   []string{"write:resource"},
 				},
 			),
-			token.UseRefreshRoute("/api/v1/auth/refresh"),
+			session.UseRefreshRoute(
+				"/api/v1/auth/refresh",
+				session.WithRefreshSubjectResolver(session.SubjectFromContext),
+			),
 			authz.UseScopeCatalogRoute("/api/v1/authz/scopes"),
 			di.Supply(store),
 			di.Provide(NewHandler),

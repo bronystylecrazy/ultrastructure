@@ -8,6 +8,7 @@ import (
 
 	authn "github.com/bronystylecrazy/ultrastructure/security/authn"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/samber/lo"
 )
 
 const (
@@ -70,10 +71,9 @@ func (e *UnknownRoutePoliciesError) Error() string {
 	if e == nil || len(e.Items) == 0 {
 		return "authz: unknown route policies"
 	}
-	parts := make([]string, 0, len(e.Items))
-	for _, item := range e.Items {
-		parts = append(parts, fmt.Sprintf("%s %s => %s", item.Method, item.Path, item.Policy))
-	}
+	parts := lo.Map(e.Items, func(item UnknownRoutePolicy, _ int) string {
+		return fmt.Sprintf("%s %s => %s", item.Method, item.Path, item.Policy)
+	})
 	return "authz: unknown route policies: " + strings.Join(parts, "; ")
 }
 
@@ -183,10 +183,10 @@ func appendSecurityRequirement(meta *web.RouteMetadata, req web.SecurityRequirem
 	req.Scheme = scheme
 	req.Scopes = scopes
 	key := requirementKey(req)
-	for _, existing := range meta.Security {
-		if requirementKey(existing) == key {
-			return
-		}
+	if _, found := lo.Find(meta.Security, func(existing web.SecurityRequirement) bool {
+		return requirementKey(existing) == key
+	}); found {
+		return
 	}
 	meta.Security = append(meta.Security, req)
 }

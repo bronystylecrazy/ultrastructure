@@ -1,6 +1,9 @@
 package otel
 
-import "go.uber.org/zap/zapcore"
+import (
+	"github.com/samber/lo"
+	"go.uber.org/zap/zapcore"
+)
 
 // FilterFieldsCore drops fields with matching keys before writing to the core.
 func FilterFieldsCore(core zapcore.Core, dropKeys ...string) zapcore.Core {
@@ -30,13 +33,11 @@ func makeDropSet(keys []string) map[string]struct{} {
 	if len(keys) == 0 {
 		return nil
 	}
-	drop := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		if key == "" {
-			continue
-		}
-		drop[key] = struct{}{}
+	keys = lo.Filter(keys, func(key string, _ int) bool { return key != "" })
+	if len(keys) == 0 {
+		return nil
 	}
+	drop := lo.SliceToMap(keys, func(key string) (string, struct{}) { return key, struct{}{} })
 	return drop
 }
 
@@ -44,12 +45,8 @@ func filterFields(fields []zapcore.Field, drop map[string]struct{}) []zapcore.Fi
 	if len(fields) == 0 || len(drop) == 0 {
 		return fields
 	}
-	out := fields[:0]
-	for _, field := range fields {
-		if _, ok := drop[field.Key]; ok {
-			continue
-		}
-		out = append(out, field)
-	}
-	return out
+	return lo.Filter(fields, func(field zapcore.Field, _ int) bool {
+		_, ok := drop[field.Key]
+		return !ok
+	})
 }

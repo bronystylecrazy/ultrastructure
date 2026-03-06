@@ -8,18 +8,20 @@ import (
 	"testing"
 
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/x/autoswag"
 	"github.com/gofiber/fiber/v3"
 )
 
-func newTestApp() *fiber.App {
+func newTestApp() (*fiber.App, *web.MetadataRegistry) {
 	app := fiber.New()
-	router := web.NewRouter(app)
+	registry := web.NewMetadataRegistry()
+	router := web.NewRouterWithRegistry(app, registry)
 	NewUserHandler().Handle(router)
-	return app
+	return app, registry
 }
 
 func TestCreateUserPayloadValidation(t *testing.T) {
-	app := newTestApp()
+	app, _ := newTestApp()
 
 	tests := []struct {
 		name       string
@@ -70,7 +72,7 @@ func TestCreateUserPayloadValidation(t *testing.T) {
 }
 
 func TestUpdateUserPayloadValidation(t *testing.T) {
-	app := newTestApp()
+	app, _ := newTestApp()
 
 	tests := []struct {
 		name       string
@@ -116,12 +118,9 @@ func TestUpdateUserPayloadValidation(t *testing.T) {
 }
 
 func TestOpenAPIIncludesValidateTagConstraintsForPayload(t *testing.T) {
-	web.GetGlobalRegistry().Clear()
-	defer web.GetGlobalRegistry().Clear()
-
-	app := newTestApp()
-	routes := web.InspectFiberRoutes(app, nil)
-	spec := web.BuildOpenAPISpec(routes, web.Config{Name: "Typed Example API"})
+	app, registry := newTestApp()
+	routes := autoswag.InspectFiberRoutes(app, nil)
+	spec := autoswag.BuildOpenAPISpecWithRegistry(routes, autoswag.Config{Name: "Typed Example API"}, registry)
 
 	postOp, ok := spec.Paths["/users"]["post"].(map[string]interface{})
 	if !ok {

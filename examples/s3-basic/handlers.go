@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
+	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -18,7 +19,7 @@ func NewUploadHandler(config s3.Config, uploader s3.Uploader) *uploadHandler {
 	return &uploadHandler{uploader: uploader, config: config}
 }
 
-func (h *uploadHandler) Handle(r fiber.Router) {
+func (h *uploadHandler) Handle(r web.Router) {
 	r.Post("/upload", h.Upload)
 }
 

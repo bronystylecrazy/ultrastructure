@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/samber/lo"
 )
 
 type ScopeName string
@@ -46,12 +47,13 @@ func BuildScopeCatalogWithGovernance(registry *web.MetadataRegistry, scopeRegist
 	scopeDefinitions := scopeRegistry.All()
 	policyDefinitions := policyRegistry.All()
 
-	scopeSet := map[string]struct{}{}
-	for _, def := range scopeDefinitions {
-		if def.Name != "" {
-			scopeSet[def.Name] = struct{}{}
-		}
-	}
+	scopeSet := lo.SliceToMap(
+		lo.FilterMap(scopeDefinitions, func(def ScopeDefinition, _ int) (string, bool) {
+			v := strings.TrimSpace(def.Name)
+			return v, v != ""
+		}),
+		func(name string) (string, struct{}) { return name, struct{}{} },
+	)
 	endpoints := make([]ScopeEndpointEntry, 0, len(routes))
 
 	for key, meta := range routes {
@@ -63,32 +65,20 @@ func BuildScopeCatalogWithGovernance(registry *web.MetadataRegistry, scopeRegist
 		schemes := make([]string, 0, len(meta.Security))
 		scopes := make([]string, 0, len(meta.Security))
 		policies := toPolicyNames(normalizeStringList(meta.Policies))
-		seenScheme := map[string]struct{}{}
-		seenScope := map[string]struct{}{}
 		for _, sec := range meta.Security {
-			scheme := strings.TrimSpace(sec.Scheme)
-			if scheme != "" {
-				if _, ok := seenScheme[scheme]; !ok {
-					seenScheme[scheme] = struct{}{}
-					schemes = append(schemes, scheme)
-				}
-			}
+			schemes = append(schemes, sec.Scheme)
 			for _, scope := range sec.Scopes {
 				scope = strings.TrimSpace(scope)
 				if scope == "" {
 					continue
 				}
-				if _, ok := seenScope[scope]; ok {
-					continue
-				}
-				seenScope[scope] = struct{}{}
 				scopes = append(scopes, scope)
 				scopeSet[scope] = struct{}{}
 			}
 		}
 
-		sort.Strings(schemes)
-		sort.Strings(scopes)
+		schemes = normalizeStringList(schemes)
+		scopes = normalizeStringList(scopes)
 		tags := append([]string(nil), meta.Tags...)
 		sort.Strings(tags)
 
@@ -110,10 +100,7 @@ func BuildScopeCatalogWithGovernance(registry *web.MetadataRegistry, scopeRegist
 		return endpoints[i].Path < endpoints[j].Path
 	})
 
-	scopes := make([]string, 0, len(scopeSet))
-	for scope := range scopeSet {
-		scopes = append(scopes, scope)
-	}
+	scopes := lo.Keys(scopeSet)
 	sort.Strings(scopes)
 
 	return ScopeCatalog{
@@ -128,13 +115,10 @@ func toScopeNames(in []string) []ScopeName {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]ScopeName, 0, len(in))
-	for _, v := range in {
+	out := lo.FilterMap(in, func(v string, _ int) (ScopeName, bool) {
 		v = strings.TrimSpace(v)
-		if v != "" {
-			out = append(out, ScopeName(v))
-		}
-	}
+		return ScopeName(v), v != ""
+	})
 	if len(out) == 0 {
 		return nil
 	}
@@ -145,13 +129,10 @@ func toPolicyNames(in []string) []PolicyName {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]PolicyName, 0, len(in))
-	for _, v := range in {
+	out := lo.FilterMap(in, func(v string, _ int) (PolicyName, bool) {
 		v = strings.TrimSpace(v)
-		if v != "" {
-			out = append(out, PolicyName(v))
-		}
-	}
+		return PolicyName(v), v != ""
+	})
 	if len(out) == 0 {
 		return nil
 	}

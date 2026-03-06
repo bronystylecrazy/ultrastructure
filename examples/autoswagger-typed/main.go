@@ -6,6 +6,7 @@ import (
 	custom "github.com/bronystylecrazy/ultrastructure/examples/autoswagger-typed/area"
 	area "github.com/bronystylecrazy/ultrastructure/examples/autoswagger-typed/custom"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	"github.com/bronystylecrazy/ultrastructure/x/autoswag"
 )
 
 type UsersError struct {
@@ -20,7 +21,7 @@ func NewUsersSwaggerCustomizer() *UsersSwaggerCustomizer {
 	return &UsersSwaggerCustomizer{}
 }
 
-func (c *UsersSwaggerCustomizer) CustomizeSwagger(ctx *web.SwaggerContext) {
+func (c *UsersSwaggerCustomizer) CustomizeSwagger(ctx *autoswag.Context) {
 	ctx.Metadata.OperationID = ctx.RouteModelPackageName() + "_" + ctx.Metadata.OperationID
 }
 
@@ -30,6 +31,6 @@ func main() {
 		di.Provide(custom.NewUserHandler),
 		di.Provide(area.NewUserHandler),
 		di.Provide(NewUsersSwaggerCustomizer),
-		web.UseAutoSwagger(),
+		autoswag.Use(),
 	).Run()
 }

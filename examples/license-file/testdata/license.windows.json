@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "license_id": "lic-test-windows",
+  "project_id": "ultrastructure-demo",
+  "customer_id": "customer-test",
+  "issued_at": 1767225600,
+  "expiry": 1893456000,
+  "kid": "kid-test-2026-02",
+  "device_binding": {
+    "platform": "windows",
+    "method": "os-keystore",
+    "pub_hash": "gp32aPuwbKm9n5Kv7uxhnLWNOZtypUEFkuUJJKKHe4s"
+  },
+  "x": {
+    "max_cameras": 4,
+    "plan": "pro",
+    "target_platform": "windows"
+  },
+  "nonce": "nonce-test-windows",
+  "sig": "fibazYj6gloXsC4S-I_-WZLxUsIWBERcI3HnWHgtv5Z9SfejsUVaz2_2e96yp7y2-f37bn0FrFMOPqHBDxLVCA"
+}

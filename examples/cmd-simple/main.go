@@ -92,13 +92,13 @@ func main() {
 
 	app := fx.New(
 		di.App(
-			uscmd.Module(
-				uscmd.WithDefaultName("ping"),
-				uscmd.Use("ping",
+			uscmd.Providers(
+				uscmd.UseDefaultCommand("ping"),
+				uscmd.OnRun("ping",
 					di.Provide(NewHTTPPinger),
 					di.Provide(NewPingCommand),
 				),
-				uscmd.Use("user list",
+				uscmd.OnRun("user list",
 					di.Provide(NewUserListCommand),
 				),
 			),

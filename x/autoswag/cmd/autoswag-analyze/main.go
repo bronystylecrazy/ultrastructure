@@ -19,6 +19,7 @@ import (
 
 	"github.com/bronystylecrazy/ultrastructure/x/autoswag/analyzer"
 	"github.com/fsnotify/fsnotify"
+	"github.com/samber/lo"
 )
 
 func main() {
@@ -298,17 +299,17 @@ func main() {
 	if report == nil {
 		runAnalyze := func(runScope string) (*analyzer.Report, error) {
 			opts := analyzer.Options{
-				Dir:           dir,
-				Patterns:      patterns,
-				Tags:          tags,
-				StrictDI:      strictDI,
-				DisableCommentDetection: disableCommentDetection,
+				Dir:                       dir,
+				Patterns:                  patterns,
+				Tags:                      tags,
+				StrictDI:                  strictDI,
+				DisableCommentDetection:   disableCommentDetection,
 				DisableDirectiveDetection: disableDirectiveDetection,
-				ExplicitOnly:  explicitOnly,
-				ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, runScope),
-				IndexScope:    runScope,
-				LoadDeps:      shouldLoadDepsForScope(runScope, explicitOnly),
-				ToolVersion:   toolVersion,
+				ExplicitOnly:              explicitOnly,
+				ExplicitScope:             explicitScopeForScope(explicitOnly, explicitScope, runScope),
+				IndexScope:                runScope,
+				LoadDeps:                  shouldLoadDepsForScope(runScope, explicitOnly),
+				ToolVersion:               toolVersion,
 				Progress: func(message string) {
 					if !verbose {
 						return
@@ -406,17 +407,17 @@ func main() {
 
 func newAnalyzeSession(dir string, patterns []string, tags string, strictDI bool, explicitOnly bool, explicitScope string, scope string, toolVersion string, verbose bool, cacheEnabled bool, cacheRoot string, disableCommentDetection bool, disableDirectiveDetection bool) (*analyzer.Session, error) {
 	opts := analyzer.Options{
-		Dir:           dir,
-		Patterns:      patterns,
-		Tags:          tags,
-		StrictDI:      strictDI,
-		DisableCommentDetection: disableCommentDetection,
+		Dir:                       dir,
+		Patterns:                  patterns,
+		Tags:                      tags,
+		StrictDI:                  strictDI,
+		DisableCommentDetection:   disableCommentDetection,
 		DisableDirectiveDetection: disableDirectiveDetection,
-		ExplicitOnly:  explicitOnly,
-		ExplicitScope: explicitScopeForScope(explicitOnly, explicitScope, scope),
-		IndexScope:    scope,
-		LoadDeps:      shouldLoadDepsForScope(scope, explicitOnly),
-		ToolVersion:   toolVersion,
+		ExplicitOnly:              explicitOnly,
+		ExplicitScope:             explicitScopeForScope(explicitOnly, explicitScope, scope),
+		IndexScope:                scope,
+		LoadDeps:                  shouldLoadDepsForScope(scope, explicitOnly),
+		ToolVersion:               toolVersion,
 		Progress: func(message string) {
 			if !verbose {
 				return
@@ -791,20 +792,13 @@ func normalizeLintSeverity(in string) string {
 
 func filterLintDiagnostics(diags []analyzer.AnalyzerDiagnostic, threshold string) []analyzer.AnalyzerDiagnostic {
 	threshold = normalizeLintSeverity(threshold)
-	out := make([]analyzer.AnalyzerDiagnostic, 0, len(diags))
-	for _, d := range diags {
+	return lo.Filter(diags, func(d analyzer.AnalyzerDiagnostic, _ int) bool {
 		sev := strings.ToLower(strings.TrimSpace(d.Severity))
 		if threshold == "error" {
-			if sev == "error" {
-				out = append(out, d)
-			}
-			continue
+			return sev == "error"
 		}
-		if sev == "error" || sev == "warning" || sev == "" {
-			out = append(out, d)
-		}
-	}
-	return out
+		return sev == "error" || sev == "warning" || sev == ""
+	})
 }
 
 func autoAnalyzeScopes(strictDI bool, explicitOnly bool, explicitScope string) []string {

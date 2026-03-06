@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
+	"github.com/samber/lo"
 )
 
 const defaultCommandName = "serve"
@@ -51,17 +52,16 @@ func WithDefaultName(name string) di.Node {
 }
 
 func currentCommandPathFromArgs(args []string) string {
-	var parts []string
-	for _, arg := range args {
+	parts := lo.FilterMap(args, func(arg string, _ int) (string, bool) {
 		trimmed := strings.TrimSpace(arg)
 		if trimmed == "" {
-			continue
+			return "", false
 		}
 		if strings.HasPrefix(trimmed, "-") {
-			continue
+			return "", false
 		}
-		parts = append(parts, trimmed)
-	}
+		return trimmed, true
+	})
 	if len(parts) > 0 {
 		return normalizePath(strings.Join(parts, " "))
 	}

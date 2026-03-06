@@ -1,6 +1,10 @@
 package authn
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/samber/lo"
+)
 
 func extractAPIKey(authHeader string, fallback string) string {
 	authHeader = strings.TrimSpace(authHeader)
@@ -59,18 +63,7 @@ func uniqueNonEmpty(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; ok {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
+	out := lo.Uniq(lo.Filter(values, func(v string, _ int) bool { return v != "" }))
 	if len(out) == 0 {
 		return nil
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/gofiber/fiber/v3"
+	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -434,8 +435,7 @@ func filterRoutesByPrefix(routes []RouteInfo, prefix string) []RouteInfo {
 		return append([]RouteInfo(nil), routes...)
 	}
 
-	out := make([]RouteInfo, 0, len(routes))
-	for _, route := range routes {
+	return lo.Filter(routes, func(route RouteInfo, _ int) bool {
 		path := strings.TrimSpace(route.Path)
 		if path == "" {
 			path = "/"
@@ -443,9 +443,6 @@ func filterRoutesByPrefix(routes []RouteInfo, prefix string) []RouteInfo {
 		if !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
-		if path == prefix || strings.HasPrefix(path, prefix+"/") {
-			out = append(out, route)
-		}
-	}
-	return out
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
+	})
 }

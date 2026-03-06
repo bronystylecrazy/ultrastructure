@@ -8,6 +8,7 @@ import (
 	authn "github.com/bronystylecrazy/ultrastructure/security/authn"
 	httpx "github.com/bronystylecrazy/ultrastructure/security/internal/httpx"
 	"github.com/gofiber/fiber/v3"
+	"github.com/samber/lo"
 )
 
 type ConflictPolicy string
@@ -68,10 +69,8 @@ func RequireUserRole(role string) fiber.Handler {
 		if !ok || p == nil || p.Type != authn.PrincipalUser {
 			return denyForbidden(c)
 		}
-		for _, r := range p.Roles {
-			if r == role {
-				return c.Next()
-			}
+		if _, ok := lo.Find(p.Roles, func(r string) bool { return r == role }); ok {
+			return c.Next()
 		}
 		return denyForbidden(c)
 	}
@@ -169,33 +168,26 @@ func hasAnyScope(current []string, required ...string) bool {
 	if len(required) == 0 {
 		return true
 	}
-	set := make(map[string]struct{}, len(current))
-	for _, s := range current {
-		if s != "" {
-			set[s] = struct{}{}
-		}
-	}
-	for _, need := range required {
+	set := lo.SliceToMap(lo.Filter(current, func(s string, _ int) bool { return s != "" }), func(s string) (string, struct{}) {
+		return s, struct{}{}
+	})
+	_, found := lo.Find(required, func(need string) bool {
 		if need == "" {
-			continue
+			return false
 		}
-		if _, ok := set[need]; ok {
-			return true
-		}
-	}
-	return false
+		_, ok := set[need]
+		return ok
+	})
+	return found
 }
 
 func hasAllScopes(current []string, required ...string) bool {
 	if len(required) == 0 {
 		return true
 	}
-	set := make(map[string]struct{}, len(current))
-	for _, s := range current {
-		if s != "" {
-			set[s] = struct{}{}
-		}
-	}
+	set := lo.SliceToMap(lo.Filter(current, func(s string, _ int) bool { return s != "" }), func(s string) (string, struct{}) {
+		return s, struct{}{}
+	})
 	for _, need := range required {
 		if need == "" {
 			continue
@@ -229,10 +221,7 @@ func SetSuperAdminRoles(roles ...string) {
 
 func SuperAdminRoles() []string {
 	superAdminRolesMu.RLock()
-	out := make([]string, 0, len(superAdminRolesSet))
-	for role := range superAdminRolesSet {
-		out = append(out, role)
-	}
+	out := lo.Keys(superAdminRolesSet)
 	superAdminRolesMu.RUnlock()
 	sort.Strings(out)
 	return out

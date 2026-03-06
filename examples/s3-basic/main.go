@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
@@ -18,13 +18,13 @@ import (
 func main() {
 	app := fx.New(di.App(
 		di.Diagnostics(),
-		lifecycle.Module(),
-		otel.Module(),
-		s3.Module(
+		lc.Providers(),
+		otel.Providers(),
+		s3.Providers(
 			s3.UseOtel(),
 			s3.UseInterfaces(),
 		),
-		web.Module(
+		web.Providers(
 			web.UseOtel(),
 			di.Provide(NewUploadHandler),
 			di.Invoke(RegisterRoutes),

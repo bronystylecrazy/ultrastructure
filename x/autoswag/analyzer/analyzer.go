@@ -13,25 +13,26 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/samber/lo"
 	"golang.org/x/tools/go/packages"
 )
 
 type Options struct {
-	Dir               string
-	Patterns          []string
-	Tags              string
-	StrictDI          bool
-	DisableCommentDetection bool
+	Dir                       string
+	Patterns                  []string
+	Tags                      string
+	StrictDI                  bool
+	DisableCommentDetection   bool
 	DisableDirectiveDetection bool
-	IndexScope        string
-	LoadDeps          bool
-	ExplicitOnly      bool
-	ExplicitScope     string
-	Overlay           map[string][]byte
-	ToolVersion       string
-	Progress          func(message string)
-	PackageCacheLoad  func(pkgPath, fingerprint string) (*PackageCacheEntry, bool)
-	PackageCacheStore func(pkgPath, fingerprint string, entry PackageCacheEntry)
+	IndexScope                string
+	LoadDeps                  bool
+	ExplicitOnly              bool
+	ExplicitScope             string
+	Overlay                   map[string][]byte
+	ToolVersion               string
+	Progress                  func(message string)
+	PackageCacheLoad          func(pkgPath, fingerprint string) (*PackageCacheEntry, bool)
+	PackageCacheStore         func(pkgPath, fingerprint string, entry PackageCacheEntry)
 }
 
 type OptionsMutator func(*Options)
@@ -110,16 +111,16 @@ type HandlerReport struct {
 }
 
 type RouteBindingReport struct {
-	Method      string               `json:"method"`
-	Path        string               `json:"path"`
-	HandlerKey  string               `json:"handler_key"`
-	Name        string               `json:"name,omitempty"`
-	Description string               `json:"description,omitempty"`
-	Tags        []string             `json:"tags,omitempty"`
-	Responses   []ResponseTypeReport `json:"responses,omitempty"`
-	PathParams  []PathParamReport    `json:"path_params,omitempty"`
+	Method          string                      `json:"method"`
+	Path            string                      `json:"path"`
+	HandlerKey      string                      `json:"handler_key"`
+	Name            string                      `json:"name,omitempty"`
+	Description     string                      `json:"description,omitempty"`
+	Tags            []string                    `json:"tags,omitempty"`
+	Responses       []ResponseTypeReport        `json:"responses,omitempty"`
+	PathParams      []PathParamReport           `json:"path_params,omitempty"`
 	ResponseHeaders []RouteResponseHeaderReport `json:"response_headers,omitempty"`
-	TagDescriptions map[string]string `json:"tag_descriptions,omitempty"`
+	TagDescriptions map[string]string           `json:"tag_descriptions,omitempty"`
 }
 
 type RouteResponseHeaderReport struct {
@@ -130,15 +131,15 @@ type RouteResponseHeaderReport struct {
 }
 
 type RequestReport struct {
-	Type         string   `json:"type"`
-	ContentTypes []string `json:"content_types,omitempty"`
-	Confidence   string   `json:"confidence,omitempty"`
+	Type         string            `json:"type"`
+	ContentTypes []string          `json:"content_types,omitempty"`
+	Confidence   string            `json:"confidence,omitempty"`
 	Fields       map[string]string `json:"fields,omitempty"`
 }
 
 type TypeReport struct {
-	Type       string `json:"type"`
-	Confidence string `json:"confidence,omitempty"`
+	Type       string            `json:"type"`
+	Confidence string            `json:"confidence,omitempty"`
 	Fields     map[string]string `json:"fields,omitempty"`
 }
 
@@ -150,14 +151,14 @@ type PathParamReport struct {
 }
 
 type ResponseTypeReport struct {
-	Status      int      `json:"status"`
-	Type        string   `json:"type"`
-	ContentType string   `json:"content_type,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Confidence  string   `json:"confidence,omitempty"`
-	Trace       []string `json:"trace,omitempty"`
+	Status      int                             `json:"status"`
+	Type        string                          `json:"type"`
+	ContentType string                          `json:"content_type,omitempty"`
+	Description string                          `json:"description,omitempty"`
+	Confidence  string                          `json:"confidence,omitempty"`
+	Trace       []string                        `json:"trace,omitempty"`
 	Headers     map[string]ResponseHeaderReport `json:"headers,omitempty"`
-	Fields      map[string]string `json:"fields,omitempty"`
+	Fields      map[string]string               `json:"fields,omitempty"`
 }
 
 type ResponseHeaderReport struct {
@@ -191,18 +192,18 @@ const (
 )
 
 type helperResolver struct {
-	declByKey     map[string]helperFuncDecl
-	provided      []providedBinding
-	pkgPath       string
-	strictDI      bool
-	explicitOnly  bool
-	diagnostics   []AnalyzerDiagnostic
-	diagSeen      map[string]struct{}
-	sourceByInfo  map[*types.Info]diagnosticSource
-	handlerKey    string
-	inStack       map[string]bool
-	cache         map[string][]detectedResponse
-	dispatchCache map[string][]string
+	declByKey        map[string]helperFuncDecl
+	provided         []providedBinding
+	pkgPath          string
+	strictDI         bool
+	explicitOnly     bool
+	diagnostics      []AnalyzerDiagnostic
+	diagSeen         map[string]struct{}
+	sourceByInfo     map[*types.Info]diagnosticSource
+	handlerKey       string
+	inStack          map[string]bool
+	cache            map[string][]detectedResponse
+	dispatchCache    map[string][]string
 	commentDetection bool
 }
 
@@ -267,21 +268,14 @@ func selectPackagesByScope(roots, all []*packages.Package, scope string) []*pack
 }
 
 func workspacePrefixesFromRoots(roots []*packages.Package) []string {
-	set := map[string]struct{}{}
-	for _, p := range roots {
+	out := lo.FilterMap(roots, func(p *packages.Package, _ int) (string, bool) {
 		if p == nil {
-			continue
+			return "", false
 		}
 		prefix := modulePrefix(p.PkgPath)
-		if prefix == "" {
-			continue
-		}
-		set[prefix] = struct{}{}
-	}
-	out := make([]string, 0, len(set))
-	for prefix := range set {
-		out = append(out, prefix)
-	}
+		return prefix, prefix != ""
+	})
+	out = lo.Uniq(out)
 	sort.Strings(out)
 	return out
 }
@@ -302,26 +296,24 @@ func dedupePackageSlice(in []*packages.Package) []*packages.Package {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := map[string]struct{}{}
-	out := make([]*packages.Package, 0, len(in))
-	for _, p := range in {
+	filtered := lo.Filter(in, func(p *packages.Package, _ int) bool {
 		if p == nil {
-			continue
+			return false
 		}
-		key := p.ID
-		if key == "" {
-			key = p.PkgPath
-		}
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, p)
+		return packageDedupeKey(p) != ""
+	})
+	return lo.UniqBy(filtered, packageDedupeKey)
+}
+
+func packageDedupeKey(p *packages.Package) string {
+	if p == nil {
+		return ""
 	}
-	return out
+	key := p.ID
+	if key == "" {
+		key = p.PkgPath
+	}
+	return strings.TrimSpace(key)
 }
 
 func collectPackageImports(pkg *packages.Package) map[string]string {
@@ -1370,14 +1362,14 @@ func appendRouteBindingFromExpr(
 		inline = append(inline, *inlineHandler)
 	}
 	out = append(out, RouteBindingReport{
-		Method:      method,
-		Path:        openAPIPath,
-		HandlerKey:  handlerKey,
-		Name:        routeName,
-		Description: routeDescription,
-		Tags:        routeTags,
-		Responses:   routeResponses,
-		PathParams:  routePathParams,
+		Method:          method,
+		Path:            openAPIPath,
+		HandlerKey:      handlerKey,
+		Name:            routeName,
+		Description:     routeDescription,
+		Tags:            routeTags,
+		Responses:       routeResponses,
+		PathParams:      routePathParams,
 		ResponseHeaders: routeHeaders,
 		TagDescriptions: routeTagDescriptions,
 	})
@@ -2442,12 +2434,11 @@ func headersToReportMap(items []detectedHeaderMutation) map[string]ResponseHeade
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
+	v, ok := lo.Find(values, func(v string) bool { return strings.TrimSpace(v) != "" })
+	if !ok {
+		return ""
 	}
-	return ""
+	return v
 }
 
 func contentTypeFromExt(ext string) string {
@@ -3037,47 +3028,27 @@ func dedupeProvidedTypes(in []types.Type) []types.Type {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := map[string]struct{}{}
-	out := make([]types.Type, 0, len(in))
-	for _, t := range in {
-		if t == nil {
-			continue
-		}
-		key := t.String()
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, t)
-	}
-	return out
+	filtered := lo.Filter(in, func(t types.Type, _ int) bool { return t != nil })
+	return lo.UniqBy(filtered, func(t types.Type) string { return t.String() })
 }
 
 func dedupeProvidedBindings(in []providedBinding) []providedBinding {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := map[string]struct{}{}
-	out := make([]providedBinding, 0, len(in))
-	for _, b := range in {
-		if b.Concrete == nil {
-			continue
+	filtered := lo.Filter(in, func(b providedBinding, _ int) bool { return b.Concrete != nil })
+	return lo.UniqBy(filtered, providedBindingDedupeKey)
+}
+
+func providedBindingDedupeKey(b providedBinding) string {
+	expKeys := make([]string, 0, len(b.Exports))
+	for _, t := range b.Exports {
+		if t != nil {
+			expKeys = append(expKeys, t.String())
 		}
-		expKeys := make([]string, 0, len(b.Exports))
-		for _, t := range b.Exports {
-			if t != nil {
-				expKeys = append(expKeys, t.String())
-			}
-		}
-		sort.Strings(expKeys)
-		key := b.Concrete.String() + "|self=" + strconv.FormatBool(b.IncludeSelf) + "|exp=" + strings.Join(expKeys, ",")
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, b)
 	}
-	return out
+	sort.Strings(expKeys)
+	return b.Concrete.String() + "|self=" + strconv.FormatBool(b.IncludeSelf) + "|exp=" + strings.Join(expKeys, ",")
 }
 
 func buildDependencyGraph(bindings []providedBinding) *DependencyGraph {
@@ -3194,17 +3165,17 @@ func newHelperResolver(globalDecls map[string]helperFuncDecl, provided []provide
 		return nil
 	}
 	return &helperResolver{
-		declByKey:     globalDecls,
-		provided:      dedupeProvidedBindings(provided),
-		pkgPath:       pkgPath,
-		strictDI:      strictDI,
-		explicitOnly:  explicitOnly,
-		diagnostics:   []AnalyzerDiagnostic{},
-		diagSeen:      map[string]struct{}{},
-		sourceByInfo:  sourceByInfo,
-		inStack:       map[string]bool{},
-		cache:         map[string][]detectedResponse{},
-		dispatchCache: map[string][]string{},
+		declByKey:        globalDecls,
+		provided:         dedupeProvidedBindings(provided),
+		pkgPath:          pkgPath,
+		strictDI:         strictDI,
+		explicitOnly:     explicitOnly,
+		diagnostics:      []AnalyzerDiagnostic{},
+		diagSeen:         map[string]struct{}{},
+		sourceByInfo:     sourceByInfo,
+		inStack:          map[string]bool{},
+		cache:            map[string][]detectedResponse{},
+		dispatchCache:    map[string][]string{},
 		commentDetection: commentDetection,
 	}
 }
@@ -3758,17 +3729,7 @@ func dedupeDetectedResponses(in []detectedResponse) []detectedResponse {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := map[string]struct{}{}
-	out := make([]detectedResponse, 0, len(in))
-	for _, item := range in {
-		key := strconv.Itoa(item.status) + "|" + item.typ + "|" + item.contentType + "|" + normalizeResponseConfidence(item.confidence) + "|" + traceKey(item.trace) + "|" + headersKey(item.headers)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, item)
-	}
-	return out
+	return lo.UniqBy(in, detectedResponseKey)
 }
 
 func appendDetectedResponses(existing []detectedResponse, detected []detectedResponse) []detectedResponse {

@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "license_id": "lic-43e55541-3ab9-4329-aff4-eccfc8af7c15",
+  "project_id": "ultrastructure-demo",
+  "customer_id": "customer-test",
+  "issued_at": 1771477359,
+  "expiry": 1803013359,
+  "kid": "kid-test-2026-02",
+  "device_binding": {
+    "platform": "macos",
+    "method": "os-keystore",
+    "pub_hash": "TrvxfV4cC9VlAvHiatcH_X1kGcD9jnad8OrWf6Ka9RM"
+  },
+  "x": {
+    "max_cameras": 4,
+    "plan": "pro"
+  },
+  "nonce": "nonce-c6a052df-8cbb-4310-bc95-ee601388ac66",
+  "sig": "s2_qsH5d5EIl5EOYSkVNH4u3HRKg6XMLlxYn3lQ5d2pjxQY14FALe-Z2KiMKRKF6nbehw7Kl1ZISaCVD35VeDw"
+}

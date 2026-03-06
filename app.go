@@ -13,11 +13,13 @@ import (
 	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
+	"github.com/bronystylecrazy/ultrastructure/security/apikey"
 	"github.com/bronystylecrazy/ultrastructure/security/session"
 	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
 	"github.com/bronystylecrazy/ultrastructure/x/sqlc"
 	kservice "github.com/kardianos/service"
+	"github.com/samber/lo"
 	"go.uber.org/fx"
 )
 
@@ -87,14 +89,14 @@ func shouldRunServiceHost(args []string, serviceCommandToken string) bool {
 }
 
 func firstCommandToken(args []string) (string, bool) {
-	for _, arg := range args {
+	tokens := lo.FilterMap(args, func(arg string, _ int) (string, bool) {
 		v := strings.TrimSpace(arg)
-		if v == "" || strings.HasPrefix(v, "-") {
-			continue
-		}
-		return v, true
+		return v, v != "" && !strings.HasPrefix(v, "-")
+	})
+	if len(tokens) == 0 {
+		return "", false
 	}
-	return "", false
+	return tokens[0], true
 }
 
 func sanitizeServiceName(name string) string {
@@ -111,6 +113,7 @@ func defaultNodes() []any {
 		otel.Providers(),
 		lc.Providers(),
 		web.Providers(),
+		apikey.Providers(),
 		session.Providers(),
 		database.Providers(),
 		realtime.Providers(),

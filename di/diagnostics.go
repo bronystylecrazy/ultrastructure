@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/samber/lo"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -462,16 +463,7 @@ func extractPanicMessage(msg string) string {
 }
 
 func uniqueStrings(items []string) []string {
-	seen := make(map[string]struct{}, len(items))
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if _, ok := seen[item]; ok {
-			continue
-		}
-		seen[item] = struct{}{}
-		out = append(out, item)
-	}
-	return out
+	return lo.Uniq(items)
 }
 
 func selectBestSpans(spans []diagSpan, limit int) []diagSpan {
@@ -494,17 +486,9 @@ func dedupeSpans(spans []diagSpan) []diagSpan {
 	if len(spans) == 0 {
 		return spans
 	}
-	seen := make(map[string]struct{}, len(spans))
-	out := make([]diagSpan, 0, len(spans))
-	for _, span := range spans {
-		key := fmt.Sprintf("%s:%d:%d:%s", span.loc.file, span.loc.line, span.loc.col, span.label)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, span)
-	}
-	return out
+	return lo.UniqBy(spans, func(span diagSpan) string {
+		return fmt.Sprintf("%s:%d:%d:%s", span.loc.file, span.loc.line, span.loc.col, span.label)
+	})
 }
 
 func resolveLocation(loc diagLocation) diagLocation {

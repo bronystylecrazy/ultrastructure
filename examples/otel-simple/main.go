@@ -9,17 +9,19 @@ import (
 	"syscall"
 	"time"
 
-	us "github.com/bronystylecrazy/ultrastructure"
 	"github.com/bronystylecrazy/ultrastructure/cmd"
-	"github.com/bronystylecrazy/ultrastructure/database"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	_ "github.com/bronystylecrazy/ultrastructure/examples/otel-simple/docs"
-	"github.com/bronystylecrazy/ultrastructure/lifecycle"
+	"github.com/bronystylecrazy/ultrastructure/lc"
+	"github.com/bronystylecrazy/ultrastructure/meta"
 	"github.com/bronystylecrazy/ultrastructure/otel"
 	"github.com/bronystylecrazy/ultrastructure/realtime"
 	"github.com/bronystylecrazy/ultrastructure/realtime/mqtt"
-	"github.com/bronystylecrazy/ultrastructure/storage/s3"
 	"github.com/bronystylecrazy/ultrastructure/web"
+	xgoose "github.com/bronystylecrazy/ultrastructure/x/goose"
+	xgorm "github.com/bronystylecrazy/ultrastructure/x/gorm"
+	"github.com/bronystylecrazy/ultrastructure/x/spa"
+	"github.com/bronystylecrazy/ultrastructure/x/swaggo"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -63,7 +65,7 @@ func (User) TableName() string {
 	return "users"
 }
 
-func (h *apiService) Handle(r fiber.Router) {
+func (h *apiService) Handle(r web.Router) {
 	r.Get("/api", func(c fiber.Ctx) error {
 		ctx, obs := h.Obs.Start(c.Context(), "api called")
 		defer obs.End()
@@ -249,38 +251,35 @@ func main() {
 	fx.New(
 		di.App(
 			di.Diagnostics(),
-			otel.Module(),
-			lifecycle.Module(),
-			realtime.Module(),
-			database.Module(),
-			web.Module(),
+			otel.Providers(),
+			lc.Providers(),
+			realtime.Providers(),
+			xgorm.Use(),
+			web.Providers(),
 			otel.EnableMetrics(),
 			realtime.UseAllowHook(),
 			realtime.UseWebsocketListener(),
 			realtime.UseTCPListener(),
-			database.UseOtel(),
-			database.UseMigrations(&migrations),
-			web.UseOtel(),
-			web.UseSpa(web.WithSpaAssets(&assets)),
-			web.UseSwagger(),
+			xgoose.Use(&migrations),
+			spa.Use(&assets),
+			swaggo.Use(),
 			di.Provide(NewTestSubscriber),
 			di.Invoke(func(config otel.Config) {
 				fmt.Println(config)
 			}),
-			cmd.Module(
+			cmd.Providers(
 				cmd.UseBasicCommands(),
 				di.Supply(&cobra.Command{
-					Use: us.Name,
+					Use: meta.Name,
 				}),
-				cmd.Use("run",
-					s3.UseOtel(),
+				cmd.OnRun("run",
 					web.Init(),
-					database.RunMigrations(),
+					xgoose.Run(),
 					di.Provide(NewWorkerService),
 					di.Provide(NewHandler, di.AsSelf[realtime.Authorizer]()),
 					di.Provide(NewAPIService),
 				),
-				cmd.Use("ping",
+				cmd.OnRun("ping",
 					di.Provide(NewPingService),
 					di.Provide(NewPingCommand),
 				),

@@ -90,12 +90,11 @@ func main() {
 		di.Provide(px.NewHandler),
 
 		cmd.Run(
-			// extensions
 			autoswag.Use(
-				autoswag.WitHook(AutoSwagGenerator),
+				autoswag.WithHook(AutoSwagGenerator),
 				autoswag.WithEmitFiles(),
 			),
-			spa.Use(spa.WithAssets(&assets)),
+			spa.Use(&assets),
 			web.Init(),
 		),
 	).Run()
