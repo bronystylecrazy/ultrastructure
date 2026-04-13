@@ -65,13 +65,33 @@ func TestFilterDebugCoreFiltersByLoggerLayerFileAndFunction(t *testing.T) {
 	})
 	writeEntry(t, logger.Named("noise"), zapcore.Entry{
 		Level:   zapcore.InfoLevel,
-		Message: "keep info",
+		Message: "drop unrelated info",
+		Caller:  zapcore.EntryCaller{Defined: true, File: "/workspace/noise.go", Line: 10, Function: "pkg/noise.Run"},
+	})
+	writeEntry(t, logger.Named("noise"), zapcore.Entry{
+		Level:   zapcore.InfoLevel,
+		Message: "keep layer info",
+		Caller:  zapcore.EntryCaller{Defined: true, File: "/workspace/noise.go", Line: 10, Function: "pkg/noise.Run"},
+	}, appLayerField("web.api.v1"))
+	writeEntry(t, logger.Named("noise"), zapcore.Entry{
+		Level:   zapcore.WarnLevel,
+		Message: "keep file warn",
+		Caller:  zapcore.EntryCaller{Defined: true, File: "/workspace/web/fiber.go", Line: 150},
+	})
+	writeEntry(t, logger.Named("noise"), zapcore.Entry{
+		Level:   zapcore.ErrorLevel,
+		Message: "keep function error",
+		Caller:  zapcore.EntryCaller{Defined: true, Function: "github.com/acme/realtime.(*Websocket).Init", Line: 60},
+	})
+	writeEntry(t, logger.Named("noise"), zapcore.Entry{
+		Level:   zapcore.WarnLevel,
+		Message: "drop unrelated warn",
 		Caller:  zapcore.EntryCaller{Defined: true, File: "/workspace/noise.go", Line: 10, Function: "pkg/noise.Run"},
 	})
 
 	entries := logs.AllUntimed()
-	if len(entries) != 5 {
-		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 5)
+	if len(entries) != 7 {
+		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 7)
 	}
 
 	wantMessages := []string{
@@ -79,7 +99,9 @@ func TestFilterDebugCoreFiltersByLoggerLayerFileAndFunction(t *testing.T) {
 		"keep layer",
 		"keep file range",
 		"keep function range",
-		"keep info",
+		"keep layer info",
+		"keep file warn",
+		"keep function error",
 	}
 	for i, want := range wantMessages {
 		if entries[i].Message != want {
@@ -139,18 +161,21 @@ func TestFilterDebugLoggerCoreFiltersDebugByLoggerName(t *testing.T) {
 	logger.Named("gorm").Debug("drop other")
 	logger.Debug("drop root")
 	logger.Named("gorm").Info("keep info")
+	logger.Named("gorm").Warn("drop warn")
 
 	entries := logs.AllUntimed()
-	if len(entries) != 3 {
-		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 3)
+	if len(entries) != 2 {
+		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 2)
 	}
 }
 
-func writeEntry(t *testing.T, logger *zap.Logger, entry zapcore.Entry) {
+func writeEntry(t *testing.T, logger *zap.Logger, entry zapcore.Entry, fields ...zap.Field) {
 	t.Helper()
+	zapFields := make([]zapcore.Field, len(fields))
+	copy(zapFields, fields)
 	checked := logger.Core().Check(entry, nil)
 	if checked == nil {
 		return
 	}
-	checked.Write()
+	checked.Write(zapFields...)
 }

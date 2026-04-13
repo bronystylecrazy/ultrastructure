@@ -20,15 +20,13 @@ func FilterFieldsCore(core zapcore.Core, dropKeys ...string) zapcore.Core {
 	}
 }
 
-// FilterDebugLoggerCore keeps debug entries only for allowed logger names.
-// Non-debug entries are always preserved.
+// FilterDebugLoggerCore keeps entries only for allowed logger names.
 func FilterDebugLoggerCore(core zapcore.Core, allowNames ...string) zapcore.Core {
 	rules := parseDebugAllowlist(prefixEntries("logger", allowNames))
 	return FilterDebugCore(core, rules)
 }
 
-// FilterDebugCore keeps debug entries only when they match at least one allowlist rule.
-// Non-debug entries are always preserved.
+// FilterDebugCore keeps entries only when they match at least one allowlist rule.
 func FilterDebugCore(core zapcore.Core, rules debugAllowlist) zapcore.Core {
 	return debugFilterCore{
 		Core:  core,
@@ -82,6 +80,13 @@ func (c filterFieldsCore) With(fields []zapcore.Field) zapcore.Core {
 	}
 }
 
+func (c filterFieldsCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if !c.Enabled(ent.Level) {
+		return ce
+	}
+	return ce.AddCore(ent, c)
+}
+
 func (c filterFieldsCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
 	return c.Core.Write(ent, filterFields(fields, c.drop))
 }
@@ -95,10 +100,10 @@ func (c debugFilterCore) With(fields []zapcore.Field) zapcore.Core {
 }
 
 func (c debugFilterCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if !c.shouldWrite(ent, nil) {
+	if !c.Enabled(ent.Level) {
 		return ce
 	}
-	return c.Core.Check(ent, ce)
+	return ce.AddCore(ent, c)
 }
 
 func (c debugFilterCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
@@ -109,7 +114,7 @@ func (c debugFilterCore) Write(ent zapcore.Entry, fields []zapcore.Field) error 
 }
 
 func (c debugFilterCore) shouldWrite(ent zapcore.Entry, fields []zapcore.Field) bool {
-	if ent.Level != zapcore.DebugLevel || c.rules.empty() {
+	if c.rules.empty() {
 		return true
 	}
 	layer := mergeLayer(c.layer, fields)
