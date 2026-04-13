@@ -1,6 +1,7 @@
 package otel
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ func applyOTELenv(v *viper.Viper) error {
 	}
 	applyStringEnv(v, "otel.service_name", "OTEL_SERVICE_NAME")
 	applyBoolEnv(v, "otel.enabled", "OTEL_ENABLED")
+	applyListEnv(v, "otel.debug_allowlist", "OTEL_DEBUG_ALLOWLIST")
 	applyStringEnv(v, "otel.traces.exporter", "OTEL_TRACES_EXPORTER")
 	applyStringEnv(v, "otel.logs.exporter", "OTEL_LOGS_EXPORTER")
 	applyStringEnv(v, "otel.metrics.exporter", "OTEL_METRICS_EXPORTER")
@@ -69,6 +71,14 @@ func applyOTELenv(v *viper.Viper) error {
 func applyStringEnv(v *viper.Viper, key string, env string) {
 	if val, ok := os.LookupEnv(env); ok {
 		v.Set(key, strings.TrimSpace(val))
+	}
+}
+
+func applyListEnv(v *viper.Viper, key string, env string) {
+	if val, ok := os.LookupEnv(env); ok {
+		if items := ParseList(val); len(items) > 0 {
+			v.Set(key, items)
+		}
 	}
 }
 
@@ -165,6 +175,43 @@ func ParseHeaders(value string) map[string]string {
 			continue
 		}
 		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func ParseList(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var items []string
+		if err := json.Unmarshal([]byte(trimmed), &items); err == nil {
+			out := make([]string, 0, len(items))
+			for _, item := range items {
+				item = strings.TrimSpace(item)
+				if item == "" {
+					continue
+				}
+				out = append(out, item)
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			return out
+		}
+	}
+	parts := strings.Split(trimmed, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
 	}
 	if len(out) == 0 {
 		return nil

@@ -14,6 +14,8 @@ func Case(cond bool, nodes ...any) caseNode {
 
 // WhenCase defines a predicate case for Switch.
 // The function may be func() bool or func(T) bool, where T is resolved from config sources.
+// The resolver must be registered via RegisterResolver before App.Build() is called
+// if the predicate function takes parameters.
 func WhenCase(fn any, nodes ...any) caseNode {
 	return caseNode{mode: condWhen, when: fn, nodes: collectNodes(nodes)}
 }

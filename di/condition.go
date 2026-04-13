@@ -7,6 +7,22 @@ import (
 	"go.uber.org/fx"
 )
 
+// Resolver resolves config types for conditional evaluation.
+// It is called by When/WhenCase to provide values for predicate function parameters.
+type Resolver func(reflect.Type) (any, error)
+
+var resolver Resolver
+
+// RegisterResolver sets the config resolver used by When/WhenCase.
+// If no resolver is registered, When/WhenCase with parameters will fail at build time.
+func RegisterResolver(r Resolver) {
+	resolver = r
+}
+
+func getResolver() Resolver {
+	return resolver
+}
+
 // If conditionally includes nodes based on a boolean.
 func If(cond bool, nodes ...any) Node {
 	return conditionalNode{mode: condIf, cond: cond, nodes: collectNodes(nodes)}
@@ -14,6 +30,8 @@ func If(cond bool, nodes ...any) Node {
 
 // When conditionally includes nodes based on a function.
 // The function may be func() bool or func(T) bool, where T is resolved from config sources.
+// The resolver must be registered via RegisterResolver before App.Build() is called
+// if the predicate function takes parameters.
 func When(fn any, nodes ...any) Node {
 	return conditionalNode{mode: condWhen, when: fn, nodes: collectNodes(nodes)}
 }

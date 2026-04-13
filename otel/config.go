@@ -7,14 +7,19 @@ import (
 )
 
 type Config struct {
-	ServiceName   string            `mapstructure:"service_name"`
-	LogLevel      string            `mapstructure:"log_level" default:"info"`
-	Enabled       bool              `mapstructure:"enabled" default:"false"`
-	ResourceAttrs map[string]string `mapstructure:"resource_attributes"`
-	OTLP          OTLPConfig        `mapstructure:"otlp"`
-	Traces        TracesConfig      `mapstructure:"traces"`
-	Logs          LogsConfig        `mapstructure:"logs"`
-	Metrics       MetricsConfig     `mapstructure:"metrics"`
+	ServiceName    string            `mapstructure:"service_name"`
+	LogLevel       string            `mapstructure:"log_level" default:"info"`
+	DebugAllowlist []string          `mapstructure:"debug_allowlist"`
+	Enabled        bool              `mapstructure:"enabled" default:"false"`
+	ResourceAttrs  map[string]string `mapstructure:"resource_attributes"`
+	OTLP           OTLPConfig        `mapstructure:"otlp"`
+	Traces         TracesConfig      `mapstructure:"traces"`
+	Logs           LogsConfig        `mapstructure:"logs"`
+	Metrics        MetricsConfig     `mapstructure:"metrics"`
+}
+
+func (c Config) effectiveDebugAllowlist() []string {
+	return append([]string{}, c.DebugAllowlist...)
 }
 
 type OTLPConfig struct {

@@ -79,7 +79,17 @@ func NewBaseLogger(cfg Config) (*zap.Logger, error) {
 		zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		zapConfig.Level = zap.NewAtomicLevelAt(level)
-		return zapConfig.Build()
+		logger, err := zapConfig.Build()
+		if err != nil {
+			return nil, err
+		}
+		rules := parseDebugAllowlist(cfg.effectiveDebugAllowlist())
+		if rules.empty() {
+			return logger, nil
+		}
+		return logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			return FilterDebugCore(c, rules)
+		})), nil
 	}
 
 	zapConfig := zap.NewProductionConfig()

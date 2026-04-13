@@ -34,8 +34,10 @@ func Run(nodes ...any) error {
 func (a *appNode) Build() fx.Option {
 	nextID := 0
 	nextScopeID := 1
+	// Inject resolver into conditional/case nodes before any transformations.
+	nodes := injectResolver(a.nodes, getResolver())
 	// Apply graph-wide transformations before building.
-	nodes := applyAutoGroups(a.nodes, nil)
+	nodes = applyAutoGroups(nodes, nil)
 	nodes = applyAutoInjectFields(nodes, false)
 	// Apply replacements after scopes and resolvers are in place.
 	nodes, err := applyReplacements(nodes, nil, &nextID, &nextScopeID, []int{0}, nil)
@@ -314,3 +316,41 @@ type errorNode struct {
 }
 
 func (n errorNode) Build() (fx.Option, error) { return nil, n.err }
+
+// injectResolver walks all nodes recursively and sets the resolver on
+// conditionalNode and caseNode instances.
+func injectResolver(nodes []Node, r Resolver) []Node {
+	if r == nil {
+		return nodes
+	}
+	out := make([]Node, len(nodes))
+	for i, n := range nodes {
+		out[i] = injectIntoNode(n, r)
+	}
+	return out
+}
+
+func injectIntoNode(n Node, r Resolver) Node {
+	switch v := n.(type) {
+	case conditionalNode:
+		v.resolver = r
+		// Recurse into child nodes in case they contain conditionals too.
+		v.nodes = injectResolver(v.nodes, r)
+		return v
+	case switchNode:
+		for i := range v.cases {
+			v.cases[i].resolver = r
+			v.cases[i].nodes = injectResolver(v.cases[i].nodes, r)
+		}
+		v.defaultCase.nodes = injectResolver(v.defaultCase.nodes, r)
+		return v
+	case moduleNode:
+		v.nodes = injectResolver(v.nodes, r)
+		return v
+	case optionsNode:
+		v.nodes = injectResolver(v.nodes, r)
+		return v
+	default:
+		return n
+	}
+}
