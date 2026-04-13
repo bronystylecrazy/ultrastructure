@@ -48,6 +48,7 @@ type debugFilterCore struct {
 type debugAllowlist struct {
 	layers    map[string]struct{}
 	loggers   map[string]struct{}
+	packages  map[string]struct{}
 	files     []debugLocationRule
 	functions []debugLocationRule
 }
@@ -117,14 +118,20 @@ func (c debugFilterCore) shouldWrite(ent zapcore.Entry, fields []zapcore.Field) 
 	if c.rules.empty() {
 		return true
 	}
-	layer := mergeLayer(c.layer, fields)
-	return c.rules.matches(debugEvent{
-		logger:   ent.LoggerName,
-		file:     ent.Caller.File,
-		line:     ent.Caller.Line,
-		function: ent.Caller.Function,
-		layer:    layer,
-	})
+	event := debugEvent{
+		logger: ent.LoggerName,
+		line:   ent.Caller.Line,
+	}
+	if c.rules.hasLayerRules() {
+		event.layer = mergeLayer(c.layer, fields)
+	}
+	if c.rules.hasFileRules() || c.rules.hasPackageRules() {
+		event.file = ent.Caller.File
+	}
+	if c.rules.hasFunctionRules() {
+		event.function = ent.Caller.Function
+	}
+	return c.rules.matches(event)
 }
 
 type debugEvent struct {
@@ -136,20 +143,52 @@ type debugEvent struct {
 }
 
 func (r debugAllowlist) empty() bool {
-	return len(r.layers) == 0 && len(r.loggers) == 0 && len(r.files) == 0 && len(r.functions) == 0
+	return len(r.layers) == 0 && len(r.loggers) == 0 && len(r.packages) == 0 && len(r.files) == 0 && len(r.functions) == 0
 }
 
 func (r debugAllowlist) matches(event debugEvent) bool {
-	return loggerAllowed(event.logger, r.loggers) ||
-		layerAllowed(event.layer, r.layers) ||
-		locationAllowed(event.file, event.line, r.files, fileValueMatches) ||
-		locationAllowed(event.function, event.line, r.functions, functionValueMatches)
+	if loggerAllowed(event.logger, r.loggers) {
+		return true
+	}
+	if layerAllowed(event.layer, r.layers) {
+		return true
+	}
+	if r.hasPackageRules() || r.hasFileRules() {
+		normalizedFile := normalizeFilePath(event.file)
+		if packageAllowedNormalized(normalizedFile, r.packages) {
+			return true
+		}
+		if locationAllowedNormalized(normalizedFile, event.line, r.files, fileValueMatchesNormalized) {
+			return true
+		}
+	}
+	if r.hasFunctionRules() && locationAllowed(event.function, event.line, r.functions, functionValueMatches) {
+		return true
+	}
+	return false
+}
+
+func (r debugAllowlist) hasLayerRules() bool {
+	return len(r.layers) != 0
+}
+
+func (r debugAllowlist) hasPackageRules() bool {
+	return len(r.packages) != 0
+}
+
+func (r debugAllowlist) hasFileRules() bool {
+	return len(r.files) != 0
+}
+
+func (r debugAllowlist) hasFunctionRules() bool {
+	return len(r.functions) != 0
 }
 
 func parseDebugAllowlist(entries []string) debugAllowlist {
 	rules := debugAllowlist{
-		layers:  map[string]struct{}{},
-		loggers: map[string]struct{}{},
+		layers:   map[string]struct{}{},
+		loggers:  map[string]struct{}{},
+		packages: map[string]struct{}{},
 	}
 	for _, raw := range entries {
 		kind, value, ok := splitAllowlistEntry(raw)
@@ -164,6 +203,10 @@ func parseDebugAllowlist(entries []string) debugAllowlist {
 		case "logger":
 			if value != "" {
 				rules.loggers[strings.TrimSpace(value)] = struct{}{}
+			}
+		case "package", "pkg":
+			if value != "" {
+				rules.packages[normalizePackagePath(value)] = struct{}{}
 			}
 		case "file":
 			base, lines, ok := splitLocationRule(value)
@@ -182,6 +225,9 @@ func parseDebugAllowlist(entries []string) debugAllowlist {
 	}
 	if len(rules.loggers) == 0 {
 		rules.loggers = nil
+	}
+	if len(rules.packages) == 0 {
+		rules.packages = nil
 	}
 	return rules
 }
@@ -306,6 +352,26 @@ func layerAllowed(name string, allow map[string]struct{}) bool {
 	return false
 }
 
+func packageAllowed(file string, allow map[string]struct{}) bool {
+	return packageAllowedNormalized(normalizeFilePath(file), allow)
+}
+
+func packageAllowedNormalized(file string, allow map[string]struct{}) bool {
+	if len(allow) == 0 {
+		return false
+	}
+	pkg := packagePathFromNormalizedFile(file)
+	if pkg == "" {
+		return false
+	}
+	for candidate := range allow {
+		if pkg == candidate || strings.HasSuffix(pkg, "/"+candidate) {
+			return true
+		}
+	}
+	return false
+}
+
 func locationAllowed(value string, line int, rules []debugLocationRule, match func(string, string) bool) bool {
 	value = strings.TrimSpace(value)
 	if len(rules) == 0 || value == "" {
@@ -323,7 +389,25 @@ func locationAllowed(value string, line int, rules []debugLocationRule, match fu
 }
 
 func fileValueMatches(value string, candidate string) bool {
-	value = normalizeFilePath(value)
+	return fileValueMatchesNormalized(normalizeFilePath(value), candidate)
+}
+
+func locationAllowedNormalized(value string, line int, rules []debugLocationRule, match func(string, string) bool) bool {
+	if len(rules) == 0 || value == "" {
+		return false
+	}
+	for _, rule := range rules {
+		if !rule.lines.contains(line) {
+			continue
+		}
+		if match(value, rule.value) {
+			return true
+		}
+	}
+	return false
+}
+
+func fileValueMatchesNormalized(value string, candidate string) bool {
 	if value == "" || candidate == "" {
 		return false
 	}
@@ -347,6 +431,26 @@ func normalizeFilePath(path string) string {
 	path = strings.TrimPrefix(path, "./")
 	path = strings.TrimPrefix(path, "/")
 	return path
+}
+
+func normalizePackagePath(path string) string {
+	path = normalizeFilePath(path)
+	return strings.TrimSuffix(path, "/")
+}
+
+func packagePathFromFile(path string) string {
+	return packagePathFromNormalizedFile(normalizeFilePath(path))
+}
+
+func packagePathFromNormalizedFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	dir := filepath.Dir(path)
+	if dir == "." {
+		return ""
+	}
+	return dir
 }
 
 func mergeLayer(current string, fields []zapcore.Field) string {

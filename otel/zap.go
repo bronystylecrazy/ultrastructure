@@ -83,7 +83,7 @@ func NewBaseLogger(cfg Config) (*zap.Logger, error) {
 		if err != nil {
 			return nil, err
 		}
-		rules := parseDebugAllowlist(cfg.effectiveDebugAllowlist())
+		rules := parseDebugAllowlist(cfg.effectiveLogAllowlist())
 		if rules.empty() {
 			return logger, nil
 		}

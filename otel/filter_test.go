@@ -12,6 +12,7 @@ func TestParseDebugAllowlist(t *testing.T) {
 	rules := parseDebugAllowlist([]string{
 		"layer:web.api",
 		"logger:sqlc",
+		"package:x/goose",
 		"file:web/fiber.go:120-180",
 		"func:(*Websocket).Init:40-75",
 		"function:pkg/service.Run:9",
@@ -22,6 +23,9 @@ func TestParseDebugAllowlist(t *testing.T) {
 	}
 	if !loggerAllowed("sqlc.query", rules.loggers) {
 		t.Fatalf("expected logger rule to match prefix")
+	}
+	if !packageAllowed("/workspace/x/goose/goose_logger.go", rules.packages) {
+		t.Fatalf("expected package rule to match suffix")
 	}
 	if !locationAllowed("/workspace/web/fiber.go", 150, rules.files, fileValueMatches) {
 		t.Fatalf("expected file rule with range to match")
@@ -42,6 +46,7 @@ func TestFilterDebugCoreFiltersByLoggerLayerFileAndFunction(t *testing.T) {
 	logger := zap.New(FilterDebugCore(core, parseDebugAllowlist([]string{
 		"layer:web.api",
 		"logger:sqlc",
+		"package:x/goose",
 		"file:web/fiber.go:120-180",
 		"func:(*Websocket).Init:40-75",
 	})))
@@ -57,6 +62,11 @@ func TestFilterDebugCoreFiltersByLoggerLayerFileAndFunction(t *testing.T) {
 		Level:   zapcore.DebugLevel,
 		Message: "keep function range",
 		Caller:  zapcore.EntryCaller{Defined: true, Function: "github.com/acme/realtime.(*Websocket).Init", Line: 60},
+	})
+	writeEntry(t, logger.Named("noise"), zapcore.Entry{
+		Level:   zapcore.InfoLevel,
+		Message: "keep package info",
+		Caller:  zapcore.EntryCaller{Defined: true, File: "/workspace/x/goose/goose_logger.go", Line: 30},
 	})
 	writeEntry(t, logger.Named("noise"), zapcore.Entry{
 		Level:   zapcore.DebugLevel,
@@ -90,22 +100,30 @@ func TestFilterDebugCoreFiltersByLoggerLayerFileAndFunction(t *testing.T) {
 	})
 
 	entries := logs.AllUntimed()
-	if len(entries) != 7 {
-		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 7)
+	if len(entries) != 8 {
+		t.Fatalf("unexpected entry count: got %d want %d", len(entries), 8)
 	}
 
-	wantMessages := []string{
-		"keep logger",
-		"keep layer",
-		"keep file range",
-		"keep function range",
-		"keep layer info",
-		"keep file warn",
-		"keep function error",
+	wantMessages := map[string]struct{}{
+		"keep logger":         {},
+		"keep layer":          {},
+		"keep package info":   {},
+		"keep file range":     {},
+		"keep function range": {},
+		"keep layer info":     {},
+		"keep file warn":      {},
+		"keep function error": {},
 	}
-	for i, want := range wantMessages {
-		if entries[i].Message != want {
-			t.Fatalf("unexpected message at %d: got %q want %q", i, entries[i].Message, want)
+	for _, entry := range entries {
+		delete(wantMessages, entry.Message)
+	}
+	if len(wantMessages) != 0 {
+		t.Fatalf("missing expected messages: %#v", wantMessages)
+	}
+	for _, entry := range entries {
+		switch entry.Message {
+		case "drop unrelated", "drop unrelated info", "drop unrelated warn":
+			t.Fatalf("unexpected filtered message present: %q", entry.Message)
 		}
 	}
 }
@@ -120,6 +138,19 @@ func TestFileRuleLineRange(t *testing.T) {
 	}
 	if locationAllowed("/workspace/web/fiber.go", 181, rules.files, fileValueMatches) {
 		t.Fatalf("did not expect line after range to match")
+	}
+}
+
+func TestPackageRuleMatchesFileDirectory(t *testing.T) {
+	rules := parseDebugAllowlist([]string{"package:x/goose", "package:web"})
+	if !packageAllowed("/workspace/x/goose/goose_logger.go", rules.packages) {
+		t.Fatalf("expected x/goose package to match")
+	}
+	if !packageAllowed("/workspace/web/fiber.go", rules.packages) {
+		t.Fatalf("expected web package to match")
+	}
+	if packageAllowed("/workspace/realtime/middleware.go", rules.packages) {
+		t.Fatalf("did not expect realtime package to match")
 	}
 }
 

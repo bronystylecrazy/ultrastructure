@@ -16,7 +16,7 @@ func applyOTELenv(v *viper.Viper) error {
 	}
 	applyStringEnv(v, "otel.service_name", "OTEL_SERVICE_NAME")
 	applyBoolEnv(v, "otel.enabled", "OTEL_ENABLED")
-	applyListEnv(v, "otel.debug_allowlist", "OTEL_DEBUG_ALLOWLIST")
+	applyListEnv(v, "otel.log_allowlist", "OTEL_LOG_ALLOWLIST")
 	applyStringEnv(v, "otel.traces.exporter", "OTEL_TRACES_EXPORTER")
 	applyStringEnv(v, "otel.logs.exporter", "OTEL_LOGS_EXPORTER")
 	applyStringEnv(v, "otel.metrics.exporter", "OTEL_METRICS_EXPORTER")
