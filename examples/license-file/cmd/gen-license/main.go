@@ -56,7 +56,7 @@ func main() {
 	privateKey := ed25519.NewKeyFromSeed(seed)
 
 	ctx := context.Background()
-	deviceBinding, err := licensepkg.ExpectedDeviceBinding(ctx)
+	deviceBinding, err := licensepkg.NewHardwareDetector().Detect(ctx)
 	if err != nil {
 		log.Fatalf("resolve runtime device binding: %v", err)
 	}
@@ -77,7 +77,7 @@ func main() {
 		Expiry:       expiry,
 		NeverExpires: neverExpires,
 		KID:          kid,
-		DeviceBind:   *deviceBinding,
+		HardwareBind: *deviceBinding,
 		X: map[string]any{
 			"max_cameras": 4,
 			"plan":        "pro",
@@ -106,6 +106,6 @@ func main() {
 	}
 
 	fmt.Printf("license written: %s\n", outPath)
-	fmt.Printf("platform=%s method=%s pub_hash=%s\n", payload.DeviceBind.Platform, payload.DeviceBind.Method, payload.DeviceBind.PubHash)
+	fmt.Printf("platform=%s method=%s pub_hash=%s\n", payload.HardwareBind.Platform, payload.HardwareBind.Method, payload.HardwareBind.PubHash)
 	fmt.Printf("kid=%s license_id=%s never_expires=%v\n", payload.KID, payload.LicenseID, payload.NeverExpires)
 }

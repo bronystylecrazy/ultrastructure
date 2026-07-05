@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
+	us "github.com/bronystylecrazy/ultrastructure"
 	uscmd "github.com/bronystylecrazy/ultrastructure/cmd"
 	"github.com/bronystylecrazy/ultrastructure/di"
 	"github.com/spf13/cobra"
-	"go.uber.org/fx"
 )
 
 type Pinger interface {
@@ -88,33 +89,17 @@ func (u *UserListCommand) Command() *cobra.Command {
 }
 
 func main() {
-	var root *uscmd.Root
-
-	app := fx.New(
-		di.App(
-			uscmd.Providers(
-				uscmd.UseDefaultCommand("ping"),
-				uscmd.OnRun("ping",
-					di.Provide(NewHTTPPinger),
-					di.Provide(NewPingCommand),
-				),
-				uscmd.OnRun("user list",
-					di.Provide(NewUserListCommand),
-				),
-			),
-			di.Populate(&root),
-		).Build(),
-	)
-
-	ctx := context.Background()
-	if err := app.Start(ctx); err != nil {
-		panic(err)
-	}
-	defer func() {
-		_ = app.Stop(ctx)
-	}()
-
-	if err := root.Start(ctx); err != nil {
+	if err := us.New(
+		uscmd.WithDefaultName("ping"),
+		uscmd.OnRun("ping",
+			di.Provide(NewHTTPPinger),
+			di.Provide(NewPingCommand),
+		),
+		uscmd.OnRun("user list",
+			di.Provide(NewUserListCommand),
+		),
+	).Run(); err != nil {
 		fmt.Println(err)
+		os.Exit(1)
 	}
 }
