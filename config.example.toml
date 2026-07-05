@@ -151,6 +151,13 @@ insecure_skip_verify = false
 id = "t1"
 address = ":1883"
 
+# Optional extra TCP listeners. Use this on Windows when you want loopback and
+# LAN clients to connect through different local addresses but share one broker.
+# Avoid combining ":1883" with explicit addresses on the same port.
+# [[realtime.tcp_listeners]]
+# id = "lan"
+# address = "192.168.81.91:1883"
+
 [realtime.websocket_listener]
 id = "ws1"
 path = "/realtime"
@@ -163,6 +170,17 @@ allowed_prefixes = ["/public/", "/tenant-a/"]
 enabled = true
 service_name = "Ultrastructure"
 log_level = "info"
+# Log allowlist. Supported prefixes:
+# `layer:`, `logger:`, `package:`, `file:`, `func:`.
+# `file:` and `func:` accept optional `:line` or `:start-end` suffixes.
+# log_allowlist = [
+#   "layer:web",
+#   "layer:realtime",
+#   "logger:sqlc",
+#   "package:x/goose",
+#   "file:web/fiber.go:120-180",
+#   "func:(*Websocket).Init:40-75",
+# ]
 
 [otel.resource_attributes]
 "service.namespace" = "test"
