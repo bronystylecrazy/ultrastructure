@@ -11,6 +11,7 @@ func IgnoreAutoGroupHandlers() di.Option {
 func Init() di.Node {
 	return di.Options(
 		di.AutoGroup[Handler](HandlersGroupName),
+		di.Provide(NewServeCommand),
 		di.Invoke(SetupHandlers, Priority(Earlier)),
 		di.Invoke(func(s Server) error {
 			errCh := make(chan error, 1)
@@ -28,8 +29,11 @@ func Init() di.Node {
 	)
 }
 
+// UseServeCommand is no longer needed: Init registers the serve command.
+//
+// Deprecated: web.Init provides the serve command automatically.
 func UseServeCommand() di.Node {
-	return di.Provide(NewServeCommand)
+	return di.Options()
 }
 
 func UseBuildInfo(opts ...BuildInfoOption) di.Node {

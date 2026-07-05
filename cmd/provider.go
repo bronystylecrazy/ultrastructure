@@ -127,7 +127,7 @@ func ensureCommandRunnable(cmd *cobra.Command) {
 		return
 	}
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		return nil
+		return c.Help()
 	}
 }
 

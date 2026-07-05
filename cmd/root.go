@@ -56,9 +56,11 @@ func (r *Root) Start(ctx context.Context) error {
 			if r.shutdowner == nil {
 				return
 			}
+			code := 0
 			if err != nil {
-				_ = r.shutdowner.Shutdown(fx.ExitCode(1))
+				code = 1
 			}
+			_ = r.shutdowner.Shutdown(fx.ExitCode(code))
 		})
 	}()
 	return nil

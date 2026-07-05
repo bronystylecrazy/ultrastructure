@@ -55,7 +55,11 @@ func (a *App) Build() fx.Option {
 }
 
 func (a *App) Run() error {
-	if a.enableServiceHost && shouldRunServiceHost(os.Args[1:], a.serviceCommandToken) {
+	// The kardianos service host blocks on service-manager signals and ignores
+	// fx shutdown, so only use it when actually running under a service manager;
+	// interactive runs (terminal, --help, serve for local dev) use di.Run which
+	// exits when the app shuts itself down.
+	if a.enableServiceHost && !kservice.Interactive() && shouldRunServiceHost(os.Args[1:], a.serviceCommandToken) {
 		return a.runWithServiceHost()
 	}
 	return di.Run(a.nodes...)

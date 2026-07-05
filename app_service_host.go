@@ -2,6 +2,8 @@ package us
 
 import (
 	"context"
+	"os"
+	"sync/atomic"
 	"time"
 
 	kservice "github.com/kardianos/service"
@@ -28,8 +30,9 @@ func (serviceHostOption) apply(app *App) {
 }
 
 type serviceHostProgram struct {
-	owner *App
-	app   *fx.App
+	owner    *App
+	app      *fx.App
+	stopping atomic.Bool
 }
 
 func (p *serviceHostProgram) Start(_ kservice.Service) error {
@@ -43,11 +46,29 @@ func (p *serviceHostProgram) Start(_ kservice.Service) error {
 		return err
 	}
 	p.app = fxApp
+	go p.watchShutdown(fxApp)
 	return nil
+}
+
+// watchShutdown exits the process when the app shuts itself down (for example
+// via fx.Shutdowner after a command finishes); the service host would
+// otherwise keep a stopped app registered as running forever.
+func (p *serviceHostProgram) watchShutdown(fxApp *fx.App) {
+	sig := <-fxApp.Wait()
+	if !p.stopping.CompareAndSwap(false, true) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	_ = fxApp.Stop(ctx)
+	cancel()
+	os.Exit(sig.ExitCode)
 }
 
 func (p *serviceHostProgram) Stop(_ kservice.Service) error {
 	if p.app == nil {
+		return nil
+	}
+	if !p.stopping.CompareAndSwap(false, true) {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

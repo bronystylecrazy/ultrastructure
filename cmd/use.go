@@ -65,10 +65,28 @@ func currentCommandPathFromArgs(args []string) string {
 	if len(parts) > 0 {
 		return normalizePath(strings.Join(parts, " "))
 	}
+	// A flags-only invocation asking for help (for example `app --help`) must
+	// not fall back to the default command, or help would boot the full app.
+	if hasHelpFlag(args) {
+		return ""
+	}
 	defaultNameMu.RLock()
 	name := currentDefaultCmd
 	defaultNameMu.RUnlock()
 	return normalizePath(name)
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, arg := range args {
+		trimmed := strings.TrimSpace(arg)
+		if trimmed == "--" {
+			return false
+		}
+		if trimmed == "-h" || trimmed == "--help" {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesPathPrefix(path string, want string) bool {

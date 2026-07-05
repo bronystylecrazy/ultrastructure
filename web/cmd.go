@@ -22,6 +22,7 @@ func (c *ServeCommand) Command() *cobra.Command {
 }
 
 func (c *ServeCommand) RunE(cmd *cobra.Command, args []string) error {
-	<-c.server.Wait()
+	// Block until the server stops so the app keeps running while serving.
+	<-c.server.Done()
 	return nil
 }

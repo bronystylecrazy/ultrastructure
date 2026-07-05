@@ -110,7 +110,10 @@ func WithFiberAppName(name string) FiberConfigurer {
 
 type Server interface {
 	Listen() error
+	// Wait unblocks once the server has started listening (or failed to).
 	Wait() <-chan struct{}
+	// Done unblocks once the server has stopped serving.
+	Done() <-chan struct{}
 }
 
 type FiberServer struct {
@@ -229,6 +232,10 @@ func (s *FiberServer) listen() error {
 
 func (s *FiberServer) Wait() <-chan struct{} {
 	return s.startedCh
+}
+
+func (s *FiberServer) Done() <-chan struct{} {
+	return s.listenDone
 }
 
 func (s *FiberServer) markStarted() {
