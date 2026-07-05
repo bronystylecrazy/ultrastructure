@@ -17,25 +17,23 @@ type exportSpec struct {
 }
 
 type bindConfig struct {
-	exports                []exportSpec
-	includeSelf            bool
-	privateSet             bool
-	privateValue           bool
-	metadata               []any
-	pendingNames           []string
-	pendingGroups          []string
-	autoGroups             []autoGroupRule
-	autoGroupIgnores       []autoGroupRule
-	ignoreAuto             bool
-	autoInjectFields       bool
-	ignoreAutoInjectFields bool
-	paramTags              []string
-	paramSlots             int
-	variadicShorthand      bool
-	paramsSet              bool
-	paramsSourceFile       string
-	paramsSourceLine       int
-	err                    error
+	exports           []exportSpec
+	includeSelf       bool
+	privateSet        bool
+	privateValue      bool
+	metadata          []any
+	pendingNames      []string
+	pendingGroups     []string
+	autoGroups        []autoGroupRule
+	autoGroupIgnores  []autoGroupRule
+	ignoreAuto        bool
+	paramTags         []string
+	paramSlots        int
+	variadicShorthand bool
+	paramsSet         bool
+	paramsSourceFile  string
+	paramsSourceLine  int
+	err               error
 }
 
 type bindOptionFunc func(*bindConfig)
@@ -267,13 +265,6 @@ func Public() Option {
 func AutoGroupIgnore() Option {
 	return bindOptionFunc(func(cfg *bindConfig) {
 		cfg.ignoreAuto = true
-	})
-}
-
-// AutoInjectIgnore disables auto field injection for this provider.
-func AutoInjectIgnore() Option {
-	return bindOptionFunc(func(cfg *bindConfig) {
-		cfg.ignoreAutoInjectFields = true
 	})
 }
 

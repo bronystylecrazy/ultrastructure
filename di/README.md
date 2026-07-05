@@ -398,15 +398,13 @@ missing type: string (required by Invoke)
 * `OnStart(fn any)` — register an Fx OnStart hook.
 * `OnStop(fn any)` — register an Fx OnStop hook.
 
-=== Auto-Group / Auto-Inject ===
+=== Auto-Group ===
 
 * `AutoGroup[T](group ...string)` — collect implementations into a group.
 * `AutoGroupFilter(fn func(reflect.Type) bool)` — filter auto-group targets.
 * `AutoGroupAsSelf()` — include the concrete type when auto-grouping.
 * `AutoGroupIgnoreType[T](group ...string)` — ignore auto-group for a type.
 * `AutoGroupIgnore()` — ignore auto-group for a specific provider.
-* `AutoInject()` — enable auto field injection for the scope.
-* `AutoInjectIgnore()` — disable auto field injection for a provider.
 
 === Tagging and Exports ===
 

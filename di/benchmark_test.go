@@ -22,10 +22,6 @@ type benchL struct{}
 type benchHugeItem struct{ ID int }
 type benchDecorate struct{ Value int }
 type benchReplace struct{ Value int }
-type benchAutoInjectDep struct{}
-type benchAutoInjectTarget struct {
-	Dep *benchAutoInjectDep `di:"inject"`
-}
 type benchGroupIface interface {
 	ID() string
 }
@@ -55,8 +51,6 @@ func decorateBench(d *benchDecorate) *benchDecorate {
 }
 func newBenchReplace() *benchReplace                   { return &benchReplace{Value: 1} }
 func newBenchReplaceAlt() *benchReplace                { return &benchReplace{Value: 2} }
-func newBenchAutoInjectDep() *benchAutoInjectDep       { return &benchAutoInjectDep{} }
-func newBenchAutoInjectTarget() *benchAutoInjectTarget { return &benchAutoInjectTarget{} }
 func newBenchGroupImpl() *benchGroupImpl               { return &benchGroupImpl{id: "g"} }
 func (b *benchGroupImpl) ID() string                   { return b.id }
 func invokeStress(_ []benchStressItem)                 {}
@@ -328,17 +322,6 @@ func BenchmarkBuildAutoGroup(b *testing.B) {
 	}
 }
 
-func BenchmarkBuildAutoInject(b *testing.B) {
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = App(
-			AutoInject(),
-			Provide(newBenchAutoInjectDep),
-			Provide(newBenchAutoInjectTarget),
-		).Build()
-	}
-}
-
 func BenchmarkBuildReplace(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -383,22 +366,6 @@ func BenchmarkStartupAutoGroup(b *testing.B) {
 			App(
 				AutoGroup[benchGroupIface]("bench"),
 				Provide(newBenchGroupImpl),
-			).Build(),
-		)
-		app.RequireStart()
-		app.RequireStop()
-	}
-}
-
-func BenchmarkStartupAutoInject(b *testing.B) {
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		app := fxtest.New(b,
-			fx.NopLogger,
-			App(
-				AutoInject(),
-				Provide(newBenchAutoInjectDep),
-				Provide(newBenchAutoInjectTarget),
 			).Build(),
 		)
 		app.RequireStart()

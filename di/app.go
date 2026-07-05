@@ -38,7 +38,6 @@ func (a *appNode) Build() fx.Option {
 	nodes := injectResolver(a.nodes, getResolver())
 	// Apply graph-wide transformations before building.
 	nodes = applyAutoGroups(nodes, nil)
-	nodes = applyAutoInjectFields(nodes, false)
 	// Apply replacements after scopes and resolvers are in place.
 	nodes, err := applyReplacements(nodes, nil, &nextID, &nextScopeID, []int{0}, nil)
 	if err != nil {

@@ -346,16 +346,6 @@ func (n provideNode) Build() (fx.Option, error) {
 		return nil, err
 	}
 	constructor := n.constructor
-	if cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
-		// Wrap constructor to auto-inject fields before construction.
-		wrapped, ok, err := wrapAutoInjectConstructor(constructor)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			constructor = wrapped
-		}
-	}
 	spec, _, err := buildProvideSpec(cfg, constructor, nil)
 	if err != nil {
 		return nil, err
@@ -411,15 +401,6 @@ func (n provideNode) buildConstructor() (any, bool, []fx.Option, error) {
 		return nil, false, nil, err
 	}
 	constructor := n.constructor
-	if cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
-		wrapped, ok, err := wrapAutoInjectConstructor(constructor)
-		if err != nil {
-			return nil, false, nil, err
-		}
-		if ok {
-			constructor = wrapped
-		}
-	}
 	spec, _, err := buildProvideSpec(cfg, constructor, nil)
 	if err != nil {
 		return nil, false, nil, err
@@ -545,15 +526,6 @@ func (n supplyNode) Build() (fx.Option, error) {
 	}
 	value := n.value
 	var constructor any
-	if constructor == nil && cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
-		wrapped, ok, err := wrapAutoInjectSupply(value)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			constructor = wrapped
-		}
-	}
 	spec, _, err := buildProvideSpec(cfg, constructor, value)
 	if err != nil {
 		return nil, err
@@ -583,15 +555,6 @@ func (n supplyNode) buildSupply() (any, any, bool, bool, []fx.Option, error) {
 	}
 	value := n.value
 	var constructor any
-	if constructor == nil && cfg.autoInjectFields && !cfg.ignoreAutoInjectFields {
-		wrapped, ok, err := wrapAutoInjectSupply(value)
-		if err != nil {
-			return nil, nil, false, false, nil, err
-		}
-		if ok {
-			constructor = wrapped
-		}
-	}
 	spec, _, err := buildProvideSpec(cfg, constructor, value)
 	if err != nil {
 		return nil, nil, false, false, nil, err
