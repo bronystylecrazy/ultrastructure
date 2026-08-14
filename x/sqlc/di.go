@@ -18,7 +18,7 @@ import (
 func Providers() di.Node {
 	return di.Options(
 		di.Provide(NewPool),
-		di.Provide(NewDB),
+		di.Default(NewDB),
 	)
 }
 

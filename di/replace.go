@@ -156,6 +156,10 @@ func applyReplacements(
 				v, stripped = stripAutoGroupOptions(v)
 			}
 			activeTags := buildActiveTagMap(provides, active)
+			// Constructors resolve defaults the same way invokes and populates
+			// do; without this a provider consuming a defaulted binding asks for
+			// an untagged type that nothing supplies.
+			activeTags = appendDefaultTags(activeTags, provides, specs)
 			node, changed, err := rewriteProvideWithTags(v, activeTags)
 			if err != nil {
 				return nil, err
@@ -522,6 +526,12 @@ func appendDefaultTags(active map[string]tagSet, provides []provideItem, specs [
 			if _, ok := active[key]; ok {
 				continue
 			}
+			// An explicit replacement of the same binding outranks the default,
+			// even when nothing else provides the type.
+			if override, ok := selectReplacement([]tagSet{ts}, specs); ok && !override.isDefault {
+				active[key] = scopedTagSet(ts, override.id)
+				continue
+			}
 			active[key] = scopedTagSet(ts, spec.id)
 		}
 	}
@@ -648,10 +658,22 @@ func selectReplacement(tagSets []tagSet, specs []replaceSpec) (replaceSpec, bool
 		if score < 0 {
 			continue
 		}
-		if bestScore == -1 ||
-			score > bestScore ||
-			(score == bestScore && spec.depth > bestDepth) ||
-			(score == bestScore && spec.depth == bestDepth && i > bestIndex) {
+		better := false
+		switch {
+		case bestScore == -1:
+			better = true
+		case spec.isDefault != best.isDefault:
+			// An explicit replacement always outranks a default, whatever their
+			// relative specificity, depth or order.
+			better = !spec.isDefault
+		case score > bestScore:
+			better = true
+		case score == bestScore && spec.depth > bestDepth:
+			better = true
+		case score == bestScore && spec.depth == bestDepth && i > bestIndex:
+			better = true
+		}
+		if better {
 			bestScore = score
 			bestDepth = spec.depth
 			bestIndex = i
