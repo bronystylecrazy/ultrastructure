@@ -18,6 +18,10 @@ func applyReplacements(
 	provides []provideItem,
 ) ([]Node, error) {
 	scopeID := scopeStack[len(scopeStack)-1]
+	// Options group nodes without opening a scope, so their replacements and
+	// defaults belong to this one. Splicing them in keeps spec collection in
+	// step with collectScopeProvides, which already descends into them.
+	nodes = spliceOptions(nodes)
 	if provides == nil {
 		var err error
 		// Collect providers in the current scope for replacement targeting.
@@ -126,10 +130,17 @@ func applyReplacements(
 			if !ok {
 				continue
 			}
+			active := applicableSpecsAtIndex(specs, i)
+			activeTags := buildActiveTagMap(provides, active)
+			activeTags = appendDefaultTags(activeTags, provides, specs)
 			targets := replacementTargets(spec, provides)
 			for _, ts := range targets {
 				scoped := scopedTagSet(ts, spec.id)
 				node, err := replacementNodeWithTagSet(spec, scoped)
+				if err != nil {
+					return nil, err
+				}
+				node, err = rewriteBindingParams(node, activeTags)
 				if err != nil {
 					return nil, err
 				}
@@ -140,10 +151,17 @@ func applyReplacements(
 			if !ok {
 				continue
 			}
+			active := applicableSpecsAtIndex(specs, i)
+			activeTags := buildActiveTagMap(provides, active)
+			activeTags = appendDefaultTags(activeTags, provides, specs)
 			targets := defaultTargets(spec, provides, specs)
 			for _, ts := range targets {
 				scoped := scopedTagSet(ts, spec.id)
 				node, err := replacementNodeWithTagSet(spec, scoped)
+				if err != nil {
+					return nil, err
+				}
+				node, err = rewriteBindingParams(node, activeTags)
 				if err != nil {
 					return nil, err
 				}
@@ -203,6 +221,31 @@ func applyReplacements(
 	}
 
 	return final, nil
+}
+
+// spliceOptions lifts the children of same-scope option groups into the node
+// list, so a replacement or default declared inside one is anchored where it
+// was written. Scopes and conditional branches are left intact.
+func spliceOptions(nodes []Node) []Node {
+	nested := false
+	for _, n := range nodes {
+		if _, ok := n.(optionsNode); ok {
+			nested = true
+			break
+		}
+	}
+	if !nested {
+		return nodes
+	}
+	out := make([]Node, 0, len(nodes))
+	for _, n := range nodes {
+		if opts, ok := n.(optionsNode); ok {
+			out = append(out, spliceOptions(opts.nodes)...)
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func shouldStripAutoGroups(node provideNode, specs []replaceSpec) bool {
@@ -827,6 +870,24 @@ func replacementNodeWithTagSet(spec replaceSpec, target tagSet) (Node, error) {
 	default:
 		return spec.node, nil
 	}
+}
+
+// rewriteBindingParams points a replacement or default constructor at the
+// scoped bindings its parameters resolve to, the way an ordinary provider is
+// rewritten. Only parameter tags change, so the binding keeps its own export.
+func rewriteBindingParams(node Node, activeTags map[string]tagSet) (Node, error) {
+	pn, ok := node.(provideNode)
+	if !ok || len(activeTags) == 0 {
+		return node, nil
+	}
+	rewritten, changed, err := rewriteProvideWithTags(pn, activeTags)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return node, nil
+	}
+	return rewritten, nil
 }
 
 func overrideNameGroupOpts(opts []any, target tagSet) []any {
