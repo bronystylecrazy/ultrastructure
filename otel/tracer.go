@@ -21,12 +21,11 @@ func httpTraceCompression(value string) otlptracehttp.Compression {
 }
 
 func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
-	otlpCfg := config.otlpForTraces()
-	printExporterConfig("traces", config.Enabled, config.Traces.Exporter, otlpCfg)
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Traces.Exporter), "none") {
 		return nil, nil
 	}
-	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
+	otlpCfg := config.otlpForTraces()
+	if isHTTPProtocol(otlpCfg.Protocol) {
 		endpoint, path := otlpCfg.EndpointForHTTP()
 		tlsCfg, err := otlpCfg.TLS.Load()
 		if err != nil {
@@ -43,7 +42,9 @@ func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.
 		if len(otlpCfg.Headers) > 0 {
 			options = append(options, otlptracehttp.WithHeaders(otlpCfg.Headers))
 		}
-		if tlsCfg != nil {
+		if otlpCfg.Insecure {
+			options = append(options, otlptracehttp.WithInsecure())
+		} else if tlsCfg != nil {
 			options = append(options, otlptracehttp.WithTLSClientConfig(tlsCfg))
 		}
 		return otlptracehttp.New(ctx, options...)

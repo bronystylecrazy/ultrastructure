@@ -33,10 +33,32 @@ type OTLPConfig struct {
 }
 
 const (
-	defaultOTLPEndpoint    = "http://127.0.0.1:4317"
-	defaultOTLPProtocol    = "grpc"
-	defaultOTLPTimeoutMS   = 10000
-	defaultOTLPCompression = "gzip"
+	// A local GreptimeDB standalone is the default collector: it serves OTLP
+	// over HTTP only, on port 4000 under /v1/otlp, and appends the per-signal
+	// path the OTLP specification defines.
+	defaultOTLPHTTPEndpoint = "http://127.0.0.1:4000/v1/otlp"
+	// Collectors that speak OTLP over gRPC listen on the standard port instead.
+	defaultOTLPGRPCEndpoint = "127.0.0.1:4317"
+	defaultOTLPProtocol     = "http"
+	defaultOTLPTimeoutMS    = 10000
+	defaultOTLPCompression  = "gzip"
+)
+
+// defaultOTLPEndpointFor returns the local collector endpoint for a protocol,
+// so that choosing gRPC does not aim the exporter at the HTTP port.
+func defaultOTLPEndpointFor(protocol string) string {
+	if isHTTPProtocol(protocol) {
+		return defaultOTLPHTTPEndpoint
+	}
+	return defaultOTLPGRPCEndpoint
+}
+
+// Per-signal paths appended to an OTLP/HTTP base endpoint, as defined by the
+// OTLP specification. A signal that carries its own endpoint is used verbatim.
+const (
+	tracesSignalPath  = "/v1/traces"
+	logsSignalPath    = "/v1/logs"
+	metricsSignalPath = "/v1/metrics"
 )
 
 func (c OTLPConfig) Timeout() time.Duration {
@@ -48,11 +70,11 @@ func (c OTLPConfig) Timeout() time.Duration {
 
 func (c OTLPConfig) withDefaults() OTLPConfig {
 	out := c
-	if out.Endpoint == "" {
-		out.Endpoint = defaultOTLPEndpoint
-	}
 	if out.Protocol == "" {
 		out.Protocol = defaultOTLPProtocol
+	}
+	if out.Endpoint == "" {
+		out.Endpoint = defaultOTLPEndpointFor(out.Protocol)
 	}
 	if out.TimeoutMS <= 0 {
 		out.TimeoutMS = defaultOTLPTimeoutMS
@@ -131,6 +153,35 @@ type MetricsTuning struct {
 	HistogramAggregation string `mapstructure:"histogram_aggregation" default:"explicit_bucket_histogram"`
 }
 
+// mergeHeaders combines the shared OTLP headers with a signal's own headers,
+// keeping every base entry the signal does not restate. Names are matched
+// case-insensitively so a signal can override a base header regardless of the
+// casing each config uses, without emitting the header twice.
+func mergeHeaders(base, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string, len(base)+len(override))
+	keysByName := make(map[string]string, len(base)+len(override))
+	put := func(key, value string) {
+		name := strings.ToLower(strings.TrimSpace(key))
+		if previous, ok := keysByName[name]; ok {
+			delete(out, previous)
+		}
+		keysByName[name] = key
+		out[key] = value
+	}
+
+	for key, value := range base {
+		put(key, value)
+	}
+	for key, value := range override {
+		put(key, value)
+	}
+	return out
+}
+
 func mergeOTLP(base, override OTLPConfig) OTLPConfig {
 	out := base
 	if override.Endpoint != "" {
@@ -139,9 +190,7 @@ func mergeOTLP(base, override OTLPConfig) OTLPConfig {
 	if override.Protocol != "" {
 		out.Protocol = override.Protocol
 	}
-	if len(override.Headers) > 0 {
-		out.Headers = override.Headers
-	}
+	out.Headers = mergeHeaders(base.Headers, override.Headers)
 	if override.TimeoutMS > 0 {
 		out.TimeoutMS = override.TimeoutMS
 	}
@@ -156,18 +205,35 @@ func mergeOTLP(base, override OTLPConfig) OTLPConfig {
 }
 
 func (c Config) otlpForTraces() OTLPConfig {
-	base := c.OTLP.withDefaults()
-	return mergeOTLP(base, c.Traces.OTLP)
+	return resolveSignalOTLP(c.OTLP, c.Traces.OTLP, tracesSignalPath)
 }
 
 func (c Config) otlpForLogs() OTLPConfig {
-	base := c.OTLP.withDefaults()
-	return mergeOTLP(base, c.Logs.OTLP)
+	return resolveSignalOTLP(c.OTLP, c.Logs.OTLP, logsSignalPath)
 }
 
 func (c Config) otlpForMetrics() OTLPConfig {
-	base := c.OTLP.withDefaults()
-	return mergeOTLP(base, c.Metrics.OTLP)
+	return resolveSignalOTLP(c.OTLP, c.Metrics.OTLP, metricsSignalPath)
+}
+
+// resolveSignalOTLP merges the shared OTLP settings with one signal's own, then
+// completes the endpoint: an OTLP/HTTP base endpoint gains the signal path, and
+// an endpoint written as http:// is exported without TLS.
+func resolveSignalOTLP(base, override OTLPConfig, signalPath string) OTLPConfig {
+	// Defaults are applied after the merge so that a signal choosing gRPC gets
+	// the gRPC endpoint rather than the shared block's HTTP one.
+	out := mergeOTLP(base, override).withDefaults()
+	if strings.TrimSpace(override.Endpoint) == "" && isHTTPProtocol(out.Protocol) {
+		out.Endpoint = strings.TrimRight(strings.TrimSpace(out.Endpoint), "/") + signalPath
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(out.Endpoint)), "http://") {
+		out.Insecure = true
+	}
+	return out
+}
+
+func isHTTPProtocol(protocol string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(protocol)), "http")
 }
 
 // OTLPForTraces returns the merged OTLP config for traces.

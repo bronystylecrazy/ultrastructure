@@ -186,12 +186,18 @@ log_level = "info"
 "service.namespace" = "test"
 "deployment.environment" = "dev"
 
+# Shared OTLP settings. Every signal inherits these and may restate any key.
+# Over http the endpoint is a base: each signal appends its own path, so this
+# default reaches a local GreptimeDB at /v1/otlp/v1/{traces,logs,metrics}.
+# A signal that carries its own endpoint is used verbatim instead.
+# An endpoint written as http:// is exported without TLS; https:// keeps it.
+# Headers merge per key, so a signal only restates the ones it changes.
 [otel.otlp]
-endpoint = "http://otel-collector:4317"
-protocol = "grpc"
+endpoint = "http://127.0.0.1:4000/v1/otlp"
+protocol = "http"
 compression = "gzip"
 timeout_ms = 10000
-headers = { authorization = "Bearer xxx" }
+headers = { authorization = "Basic xxx", "x-greptime-db-name" = "public" }
 insecure = false
 
 [otel.otlp.tls]
@@ -206,13 +212,15 @@ exporter = "otlp"
 sampler = "parentbased_traceidratio"
 sampler_arg = 1
 
+# A signal endpoint is used verbatim, so it carries its own path. Headers here
+# are merged over the shared ones: restate only what this signal changes.
 [otel.traces.otlp]
 endpoint = "http://otel-collector:4318/v1/traces"
 protocol = "http/protobuf"
 compression = "gzip"
 timeout_ms = 10000
-headers = { authorization = "Bearer xxx" }
-insecure = false
+headers = { "x-greptime-pipeline-name" = "greptime_trace_v1" }
+insecure = true # implied by the http:// endpoint above
 
 [otel.traces.otlp.tls]
 ca_file = "/path/ca.pem"
@@ -229,8 +237,8 @@ endpoint = "http://otel-collector:4318/v1/logs"
 protocol = "http/protobuf"
 compression = "gzip"
 timeout_ms = 10000
-headers = { authorization = "Bearer xxx" }
-insecure = false
+headers = { "x-greptime-log-table-name" = "app_logs" }
+insecure = true # implied by the http:// endpoint above
 
 [otel.logs.otlp.tls]
 ca_file = "/path/ca.pem"
@@ -252,8 +260,8 @@ endpoint = "http://otel-collector:4318/v1/metrics"
 protocol = "http/protobuf"
 compression = "gzip"
 timeout_ms = 10000
-headers = { authorization = "Bearer xxx" }
-insecure = false
+headers = {}
+insecure = true # implied by the http:// endpoint above
 
 [otel.metrics.otlp.tls]
 ca_file = "/path/ca.pem"

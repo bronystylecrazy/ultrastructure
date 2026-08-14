@@ -20,12 +20,11 @@ func httpLogCompression(value string) otlploghttp.Compression {
 }
 
 func NewLogExporter(ctx context.Context, config Config, opts ...otlploggrpc.Option) (sdklog.Exporter, error) {
-	otlpCfg := config.otlpForLogs()
-	printExporterConfig("logs", config.Enabled, config.Logs.Exporter, otlpCfg)
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Logs.Exporter), "none") {
 		return nil, nil
 	}
-	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
+	otlpCfg := config.otlpForLogs()
+	if isHTTPProtocol(otlpCfg.Protocol) {
 		endpoint, path := otlpCfg.EndpointForHTTP()
 		tlsCfg, err := otlpCfg.TLS.Load()
 		if err != nil {
@@ -42,7 +41,9 @@ func NewLogExporter(ctx context.Context, config Config, opts ...otlploggrpc.Opti
 		if len(otlpCfg.Headers) > 0 {
 			options = append(options, otlploghttp.WithHeaders(otlpCfg.Headers))
 		}
-		if tlsCfg != nil {
+		if otlpCfg.Insecure {
+			options = append(options, otlploghttp.WithInsecure())
+		} else if tlsCfg != nil {
 			options = append(options, otlploghttp.WithTLSClientConfig(tlsCfg))
 		}
 		return otlploghttp.New(ctx, options...)

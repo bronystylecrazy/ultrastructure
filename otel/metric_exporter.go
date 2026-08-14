@@ -22,12 +22,11 @@ func httpMetricCompression(value string) otlpmetrichttp.Compression {
 }
 
 func NewMetricExporter(ctx context.Context, config Config) (sdkmetric.Exporter, error) {
-	otlpCfg := config.otlpForMetrics()
-	printExporterConfig("metrics", config.Enabled, config.Metrics.Exporter, otlpCfg)
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Metrics.Exporter), "none") {
 		return &noopMetricExporter{}, nil
 	}
-	if strings.HasPrefix(strings.ToLower(otlpCfg.Protocol), "http") {
+	otlpCfg := config.otlpForMetrics()
+	if isHTTPProtocol(otlpCfg.Protocol) {
 		endpoint, path := otlpCfg.EndpointForHTTP()
 		tlsCfg, err := otlpCfg.TLS.Load()
 		if err != nil {
@@ -44,7 +43,9 @@ func NewMetricExporter(ctx context.Context, config Config) (sdkmetric.Exporter, 
 		if len(otlpCfg.Headers) > 0 {
 			options = append(options, otlpmetrichttp.WithHeaders(otlpCfg.Headers))
 		}
-		if tlsCfg != nil {
+		if otlpCfg.Insecure {
+			options = append(options, otlpmetrichttp.WithInsecure())
+		} else if tlsCfg != nil {
 			options = append(options, otlpmetrichttp.WithTLSClientConfig(tlsCfg))
 		}
 		return otlpmetrichttp.New(ctx, options...)
