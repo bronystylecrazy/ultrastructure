@@ -2,6 +2,13 @@ module github.com/bronystylecrazy/ultrastructure
 
 go 1.25.1
 
+// Both versions fail while the application starts rather than later, and each
+// is fixed by the release that follows it.
+retract (
+	v1.22.0 // realtime.UseWebsocketListener fails dependency validation; use v1.22.1.
+	v1.23.0 // sqlc leaves *sql.DB unbound without gorm; use v1.23.1.
+)
+
 require (
 	github.com/Flussen/swagger-fiber-v3 v1.0.1
 	github.com/alicebob/miniredis/v2 v2.36.1
