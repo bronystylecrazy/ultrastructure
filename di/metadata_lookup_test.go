@@ -51,4 +51,3 @@ func TestFindAllMetadataReturnsNilWhenMissing(t *testing.T) {
 		t.Fatalf("expected nil when no matches, got %#v", got)
 	}
 }
-

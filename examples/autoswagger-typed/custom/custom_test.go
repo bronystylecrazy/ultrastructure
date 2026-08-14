@@ -134,13 +134,14 @@ func TestOpenAPIIncludesValidateTagConstraintsForPayload(t *testing.T) {
 	content := requestBody["content"].(map[string]interface{})
 	jsonMedia := content["application/json"].(map[string]interface{})
 	schema := jsonMedia["schema"].(map[string]interface{})
-	if schema["$ref"] != "#/components/schemas/CreateUserRequest" {
-		t.Fatalf("expected request schema ref CreateUserRequest, got %v", schema["$ref"])
+	// Schema names are qualified with the package that declares the model.
+	if schema["$ref"] != "#/components/schemas/custom.CreateUserRequest" {
+		t.Fatalf("expected request schema ref custom.CreateUserRequest, got %v", schema["$ref"])
 	}
 
-	createSchema, ok := spec.Components.Schemas["CreateUserRequest"].(map[string]interface{})
+	createSchema, ok := spec.Components.Schemas["custom.CreateUserRequest"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected CreateUserRequest schema in components")
+		t.Fatalf("expected custom.CreateUserRequest schema in components")
 	}
 	props := createSchema["properties"].(map[string]interface{})
 

@@ -49,13 +49,13 @@ func decorateBench(d *benchDecorate) *benchDecorate {
 	d.Value++
 	return d
 }
-func newBenchReplace() *benchReplace                   { return &benchReplace{Value: 1} }
-func newBenchReplaceAlt() *benchReplace                { return &benchReplace{Value: 2} }
-func newBenchGroupImpl() *benchGroupImpl               { return &benchGroupImpl{id: "g"} }
-func (b *benchGroupImpl) ID() string                   { return b.id }
-func invokeStress(_ []benchStressItem)                 {}
-func (b *benchStressHandlerImpl) ID() int              { return b.id }
-func invokeStressHandlers(_ []benchStressHandler)      {}
+func newBenchReplace() *benchReplace              { return &benchReplace{Value: 1} }
+func newBenchReplaceAlt() *benchReplace           { return &benchReplace{Value: 2} }
+func newBenchGroupImpl() *benchGroupImpl          { return &benchGroupImpl{id: "g"} }
+func (b *benchGroupImpl) ID() string              { return b.id }
+func invokeStress(_ []benchStressItem)            {}
+func (b *benchStressHandlerImpl) ID() int         { return b.id }
+func invokeStressHandlers(_ []benchStressHandler) {}
 
 func invokeBench(_ *benchC)      {}
 func invokeBenchLarge(_ *benchL) {}

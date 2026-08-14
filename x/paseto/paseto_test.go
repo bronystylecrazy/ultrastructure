@@ -59,8 +59,8 @@ func TestPaseto_SignAndVerify(t *testing.T) {
 
 		// Sign a token
 		claims := map[string]any{
-			"sub": "user-123",
-			"typ": "access",
+			"sub":  "user-123",
+			"typ":  "access",
 			"role": "admin",
 		}
 
@@ -80,7 +80,7 @@ func TestPaseto_SignAndVerify(t *testing.T) {
 
 	t.Run("v2 with short secret derives key", func(t *testing.T) {
 		cfg := Config{
-			Secret: "short",
+			Secret:  "short",
 			Version: "v2",
 		}
 
@@ -163,9 +163,9 @@ func TestPaseto_SignAndVerify(t *testing.T) {
 		require.NoError(t, err)
 
 		customClaims := map[string]any{
-			"sub":    "user-123",
-			"role":   "admin",
-			"tenant": "acme",
+			"sub":         "user-123",
+			"role":        "admin",
+			"tenant":      "acme",
 			"permissions": []string{"read", "write", "delete"},
 		}
 
@@ -230,13 +230,13 @@ func TestFromMapClaims(t *testing.T) {
 	t.Run("converts all claim types correctly", func(t *testing.T) {
 		now := time.Now().UTC()
 		input := map[string]any{
-			"sub": "user-123",
-			"typ": "access",
-			"jti": "jti-456",
-			"exp": float64(now.Add(1 * time.Hour).Unix()),
-			"iat": float64(now.Unix()),
-			"nbf": float64(now.Unix()),
-			"iss": "test-issuer",
+			"sub":    "user-123",
+			"typ":    "access",
+			"jti":    "jti-456",
+			"exp":    float64(now.Add(1 * time.Hour).Unix()),
+			"iat":    float64(now.Unix()),
+			"nbf":    float64(now.Unix()),
+			"iss":    "test-issuer",
 			"custom": "value",
 		}
 
@@ -277,7 +277,7 @@ func TestClaims_Value(t *testing.T) {
 	claims := Claims{
 		Subject: "user-123",
 		Values: map[string]any{
-			"role": "admin",
+			"role":   "admin",
 			"tenant": "acme",
 		},
 	}

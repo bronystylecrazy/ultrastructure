@@ -145,14 +145,14 @@ func normalizeParamTag(tag string) string {
 }
 
 type paramConfig struct {
-	tags             []string
-	resultTags       []string
-	paramSlots       int
+	tags              []string
+	resultTags        []string
+	paramSlots        int
 	variadicShorthand bool
-	paramsSet        bool
-	paramsSourceFile string
-	paramsSourceLine int
-	err              error
+	paramsSet         bool
+	paramsSourceFile  string
+	paramsSourceLine  int
+	err               error
 }
 
 type invokeOptionFunc func(*paramConfig)

@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	defaultSecret           = "change-me"
-	defaultAccessTokenTTL   = 15 * time.Minute
-	defaultRefreshTokenTTL  = 720 * time.Hour
+	defaultSecret          = "change-me"
+	defaultAccessTokenTTL  = 15 * time.Minute
+	defaultRefreshTokenTTL = 720 * time.Hour
 )
 
 // Config holds configuration for PASETO tokens.

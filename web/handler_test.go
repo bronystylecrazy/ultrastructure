@@ -38,7 +38,7 @@ func TestSetupHandlersPriorityOrder(t *testing.T) {
 
 	fxApp := ditest.New(t,
 		di.AutoGroup[Handler](HandlersGroupName),
-		di.Supply(app),
+		di.Supply(&FiberServer{App: app}),
 		di.Provide(NewRegistryContainer),
 		di.Provide(NewModuleRouter),
 		di.Supply(h1),
@@ -86,7 +86,7 @@ func TestSetupHandlersWebPriorityIsIndependentFromDIPriority(t *testing.T) {
 
 	fxApp := ditest.New(t,
 		di.AutoGroup[Handler](HandlersGroupName),
-		di.Supply(app),
+		di.Supply(&FiberServer{App: app}),
 		di.Provide(NewRegistryContainer),
 		di.Provide(NewModuleRouter),
 		di.Supply(h1, di.Priority(di.Earliest)),
@@ -117,7 +117,7 @@ func TestSetupHandlersWebPriorityLastWins(t *testing.T) {
 
 	fxApp := ditest.New(t,
 		di.AutoGroup[Handler](HandlersGroupName),
-		di.Supply(app),
+		di.Supply(&FiberServer{App: app}),
 		di.Provide(NewRegistryContainer),
 		di.Provide(NewModuleRouter),
 		di.Supply(h1, Priority(Earlier), Priority(Latest)),

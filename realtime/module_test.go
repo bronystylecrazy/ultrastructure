@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -19,6 +20,9 @@ func TestModuleProvidesBrokerPublisherSubscriber(t *testing.T) {
 	var subscriber usmqtt.Subscriber
 
 	app := ditest.New(t,
+		// The broker logs through slog, which otel.Providers supplies in a real
+		// application.
+		di.Supply(slog.Default()),
 		Providers(),
 		di.Populate(&broker),
 		di.Populate(&publisher),

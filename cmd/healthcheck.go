@@ -71,4 +71,3 @@ func (s *HealthcheckCommand) Run(cmd *cobra.Command, args []string) error {
 	_, err = fmt.Fprintln(cmd.OutOrStdout(), "ok")
 	return err
 }
-

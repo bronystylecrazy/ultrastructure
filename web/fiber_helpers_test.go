@@ -73,4 +73,3 @@ func TestBuildFiberListenConfigTLSValidation(t *testing.T) {
 		})
 	}
 }
-

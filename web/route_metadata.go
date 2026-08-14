@@ -8,19 +8,19 @@ import (
 
 // RouteMetadata stores OpenAPI metadata for a single route
 type RouteMetadata struct {
-	OperationID string
-	Tags        []string
+	OperationID     string
+	Tags            []string
 	TagDescriptions map[string]string
-	Summary     string
-	Description string
-	RequestBody *RequestBodyMetadata
-	QueryType   reflect.Type
-	Parameters  []ParameterMetadata
-	Security    []SecurityRequirement
-	Policies    []string
-	Pagination  *PaginationMetadata
-	Responses   map[int]ResponseMetadata // statusCode -> metadata
-	Examples    map[int]interface{}      // statusCode -> example
+	Summary         string
+	Description     string
+	RequestBody     *RequestBodyMetadata
+	QueryType       reflect.Type
+	Parameters      []ParameterMetadata
+	Security        []SecurityRequirement
+	Policies        []string
+	Pagination      *PaginationMetadata
+	Responses       map[int]ResponseMetadata // statusCode -> metadata
+	Examples        map[int]interface{}      // statusCode -> example
 }
 
 // ParameterMetadata stores header/cookie/query parameter schema metadata.
@@ -61,9 +61,9 @@ type ResponseMetadata struct {
 	// ContentVariants stores multiple possible model types for a media type.
 	// This is rendered as OpenAPI oneOf when more than one type exists.
 	ContentVariants map[string][]reflect.Type
-	NoContent   bool
-	Description string
-	Headers     map[string]ResponseHeaderMetadata
+	NoContent       bool
+	Description     string
+	Headers         map[string]ResponseHeaderMetadata
 }
 
 // ResponseHeaderMetadata stores OpenAPI response header schema metadata.

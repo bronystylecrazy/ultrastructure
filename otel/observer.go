@@ -21,12 +21,12 @@ type Observer struct {
 	*zap.Logger
 	trace.Tracer
 	otelmetric.Meter
-	layerName              string
-	isNop                  bool
-	defaultMetricCtx       []attribute.KeyValue
-	defaultAddMetricOpts   []otelmetric.AddOption
+	layerName               string
+	isNop                   bool
+	defaultMetricCtx        []attribute.KeyValue
+	defaultAddMetricOpts    []otelmetric.AddOption
 	defaultRecordMetricOpts []otelmetric.RecordOption
-	instruments            *sync.Map
+	instruments             *sync.Map
 }
 
 type Span struct {
@@ -40,27 +40,27 @@ func NewObserver(logger *zap.Logger, tracer trace.Tracer, meter ...otelmetric.Me
 		m = meter[0]
 	}
 	return &Observer{
-		Logger:                logger,
-		Tracer:                tracer,
-		Meter:                 m,
-		defaultMetricCtx:      nil,
-		defaultAddMetricOpts:  nil,
+		Logger:                  logger,
+		Tracer:                  tracer,
+		Meter:                   m,
+		defaultMetricCtx:        nil,
+		defaultAddMetricOpts:    nil,
 		defaultRecordMetricOpts: nil,
-		instruments:           &sync.Map{},
+		instruments:             &sync.Map{},
 	}
 }
 
 func NewNopObserver() *Observer {
 	mp := metricnoop.NewMeterProvider()
 	return &Observer{
-		Logger:                zap.NewNop(),
-		Tracer:                noop.NewTracerProvider().Tracer(""),
-		Meter:                 mp.Meter(""),
-		isNop:                 true,
-		defaultMetricCtx:      nil,
-		defaultAddMetricOpts:  nil,
+		Logger:                  zap.NewNop(),
+		Tracer:                  noop.NewTracerProvider().Tracer(""),
+		Meter:                   mp.Meter(""),
+		isNop:                   true,
+		defaultMetricCtx:        nil,
+		defaultAddMetricOpts:    nil,
 		defaultRecordMetricOpts: nil,
-		instruments:           &sync.Map{},
+		instruments:             &sync.Map{},
 	}
 }
 
@@ -181,14 +181,14 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 
 	// Store enriched obs back in context
 	enrichedObs := &Observer{
-		Logger:                 enrichedLogger,
-		Tracer:                 o.Tracer,
-		Meter:                  o.Meter,
-		layerName:              o.layerName,
-		defaultMetricCtx:       o.defaultMetricCtx,
-		defaultAddMetricOpts:   o.defaultAddMetricOpts,
+		Logger:                  enrichedLogger,
+		Tracer:                  o.Tracer,
+		Meter:                   o.Meter,
+		layerName:               o.layerName,
+		defaultMetricCtx:        o.defaultMetricCtx,
+		defaultAddMetricOpts:    o.defaultAddMetricOpts,
 		defaultRecordMetricOpts: o.defaultRecordMetricOpts,
-		instruments:            o.instruments,
+		instruments:             o.instruments,
 	}
 	ctx = enrichedObs.With(ctx)
 

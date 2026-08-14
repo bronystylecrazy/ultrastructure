@@ -72,4 +72,3 @@ func TestMetadataGroupEmitsOneEntryPerProvider(t *testing.T) {
 		t.Fatalf("unexpected metadata tags: %#v", seen)
 	}
 }
-

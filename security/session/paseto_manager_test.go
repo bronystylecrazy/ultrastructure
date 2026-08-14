@@ -101,8 +101,9 @@ func TestPasetoManager(t *testing.T) {
 		assert.NotEqual(t, pair.AccessToken, newPair.AccessToken)
 		assert.NotEqual(t, pair.RefreshToken, newPair.RefreshToken)
 
-		// Old refresh token should be revoked
-		_, err = manager.Validate(pair.RefreshToken, session.TokenTypeRefresh)
+		// Old refresh token should be revoked. Validate only checks the
+		// signature; ValidateActive is the one that consults revocation.
+		_, err = manager.ValidateActive(context.Background(), pair.RefreshToken, session.TokenTypeRefresh)
 		assert.Error(t, err)
 	})
 
@@ -128,8 +129,8 @@ func TestPasetoManager(t *testing.T) {
 		assert.NotEmpty(t, newAccess)
 		assert.WithinDuration(t, time.Now().Add(15*time.Minute), expiresAt, 2*time.Second)
 
-		// Old access token should be revoked
-		_, err = manager.Validate(pair.AccessToken, session.TokenTypeAccess)
+		// Old access token should be revoked.
+		_, err = manager.ValidateActive(context.Background(), pair.AccessToken, session.TokenTypeAccess)
 		assert.Error(t, err)
 	})
 
@@ -162,7 +163,7 @@ func TestPasetoManager(t *testing.T) {
 
 		// Create request with valid token
 		app := fiber.New()
-		app.Get("/test", handler, manager.AccessMiddleware())
+		app.Get("/test", manager.AccessMiddleware(), handler)
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
@@ -192,7 +193,7 @@ func TestPasetoManager(t *testing.T) {
 
 		// Create request with invalid token
 		app := fiber.New()
-		app.Get("/test", handler, manager.AccessMiddleware())
+		app.Get("/test", manager.AccessMiddleware(), handler)
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("Authorization", "Bearer invalid-token")
@@ -221,7 +222,7 @@ func TestPasetoManager(t *testing.T) {
 
 		// Create request without token
 		app := fiber.New()
-		app.Get("/test", handler, manager.AccessMiddleware())
+		app.Get("/test", manager.AccessMiddleware(), handler)
 
 		req := httptest.NewRequest("GET", "/test", nil)
 
@@ -251,7 +252,7 @@ func TestPasetoManager(t *testing.T) {
 		require.NoError(t, err)
 
 		// Token should now be invalid
-		_, err = manager.Validate(pair.RefreshToken, session.TokenTypeRefresh)
+		_, err = manager.ValidateActive(context.Background(), pair.RefreshToken, session.TokenTypeRefresh)
 		assert.Error(t, err)
 	})
 
@@ -419,7 +420,7 @@ func TestPasetoManager(t *testing.T) {
 
 		// Test header extractor
 		app := fiber.New()
-		app.Get("/test", handler, manager.AccessMiddleware())
+		app.Get("/test", manager.AccessMiddleware(), handler)
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("X-Access-Token", pair.AccessToken)
@@ -457,7 +458,7 @@ func TestPasetoManager_Revocation(t *testing.T) {
 		}
 
 		app := fiber.New()
-		app.Get("/test", handler, manager.AccessMiddleware())
+		app.Get("/test", manager.AccessMiddleware(), handler)
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)

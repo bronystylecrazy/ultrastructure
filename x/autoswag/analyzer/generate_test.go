@@ -409,7 +409,7 @@ func TestGenerateHookSource_EmitsResponseHeaders(t *testing.T) {
 								Type:        "web.Response",
 								ContentType: "application/json",
 								Headers: map[string]ResponseHeaderReport{
-									"X-Request-ID": {Type: "string", Description: "Auto-detected"},
+									"X-Request-ID":  {Type: "string", Description: "Auto-detected"},
 									"X-Retry-After": {Type: "integer", Description: "Retry delay"},
 								},
 							},

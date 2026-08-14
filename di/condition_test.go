@@ -289,7 +289,10 @@ func TestWhenInvalidFunctionNotBool(t *testing.T) {
 }
 
 func TestWhenCachesResult(t *testing.T) {
-	type config struct{ Counter int; Enabled bool }
+	type config struct {
+		Counter int
+		Enabled bool
+	}
 	cfg := &config{Counter: 0, Enabled: true}
 
 	resolver := func(typ reflect.Type) (any, error) {
@@ -504,7 +507,7 @@ func TestWhenWithViperLikeResolver(t *testing.T) {
 	// Simulate a viper-like resolver that resolves from a map.
 	settings := map[string]any{
 		"feature.enabled": true,
-		"feature.name":   "test",
+		"feature.name":    "test",
 	}
 
 	RegisterResolver(func(typ reflect.Type) (any, error) {
@@ -554,14 +557,22 @@ func TestWhenWithEightParams(t *testing.T) {
 
 	RegisterResolver(func(typ reflect.Type) (any, error) {
 		switch typ {
-		case reflect.TypeOf(v0): return v0, nil
-		case reflect.TypeOf(v1): return v1, nil
-		case reflect.TypeOf(v2): return v2, nil
-		case reflect.TypeOf(v3): return v3, nil
-		case reflect.TypeOf(v4): return v4, nil
-		case reflect.TypeOf(v5): return v5, nil
-		case reflect.TypeOf(v6): return v6, nil
-		case reflect.TypeOf(v7): return v7, nil
+		case reflect.TypeOf(v0):
+			return v0, nil
+		case reflect.TypeOf(v1):
+			return v1, nil
+		case reflect.TypeOf(v2):
+			return v2, nil
+		case reflect.TypeOf(v3):
+			return v3, nil
+		case reflect.TypeOf(v4):
+			return v4, nil
+		case reflect.TypeOf(v5):
+			return v5, nil
+		case reflect.TypeOf(v6):
+			return v6, nil
+		case reflect.TypeOf(v7):
+			return v7, nil
 		}
 		return nil, nil
 	})
