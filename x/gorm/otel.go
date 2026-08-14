@@ -47,7 +47,9 @@ func (o *GormOtel) append() error {
 		o.db.Logger = logger
 	}
 
-	if !isDbOtelEnabled(o.otelConfig.Enabled, o.traceConfig.Enabled) {
+	// Tracing is configured but no provider reached us, so there is nothing to
+	// record spans with.
+	if !isDbOtelEnabled(o.otelConfig.Enabled, o.traceConfig.Enabled) || o.tp == nil {
 		return nil
 	}
 

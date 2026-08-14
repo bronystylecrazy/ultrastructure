@@ -15,6 +15,7 @@ type Option interface {
 
 type option struct {
 	logger *zap.Logger
+	check  bool
 }
 
 type optionFunc func(*option)
@@ -26,6 +27,14 @@ func (f optionFunc) apply(cfg *option) {
 func WithLogger(logger *zap.Logger) Option {
 	return optionFunc(func(cfg *option) {
 		cfg.logger = logger
+	})
+}
+
+// WithCheck pings the database while the application starts, so an unreachable
+// one is reported there rather than on the first query a request makes.
+func WithCheck() Option {
+	return optionFunc(func(cfg *option) {
+		cfg.check = true
 	})
 }
 
@@ -48,13 +57,25 @@ func Use(opts ...Option) di.Node {
 		return NewGormOtel(dbConfig, logConfig, traceConfig, otelConfig, db, otelLogger, tp)
 	}
 
-	return di.Options(
+	nodes := []di.Node{
 		cfg.Config[LogConfig]("db.log", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		cfg.Config[TraceConfig]("db.trace", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
 		di.Provide(NewDialector),
 		di.Provide(NewDB),
 		di.Provide(NewSQLDB),
 		di.Provide(NewChecker),
-		di.Provide(gormOtel, di.Params(``, ``, ``, ``, ``, di.Optional(), ``)),
-	)
+		di.Provide(gormOtel, di.Params(``, ``, ``, ``, ``, di.Optional(), di.Optional())),
+		// Building GormOtel is what installs the logger and the tracing plugin,
+		// and it settles to nothing when telemetry is off, so the application
+		// does not have to ask for it.
+		di.Invoke(func(*GormOtel) {}),
+	}
+
+	if useOpts.check {
+		nodes = append(nodes, di.Invoke(func(checker *Checker) error {
+			return checker.Check()
+		}))
+	}
+
+	return di.Options(di.ConvertAnys(nodes)...)
 }
