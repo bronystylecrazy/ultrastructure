@@ -98,7 +98,9 @@ func UseWebsocketListener(opts ...Option) di.Node {
 				WithPath(path),
 			}
 			return NewWebsocketWithOptions(append(base, opts...)...)
-		}, web.Priority(web.Later), di.Params(``, di.Optional())),
+			// An app that serves no authorizer still gets a websocket listener;
+			// the config and the broker are always present.
+		}, web.Priority(web.Later), di.Params(di.Optional(), ``, ``)),
 	)
 }
 
