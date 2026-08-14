@@ -89,6 +89,17 @@ func ConfigBind[T any](key string, opts ...any) di.Node {
 	return configBindNode[T]{key: key, opts: withDefaults(opts)}
 }
 
+// ProvidedTypes lets di.Replace and di.Default reach the loaded configuration,
+// which is otherwise provided straight to fx and invisible to them. Tests in
+// particular replace a whole config value rather than write a file.
+func (n configNode[T]) ProvidedTypes() []reflect.Type {
+	return []reflect.Type{reflect.TypeFor[T]()}
+}
+
+func (n configBindNode[T]) ProvidedTypes() []reflect.Type {
+	return []reflect.Type{reflect.TypeFor[T]()}
+}
+
 func (n configNode[T]) Build() (fx.Option, error) {
 	cfg, watch, err := parse(n.opts)
 	if err != nil {

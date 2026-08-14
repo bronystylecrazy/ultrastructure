@@ -448,6 +448,12 @@ func collectScopeProvides(nodes []Node) ([]provideItem, error) {
 				return nil, err
 			}
 			out = append(out, provideItem{node: n, tagSets: tagSets})
+		case ProvidedTypes:
+			// Nodes that build their own fx providers, configuration among
+			// them, name the types they export so replacements can reach them.
+			if tagSets := tagSetsForProvidedTypes(v); len(tagSets) > 0 {
+				out = append(out, provideItem{node: n, tagSets: tagSets})
+			}
 		case optionsNode:
 			child, err := collectScopeProvides(v.nodes)
 			if err != nil {
