@@ -19,6 +19,17 @@ func httpLogCompression(value string) otlploghttp.Compression {
 	}
 }
 
+// provideLogExporter is NewLogExporter's DI registration shape: the variadic
+// options are a direct-call convenience only. Registering the variadic
+// function itself breaks the graph — the auto-group wrap goes through
+// fx.Annotate, which turns a variadic parameter into a REQUIRED
+// []otlploggrpc.Option dependency nobody provides — and since the exporters
+// joined the lc.stoppers group (built at start), every consumer app failed
+// with "missing type: []otlploggrpc.Option".
+func provideLogExporter(ctx context.Context, config Config) (sdklog.Exporter, error) {
+	return NewLogExporter(ctx, config)
+}
+
 func NewLogExporter(ctx context.Context, config Config, opts ...otlploggrpc.Option) (sdklog.Exporter, error) {
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Logs.Exporter), "none") {
 		return nil, nil

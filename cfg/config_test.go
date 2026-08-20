@@ -70,3 +70,44 @@ func TestDecodeStructReadsFromToml(t *testing.T) {
 		t.Fatalf("expected migrate from file to be true")
 	}
 }
+
+// SetBaseDir must anchor a RELATIVE source file away from the process cwd: an
+// installed CLI reads its own config root, never whatever config.toml the
+// current project carries — including one that would not even parse.
+func TestSetBaseDirAnchorsRelativeSourceFiles(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "config.toml"), []byte("[db]\ndatasource = \"postgres://base\"\n"), 0o644); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+	cwd := t.TempDir()
+	// A malformed cwd file proves it is not even opened.
+	if err := os.WriteFile(filepath.Join(cwd, "config.toml"), []byte("not [valid toml %%\n"), 0o644); err != nil {
+		t.Fatalf("write cwd config: %v", err)
+	}
+	orig, _ := os.Getwd()
+	defer func() { _ = os.Chdir(orig) }()
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	SetBaseDir(base)
+	defer SetBaseDir("")
+
+	cfg, _, err := parse([]any{WithSourceFile("config.toml"), WithType("toml"), WithOptional()})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	v, err := load(cfg, "config.toml")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := v.GetString("db.datasource"); got != "postgres://base" {
+		t.Fatalf("db.datasource = %q, want the base dir's value", got)
+	}
+
+	// An absolute path is untouched by the base dir.
+	abs := filepath.Join(cwd, "config.toml")
+	if got := resolveSourcePath(abs); got != abs {
+		t.Fatalf("resolveSourcePath(%q) = %q, want unchanged", abs, got)
+	}
+}

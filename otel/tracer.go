@@ -20,6 +20,13 @@ func httpTraceCompression(value string) otlptracehttp.Compression {
 	}
 }
 
+// provideTraceExporter is NewTraceExporter's DI registration shape — see
+// provideLogExporter for why the variadic function must not be registered
+// directly.
+func provideTraceExporter(ctx context.Context, config Config) (sdktrace.SpanExporter, error) {
+	return NewTraceExporter(ctx, config)
+}
+
 func NewTraceExporter(ctx context.Context, config Config, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 	if !config.Enabled || strings.EqualFold(strings.TrimSpace(config.Traces.Exporter), "none") {
 		return nil, nil

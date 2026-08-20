@@ -116,7 +116,10 @@ func (n configNode[T]) Build() (fx.Option, error) {
 		var out T
 		v, err := load(cfg, path)
 		if err != nil {
-			return out, err
+			// Name the config: the generic constructor otherwise reports only
+			// "configNode[...]", leaving no way to tell WHICH of an app's many
+			// config nodes failed to load.
+			return out, fmt.Errorf("load config %T (key %q, source %q): %w", out, key, path, err)
 		}
 		return out, decode(v, key, &out)
 	}
@@ -316,7 +319,28 @@ func hasSource(cfg configState) bool {
 	return cfg.sourceFile != "" || cfg.configName != "" || cfg.configType != "" || len(cfg.configPaths) > 0
 }
 
+// baseDir, when set, anchors every RELATIVE config source file. By default a
+// relative WithSourceFile("config.toml") resolves against the process working
+// directory — right for a server launched from its own project, wrong for an
+// installed CLI, which must read its own roots and never whatever config.toml
+// the current project happens to carry. Set once at startup, before the app
+// is built; not synchronized.
+var baseDir string
+
+// SetBaseDir anchors relative config source files to dir for every config
+// load after the call. Pass "" to restore the default (process cwd).
+func SetBaseDir(dir string) { baseDir = dir }
+
+// resolveSourcePath applies baseDir to a relative source path.
+func resolveSourcePath(path string) string {
+	if baseDir == "" || path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
+}
+
 func load(cfg configState, path string) (*viper.Viper, error) {
+	path = resolveSourcePath(path)
 	v := viper.New()
 	if cfg.envPrefix != "" {
 		v.SetEnvPrefix(cfg.envPrefix)
@@ -519,6 +543,7 @@ func joinKeys(base string, part string) string {
 }
 
 func buildWatchOption(cfg configState, watch watchState, path string, key string) fx.Option {
+	path = resolveSourcePath(path)
 	if watch.debounce <= 0 {
 		watch.debounce = 200 * time.Millisecond
 	}
