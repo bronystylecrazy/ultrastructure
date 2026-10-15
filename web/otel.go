@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/bronystylecrazy/ultrastructure/di"
@@ -9,6 +8,7 @@ import (
 	fiberzap "github.com/gofiber/contrib/v3/zap"
 	"github.com/gofiber/fiber/v3"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -44,7 +44,7 @@ func (h *OtelMiddleware) Handle(r Router) {
 
 func (h *OtelMiddleware) WrapObserver(c fiber.Ctx) error {
 	startedAt := time.Now()
-	ctx, span := h.Obs.Start(c.Context(), fmt.Sprintf("%s %s", c.Method(), c.Path()))
+	ctx, span := h.Obs.Start(c.Context())
 	defer span.End()
 
 	c.SetContext(ctx)
@@ -60,16 +60,20 @@ func (h *OtelMiddleware) WrapObserver(c fiber.Ctx) error {
 		}
 	}
 
-	route := c.FullPath()
-	if route == "" {
-		route = c.Path()
-	}
-
+	// The route is only known after routing, so name the span once it has run.
+	// A request no route matched is named by its method alone, following the
+	// OpenTelemetry HTTP conventions, so unknown paths add no new span names.
+	name := c.Method()
 	attrs := []attribute.KeyValue{
 		attribute.String("http.request.method", c.Method()),
-		attribute.String("http.route", route),
 		attribute.Int("http.response.status_code", status),
 	}
+	if c.Matched() && !c.IsMiddleware() {
+		route := c.FullPath()
+		name += " " + route
+		attrs = append(attrs, attribute.String("http.route", route))
+	}
+	trace.SpanFromContext(ctx).SetName(name)
 	span.AddCounter(ctx, "requests.total", 1, attrs...)
 	span.RecordHistogram(ctx, "request.duration", float64(time.Since(startedAt))/float64(time.Millisecond), attrs...)
 

@@ -66,7 +66,7 @@ func (m *OtelMiddlewares) initializeMiddlewareAfter(stack *middleware.Stack) err
 		end := func(...trace.SpanEndOption) {}
 		if m.Obs != nil {
 			var span *usotel.Span
-			ctx, span = m.Obs.Start(ctx, spanName(serviceID, operation),
+			ctx, span = m.Obs.Span(ctx, spanName(serviceID, operation),
 				trace.WithTimestamp(ctx.Value(spanTimestampKey{}).(time.Time)),
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(attributes...),

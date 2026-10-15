@@ -2,6 +2,8 @@ package otel
 
 import (
 	"context"
+	"runtime"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -155,9 +157,10 @@ func HasContext(ctx context.Context) bool {
 	return false
 }
 
-// Span starts a new span using Observability from context (or a safe default).
-func Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
-	return From(ctx).Span(ctx, name, opts...)
+// Start starts a new span named after the calling function, using the Observer
+// from context (or a safe default). Use From(ctx).Span to choose the name.
+func Start(ctx context.Context, opts ...trace.SpanStartOption) (context.Context, *Span) {
+	return From(ctx).Span(ctx, callerSpanName(), opts...)
 }
 
 // Span starts a new span and returns enriched context plus span-scoped observability.
@@ -199,9 +202,45 @@ func (o *Observer) Span(ctx context.Context, name string, opts ...trace.SpanStar
 	}
 }
 
-// Start is a convenience alias for Span.
-func (o *Observer) Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
-	return o.Span(ctx, name, opts...)
+// Start starts a new span named after the calling function, e.g. a call from
+// (*Service).Encode in package imgutil yields "imgutil.Service.Encode".
+// Use Span to choose the name.
+func (o *Observer) Start(ctx context.Context, opts ...trace.SpanStartOption) (context.Context, *Span) {
+	return o.Span(ctx, callerSpanName(), opts...)
+}
+
+// spanNames caches span names by call-site program counter.
+var spanNames sync.Map
+
+var receiverReplacer = strings.NewReplacer("(*", "", ")", "")
+
+// callerSpanName returns the span name for the caller of the function that
+// calls it. It must be called directly from Start.
+func callerSpanName() string {
+	var pcs [1]uintptr
+	// Skip runtime.Callers, callerSpanName and Start.
+	if runtime.Callers(3, pcs[:]) == 0 {
+		return "unknown"
+	}
+	if name, ok := spanNames.Load(pcs[0]); ok {
+		return name.(string)
+	}
+	frame, _ := runtime.CallersFrames(pcs[:]).Next()
+	name := spanNameFromFunction(frame.Function)
+	spanNames.Store(pcs[0], name)
+	return name
+}
+
+// spanNameFromFunction drops the import path and receiver punctuation from a
+// fully qualified function name.
+func spanNameFromFunction(function string) string {
+	if function == "" {
+		return "unknown"
+	}
+	if i := strings.LastIndexByte(function, '/'); i >= 0 {
+		function = function[i+1:]
+	}
+	return receiverReplacer.Replace(function)
 }
 
 // End closes the span.

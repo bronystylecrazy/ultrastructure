@@ -59,7 +59,7 @@ func assertLayerProbeSpan(t *testing.T, expectedLayer string, opts ...any) {
 		di.Replace(tp),
 		di.Provide(newLayerProbeObservable, opts...),
 		di.Invoke(func(_ otel.Attached, probe *layerProbeObservable) {
-			_, span := probe.Obs.Start(context.Background(), "layer-probe-span")
+			_, span := probe.Obs.Span(context.Background(), "layer-probe-span")
 			span.End()
 		}),
 	)

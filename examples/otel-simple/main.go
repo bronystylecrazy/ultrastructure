@@ -44,7 +44,7 @@ func NewAPIService(workerService *workerService, db *gorm.DB) *apiService {
 }
 
 func (s *apiService) Start(ctx context.Context) error {
-	ctx, obs := s.Obs.Start(ctx, "service.start")
+	ctx, obs := s.Obs.Start(ctx)
 	defer obs.End()
 
 	s.Obs.Info("Starting", zap.String("service", s.name))
@@ -67,7 +67,7 @@ func (User) TableName() string {
 
 func (h *apiService) Handle(r web.Router) {
 	r.Get("/api", func(c fiber.Ctx) error {
-		ctx, obs := h.Obs.Start(c.Context(), "api called")
+		ctx, obs := h.Obs.Span(c.Context(), "api called")
 		defer obs.End()
 
 		newUser := &User{
@@ -87,7 +87,7 @@ func (h *apiService) Handle(r web.Router) {
 }
 
 func (s *apiService) Stop(ctx context.Context) error {
-	ctx, obs := s.Obs.Start(ctx, "service.stop")
+	ctx, obs := s.Obs.Start(ctx)
 	defer obs.End()
 
 	obs.Info("Stopping", zap.String("service", s.name))
@@ -104,7 +104,7 @@ func NewWorkerService() *workerService {
 }
 
 func (s *workerService) Foo(ctx context.Context, arg string) error {
-	ctx, obs := s.Obs.Start(ctx, "worker.foo")
+	ctx, obs := s.Obs.Start(ctx)
 	defer obs.End()
 
 	obs.Info("Foo called", zap.String("arg", arg))
@@ -114,7 +114,7 @@ func (s *workerService) Foo(ctx context.Context, arg string) error {
 }
 
 func (s *workerService) Bar(ctx context.Context, arg string) error {
-	ctx, obs := s.Obs.Start(ctx, "worker.bar")
+	ctx, obs := s.Obs.Start(ctx)
 	defer obs.End()
 
 	obs.Info("Bar called", zap.String("arg", arg))
@@ -140,7 +140,7 @@ func NewHandler() *handler {
 
 func (h *handler) Authorize() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		ctx, obs := h.Obs.Start(c.Context(), "realtime.authorize")
+		ctx, obs := h.Obs.Span(c.Context(), "realtime.authorize")
 		defer obs.End()
 
 		obs.Info("Authorize called")
