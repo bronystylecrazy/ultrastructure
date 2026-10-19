@@ -27,8 +27,19 @@ func App(nodes ...any) *appNode {
 }
 
 // Run builds and runs the app, restarting on config changes.
+// A shutdown with a non-zero fx.ExitCode returns an *ExitError.
 func Run(nodes ...any) error {
 	return App(nodes...).Run()
+}
+
+// ExitError is a shutdown with a non-zero fx.ExitCode, for example a failed
+// command. The cause was already reported by whoever shut the app down.
+type ExitError struct {
+	Code int
+}
+
+func (e *ExitError) Error() string {
+	return fmt.Sprintf("exit status %d", e.Code)
 }
 
 func (a *appNode) Build() fx.Option {
@@ -220,9 +231,12 @@ func (a *appNode) Run() error {
 			// Gracefully stop and rebuild on config changes.
 			stopApp(app)
 			continue
-		case <-app.Done():
-			// Stop when the app exits normally.
+		case sig := <-app.Wait():
+			// Wait, not Done: Done drops the exit code.
 			stopApp(app)
+			if sig.ExitCode != 0 {
+				return &ExitError{Code: sig.ExitCode}
+			}
 			return nil
 		}
 	}

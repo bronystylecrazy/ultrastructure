@@ -1,6 +1,8 @@
 package us
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -54,7 +56,22 @@ func (a *App) Build() fx.Option {
 	return di.App(a.nodes...).Build()
 }
 
+// Run runs the app and exits the process on failure, like fx.App.Run: with
+// the command's exit code, or 1 after printing a startup error. It returns
+// only on success, so `us.New(...).Run()` needs no error handling.
 func (a *App) Run() error {
+	if err := a.run(); err != nil {
+		var exit *di.ExitError
+		if errors.As(err, &exit) {
+			os.Exit(exit.Code)
+		}
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
+	}
+	return nil
+}
+
+func (a *App) run() error {
 	// The kardianos service host blocks on service-manager signals and ignores
 	// fx shutdown, so only use it when actually running under a service manager;
 	// interactive runs (terminal, --help, serve for local dev) use di.Run which

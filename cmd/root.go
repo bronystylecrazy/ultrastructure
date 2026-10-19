@@ -52,6 +52,10 @@ func (r *Root) Start(ctx context.Context) error {
 		}
 
 		err := r.Execute()
+		if err != nil {
+			// SilenceErrors is set, so nothing else prints it.
+			fmt.Fprintln(r.ErrOrStderr(), "Error:", err)
+		}
 		r.stopOnce.Do(func() {
 			if r.shutdowner == nil {
 				return

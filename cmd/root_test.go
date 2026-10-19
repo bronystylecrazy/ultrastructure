@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -92,6 +93,35 @@ func TestRootStartShutsDownWithExitCode(t *testing.T) {
 				t.Fatalf("shutdown options: got %#v want %#v", opts, want)
 			}
 		})
+	}
+}
+
+func TestRootStartPrintsError(t *testing.T) {
+	shutdowner := newRecordingShutdowner()
+	root := New(shutdowner, nil)
+	root.SilenceUsage = true
+	var stderr bytes.Buffer
+	root.SetOut(io.Discard)
+	root.SetErr(&stderr)
+	root.AddCommand(&cobra.Command{
+		Use: "child",
+		RunE: func(*cobra.Command, []string) error {
+			return errors.New("boom")
+		},
+	})
+	root.SetArgs([]string{"child"})
+
+	if err := root.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	select {
+	case <-shutdowner.fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdowner was not called within timeout")
+	}
+
+	if got, want := stderr.String(), "Error: boom\n"; got != want {
+		t.Fatalf("stderr: got %q want %q", got, want)
 	}
 }
 

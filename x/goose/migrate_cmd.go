@@ -90,7 +90,12 @@ func (m *MigrateRuntime) runWithShutdown(run func(cmd *cobra.Command, args []str
 		if m.shutdowner == nil {
 			return runErr
 		}
-		shutdownErr := m.shutdowner.Shutdown()
+		// The first shutdown signal wins, so a failure must carry its exit code here.
+		code := 0
+		if runErr != nil {
+			code = 1
+		}
+		shutdownErr := m.shutdowner.Shutdown(fx.ExitCode(code))
 		if shutdownErr != nil {
 			m.log().Error("failed to shutdown after goose migrate command", zap.String("command", cmd.CommandPath()), zap.Error(shutdownErr))
 		}
