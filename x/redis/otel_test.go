@@ -60,18 +60,45 @@ func TestInstrumentedClientTracesCommandsWithoutTheirArguments(t *testing.T) {
 	tel := newTelemetry()
 	client := newInstrumentedClient(t, true, tel)
 
-	require.NoError(t, client.Set(context.Background(), "session:abc", "s3cret-value", 0).Err())
+	ctx, parent := tel.tp.Tracer("test").Start(context.Background(), "request")
+	require.NoError(t, client.Set(ctx, "session:abc", "s3cret-value", 0).Err())
+	parent.End()
 
-	var set sdktrace.ReadOnlySpan
-	for _, span := range tel.spans.Ended() {
-		if span.Name() == "set" {
-			set = span
-		}
-	}
+	set := endedSpan(tel, "set")
 	require.NotNil(t, set, "no span was recorded for SET")
 	for _, kv := range set.Attributes() {
 		assert.NotContains(t, kv.Value.Emit(), "s3cret-value", "attribute %s records a command argument", kv.Key)
+		// The caller lookup walks the stack on every command.
+		assert.NotEqual(t, "code.function", string(kv.Key), "the caller is recorded")
 	}
+}
+
+// A command outside any trace, such as one from a background loop, must not
+// open a trace of its own; inside one it is a child span.
+func TestInstrumentedClientTracesCommandsOnlyInsideATrace(t *testing.T) {
+	tel := newTelemetry()
+	client := newInstrumentedClient(t, true, tel)
+
+	require.NoError(t, client.Ping(context.Background()).Err())
+	assert.Empty(t, tel.spans.Ended(), "a command without a parent started a trace")
+
+	ctx, parent := tel.tp.Tracer("test").Start(context.Background(), "request")
+	require.NoError(t, client.Ping(ctx).Err())
+	parent.End()
+
+	ping := endedSpan(tel, "ping")
+	require.NotNil(t, ping, "no span was recorded for PING under a parent")
+	assert.Equal(t, parent.SpanContext().TraceID(), ping.SpanContext().TraceID())
+	assert.Equal(t, parent.SpanContext().SpanID(), ping.Parent().SpanID())
+}
+
+func endedSpan(tel telemetry, name string) sdktrace.ReadOnlySpan {
+	for _, span := range tel.spans.Ended() {
+		if span.Name() == name {
+			return span
+		}
+	}
+	return nil
 }
 
 func TestInstrumentedClientReportsPoolAndCommandMetrics(t *testing.T) {
@@ -95,9 +122,11 @@ func TestInstrumentedClientAddsNothingWhenTelemetryIsDisabled(t *testing.T) {
 	tel := newTelemetry()
 	client := newInstrumentedClient(t, false, tel)
 
-	require.NoError(t, client.Ping(context.Background()).Err())
+	ctx, parent := tel.tp.Tracer("test").Start(context.Background(), "request")
+	require.NoError(t, client.Ping(ctx).Err())
+	parent.End()
 
-	assert.Empty(t, tel.spans.Ended())
+	assert.Len(t, tel.spans.Ended(), 1, "only the parent span should be recorded")
 	assert.Empty(t, tel.metricNames(t))
 }
 
@@ -120,6 +149,8 @@ func TestProvidersTraceClientWhenTelemetryIsEnabled(t *testing.T) {
 	defer app.RequireStop()
 
 	require.NotNil(t, client)
-	require.NoError(t, client.Ping(context.Background()).Err())
-	assert.NotEmpty(t, tel.spans.Ended())
+	ctx, parent := tel.tp.Tracer("test").Start(context.Background(), "request")
+	require.NoError(t, client.Ping(ctx).Err())
+	parent.End()
+	assert.NotNil(t, endedSpan(tel, "ping"))
 }

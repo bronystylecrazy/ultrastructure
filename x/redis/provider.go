@@ -46,9 +46,10 @@ func ensureInMemoryRedisAddr() (string, error) {
 
 // NewInstrumentedClient builds the client NewClient does and, when telemetry
 // is enabled, traces its commands through tp and reports its pool and command
-// metrics through mp. Spans are named after the command and leave out its
-// arguments, which carry keys and values such as cached credentials. With
-// telemetry disabled it builds the same client as NewClient.
+// metrics through mp. A command is traced only inside an existing trace, as a
+// child span named after the command; its arguments, which carry keys and
+// values such as cached credentials, are left out. With telemetry disabled it
+// builds the same client as NewClient.
 func NewInstrumentedClient(cfg Config, otelConfig otel.Config, tp *otel.TracerProvider, mp *otel.MeterProvider) (*redis.Client, error) {
 	client, err := NewClient(cfg)
 	if err != nil || !otelConfig.Enabled {
@@ -56,8 +57,9 @@ func NewInstrumentedClient(cfg Config, otelConfig otel.Config, tp *otel.TracerPr
 	}
 	if tp != nil {
 		err = redisotel.InstrumentTracing(client,
-			redisotel.WithTracerProvider(tp),
+			redisotel.WithTracerProvider(childOnlyTracerProvider{tp: tp}),
 			redisotel.WithDBStatement(false),
+			redisotel.WithCallerEnabled(false),
 		)
 	}
 	if err == nil && mp != nil {
