@@ -36,6 +36,12 @@ func NewResource(ctx context.Context, config Config) (*resource.Resource, error)
 	if config.ServiceName != "" {
 		attrs = append(attrs, semconv.ServiceName(config.ServiceName))
 	}
+	// An explicit resource attribute wins over the build's version, and is added
+	// by the loop below.
+	versionKey := string(semconv.ServiceVersionKey)
+	if _, explicit := config.ResourceAttrs[versionKey]; !explicit && meta.Version != "" && meta.Version != meta.NilVersion {
+		attrs = append(attrs, semconv.ServiceVersion(meta.Version))
+	}
 	if len(config.ResourceAttrs) > 0 {
 		for k, v := range config.ResourceAttrs {
 			if k == "deployment.environment" {
