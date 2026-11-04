@@ -10,7 +10,8 @@ import (
 func Providers(extends ...di.Node) di.Node {
 	nodes := []any{
 		cfg.Config[Config]("caching.redis", cfg.WithSourceFile("config.toml"), cfg.WithType("toml")),
-		di.Provide(NewClient, interfaces()...),
+		// Telemetry is optional so that the client builds without the otel providers.
+		di.Provide(NewInstrumentedClient, append([]any{di.Params(di.Skip(), di.Optional(), di.Optional(), di.Optional())}, interfaces()...)...),
 		di.Provide(NewAPIKeyCacheStore, di.As[apikey.CacheStore]()),
 		di.Provide(NewTokenRevocationCache, di.As[session.RevocationCache]()),
 	}

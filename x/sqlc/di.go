@@ -17,7 +17,8 @@ import (
 
 func Providers() di.Node {
 	return di.Options(
-		di.Default(NewPool),
+		// Telemetry is optional so that sqlc builds without the otel providers.
+		di.Default(NewInstrumentedPool, di.Params(di.Skip(), di.Skip(), di.Optional(), di.Optional(), di.Optional())),
 		di.Default(NewDB),
 	)
 }
