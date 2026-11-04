@@ -43,7 +43,7 @@ func NewLogger(config Config, lp *LoggerProvider) (*zap.Logger, error) {
 	}))
 
 	return wrapped.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		return zapcore.NewTee(c, otelzap.NewCore(config.ServiceName, otelzap.WithLoggerProvider(lp)))
+		return zapcore.NewTee(c, newCopyingCore(otelzap.NewCore(config.ServiceName, otelzap.WithLoggerProvider(lp))))
 	})), nil
 }
 
