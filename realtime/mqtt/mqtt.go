@@ -43,9 +43,17 @@ type Server struct {
 }
 
 func NewServer(logger *slog.Logger) (*Server, error) {
+	// Success acks (PUBACK, PUBREC, PUBREL, PUBCOMP) must not echo the
+	// PUBLISH's user properties: mochi v2.7.9 does by default and writes
+	// an ack that paho-mqtt (Python) and MQTT.js reject as malformed, so
+	// every QoS 1/2 publish carrying user properties fails for them
+	// (mochi-mqtt/server#474).
+	caps := mqtt.NewDefaultServerCapabilities()
+	caps.Compatibilities.NoInheritedPropertiesOnAck = true
 	server := &Server{Server: mqtt.New(&mqtt.Options{
 		InlineClient: true,
 		Logger:       logger,
+		Capabilities: caps,
 	})}
 	return server, nil
 }
